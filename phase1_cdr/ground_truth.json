@@ -1,0 +1,52 @@
+{
+  "01000001": {
+    "home": {
+      "expected_area": "Hamra",
+      "expected_confidence": "High"
+    },
+    "work": {
+      "expected_area": "Downtown",
+      "expected_confidence": "High"
+    },
+    "frequent": [
+      "Hamra",
+      "Downtown",
+      "Achrafieh"
+    ]
+  },
+  "01000002": {
+    "home": {
+      "expected_area": "Mazraa",
+      "max_confidence": "Medium"
+    },
+    "work": {
+      "expected_area": "Downtown",
+      "max_confidence": "Medium"
+    },
+    "frequent": [
+      "Hamra",
+      "Verdun",
+      "Downtown"
+    ]
+  },
+  "01000003": {
+    "home": {
+      "expected_area": null,
+      "max_confidence": "Low"
+    },
+    "work": {
+      "expected_area": null,
+      "max_confidence": "Low"
+    }
+  },
+  "01000004": {
+    "home": {
+      "expected_area": null,
+      "max_confidence": "Medium"
+    },
+    "work": {
+      "expected_area": null,
+      "max_confidence": "Low"
+    }
+  }
+}
