@@ -22,6 +22,19 @@ main                  ← trusted baseline; only merged into, never edited direc
 Neither agent commits straight to `main`. The *other* agent reviews the branch
 diff before it merges. The human (Nadim) is the only one who merges to `main`.
 
+### Current active branch — `branched-out-dih`
+The live confidence work lives on **`branched-out-dih`** (not yet merged). It
+holds, oldest → newest:
+1. `claude:` three-gate weakest-link confidence model (replaced share-only).
+2. `claude:` relative **Density** gate (4th gate) — added per Nadim + co-founder.
+
+Because both pieces are Claude-authored, the branch name deviates from the
+`claude/<task>` convention above; treat `branched-out-dih` as the de-facto Claude
+feature branch for confidence. **Codex still owns the independent review** (re-derive
+the four users' expected confidences under the four-gate rules, scrutinise the
+`N_*` / `DENSITY_*` thresholds) before Nadim merges. See `HANDOFF.md` for the
+running intent log.
+
 ## Commit message attribution
 Prefix every commit so authorship is obvious in `git log --oneline`:
 - Claude → `claude: <what changed>`
