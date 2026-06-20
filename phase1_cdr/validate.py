@@ -15,32 +15,14 @@ from detection import (
     CONFIDENCE_ORDER,
     DetectionResult,
     detect_frequent_areas,
+    detect_frequent_confidence,
     detect_home,
     detect_work,
 )
 
 
-def _check_window(test_name: str, user: str, result: DetectionResult, spec: dict) -> dict:
-    """Apply the independent area + confidence rules for a home/work spec."""
-    failures: List[str] = []
-
-    # --- Area check (independent of confidence) ---
-    if "expected_area" in spec:
-        expected_area = spec["expected_area"]
-        if expected_area is not None:
-            # A specific area is required: exact match.
-            if result.area != expected_area:
-                failures.append("area")
-        else:
-            # expected_area is null.
-            has_conf_field = "expected_confidence" in spec or "max_confidence" in spec
-            if not has_conf_field:
-                # "found nothing" case -- detected area must be None.
-                if result.area is not None:
-                    failures.append("area")
-            # else: a confidence field is present -> skip the area check entirely.
-
-    # --- Confidence check (independent of area) ---
+def _check_confidence(result: DetectionResult, spec: dict, failures: List[str]) -> None:
+    """Apply exact/ceiling confidence rules (shared by window + frequent)."""
     if "expected_confidence" in spec:
         if result.confidence != spec["expected_confidence"]:
             failures.append("confidence")
@@ -49,7 +31,30 @@ def _check_window(test_name: str, user: str, result: DetectionResult, spec: dict
         if CONFIDENCE_ORDER[result.confidence] > ceiling:
             failures.append("confidence")
 
-    # Build a readable "expected" description.
+
+def _check_window(test_name: str, user: str, result: DetectionResult, spec: dict) -> dict:
+    """Apply the independent area + confidence + alternatives rules."""
+    failures: List[str] = []
+
+    # --- Area check (independent of confidence) ---
+    if "expected_area" in spec:
+        expected_area = spec["expected_area"]
+        if expected_area is not None:
+            if result.area != expected_area:
+                failures.append("area")
+        else:
+            has_conf_field = "expected_confidence" in spec or "max_confidence" in spec
+            if not has_conf_field and result.area is not None:
+                failures.append("area")
+
+    # --- Confidence check ---
+    _check_confidence(result, spec, failures)
+
+    # --- Alternatives check (only when the spec pins them) ---
+    if "expected_alternatives" in spec:
+        if sorted(result.alternatives) != sorted(spec["expected_alternatives"]):
+            failures.append("alternatives")
+
     expected_parts = []
     if "expected_area" in spec:
         expected_parts.append(f"area={spec['expected_area']!r}")
@@ -57,26 +62,37 @@ def _check_window(test_name: str, user: str, result: DetectionResult, spec: dict
         expected_parts.append(f"conf=={spec['expected_confidence']}")
     if "max_confidence" in spec:
         expected_parts.append(f"conf<={spec['max_confidence']}")
+    if "expected_alternatives" in spec:
+        expected_parts.append(f"alts={spec['expected_alternatives']}")
 
     return {
         "user": user,
         "test": test_name,
         "expected": ", ".join(expected_parts),
         "detected": repr(result.area),
-        "confidence": result.confidence,
+        "confidence": result.confidence_label,
+        "alternatives": str(result.alternatives),
         "result": "PASS" if not failures else "FAIL (" + ", ".join(failures) + ")",
     }
 
 
-def _check_frequent(user: str, detected_areas: List[str], expected: List[str]) -> dict:
-    ok = detected_areas == expected
+def _check_frequent(user: str, areas: List[str], lead: DetectionResult, spec: dict) -> dict:
+    """Check the ranked list order plus the lead area's confidence ceiling."""
+    failures: List[str] = []
+    expected_areas = spec["expected_areas"] if isinstance(spec, dict) else spec
+    if areas != expected_areas:
+        failures.append("order/areas")
+    if isinstance(spec, dict):
+        _check_confidence(lead, spec, failures)
+
     return {
         "user": user,
         "test": "frequent",
-        "expected": str(expected),
-        "detected": str(detected_areas),
-        "confidence": "",
-        "result": "PASS" if ok else "FAIL (order/areas)",
+        "expected": str(expected_areas),
+        "detected": str(areas),
+        "confidence": lead.confidence_label,
+        "alternatives": str(lead.alternatives),
+        "result": "PASS" if not failures else "FAIL (" + ", ".join(failures) + ")",
     }
 
 
@@ -92,7 +108,8 @@ def validate(df: pd.DataFrame, ground_truth: Dict[str, dict]) -> List[dict]:
         if "work" in spec:
             rows.append(_check_window("work", user, detect_work(user_df), spec["work"]))
         if "frequent" in spec:
-            detected = [area for area, _count, _share in detect_frequent_areas(user_df)]
-            rows.append(_check_frequent(user, detected, spec["frequent"]))
+            areas = [area for area, _c, _s in detect_frequent_areas(user_df)]
+            lead = detect_frequent_confidence(user_df)
+            rows.append(_check_frequent(user, areas, lead, spec["frequent"]))
 
     return rows

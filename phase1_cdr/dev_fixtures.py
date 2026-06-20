@@ -119,25 +119,36 @@ df.to_csv(CSV_PATH, index=False)
 # Independent ground-truth tally. Plain groupby/value_counts, NO detection.py.
 # Same deterministic tie-break (count desc, earliest timestamp asc, area asc).
 # ---------------------------------------------------------------------------
-def _top_area(user_df: pd.DataFrame, window: str) -> str | None:
+def _window(user_df: pd.DataFrame, window: str) -> pd.DataFrame:
     if window == "home":
-        w = user_df[user_df["timestamp"].dt.hour < 6]
-    else:  # work
-        hours = user_df["timestamp"].dt.hour
-        w = user_df[(hours >= 9) & (hours < 18) & (user_df["timestamp"].dt.weekday < 5)]
-    if len(w) == 0:
-        return None
-    g = w.groupby("area")["timestamp"].agg(["count", "min"]).sort_values(
+        return user_df[user_df["timestamp"].dt.hour < 6]
+    hours = user_df["timestamp"].dt.hour
+    return user_df[(hours >= 9) & (hours < 18) & (user_df["timestamp"].dt.weekday < 5)]
+
+
+def _ranked(frame: pd.DataFrame) -> list[tuple[str, int]]:
+    g = frame.groupby("area")["timestamp"].agg(["count", "min"]).sort_values(
         by=["count", "min", "area"], ascending=[False, True, True]
     )
-    return str(g.index[0])
+    return [(str(a), int(r["count"])) for a, r in g.iterrows()]
+
+
+def _top_area(user_df: pd.DataFrame, window: str) -> str | None:
+    ranked = _ranked(_window(user_df, window))
+    return ranked[0][0] if ranked else None
+
+
+def _alternatives(user_df: pd.DataFrame, window: str) -> list[str]:
+    """Areas within the >70% near-tie band of the winner (independent tally)."""
+    ranked = _ranked(_window(user_df, window))
+    if not ranked:
+        return []
+    top_count = ranked[0][1]
+    return [a for a, c in ranked[1:] if c > 0.70 * top_count]
 
 
 def _frequent(user_df: pd.DataFrame, top_n: int = 3) -> list[str]:
-    g = user_df.groupby("area")["timestamp"].agg(["count", "min"]).sort_values(
-        by=["count", "min", "area"], ascending=[False, True, True]
-    )
-    return [str(a) for a in g.head(top_n).index]
+    return [a for a, _c in _ranked(user_df)[:top_n]]
 
 
 def _user(phone: str) -> pd.DataFrame:
@@ -149,23 +160,35 @@ ground_truth = {
     A: {
         "home": {"expected_area": _top_area(_user(A), "home"), "expected_confidence": "High"},
         "work": {"expected_area": _top_area(_user(A), "work"), "expected_confidence": "High"},
-        "frequent": _frequent(_user(A)),
+        "frequent": {"expected_areas": _frequent(_user(A)), "max_confidence": "High"},
     },
-    # User B: exact area match AND confidence capped at Medium.
+    # User B: real winner, but a noisy near-tie -> capped at Medium, alternatives listed.
     B: {
-        "home": {"expected_area": _top_area(_user(B), "home"), "max_confidence": "Medium"},
+        "home": {
+            "expected_area": _top_area(_user(B), "home"),
+            "max_confidence": "Medium",
+            "expected_alternatives": _alternatives(_user(B), "home"),
+        },
         "work": {"expected_area": _top_area(_user(B), "work"), "max_confidence": "Medium"},
-        "frequent": _frequent(_user(B)),
+        "frequent": {"expected_areas": _frequent(_user(B)), "max_confidence": "Medium"},
     },
     # User C: too sparse to claim anything; just don't overstate confidence.
     C: {
         "home": {"expected_area": None, "max_confidence": "Low"},
         "work": {"expected_area": None, "max_confidence": "Low"},
     },
-    # User D: must resist calling a near-coin-flip / scattered pattern "High".
+    # User D: names the plurality area, but must resist High and flag the near-tie.
     D: {
-        "home": {"expected_area": None, "max_confidence": "Medium"},
-        "work": {"expected_area": None, "max_confidence": "Low"},
+        "home": {
+            "expected_area": _top_area(_user(D), "home"),
+            "max_confidence": "Medium",
+            "expected_alternatives": _alternatives(_user(D), "home"),
+        },
+        "work": {
+            "expected_area": _top_area(_user(D), "work"),
+            "max_confidence": "Low",
+            "expected_alternatives": _alternatives(_user(D), "work"),
+        },
     },
 }
 
