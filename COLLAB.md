@@ -23,17 +23,24 @@ Neither agent commits straight to `main`. The *other* agent reviews the branch
 diff before it merges. The human (Nadim) is the only one who merges to `main`.
 
 ### Current active branch — `branched-out-dih`
-The live confidence work lives on **`branched-out-dih`** (not yet merged). It
-holds, oldest → newest:
+All the confidence work lives on **`branched-out-dih`** (not yet merged). Both
+agents have committed here — it's the single de-facto feature branch for
+confidence (the name deviates from the `claude/<task>` convention; that's fine).
+Oldest → newest:
 1. `claude:` three-gate weakest-link confidence model (replaced share-only).
 2. `claude:` relative **Density** gate (4th gate) — added per Nadim + co-founder.
+3. `claude:` docs sync (README/COLLAB) for the four-gate model.
+4. `claude:` re-tuned `N_*` / `DENSITY_*` for realistic-scale fixtures + User E.
+5. `codex:` independent review — harness null-area bug fix, C/E tightened to
+   exact `Insufficient data`, near-tie test sharpened, `test_validate.py` added.
+   (Codex committed locally; Claude reviewed, fast-forwarded it onto this branch,
+   and pushed — Codex's sandbox couldn't reach the remote itself.)
 
-Because both pieces are Claude-authored, the branch name deviates from the
-`claude/<task>` convention above; treat `branched-out-dih` as the de-facto Claude
-feature branch for confidence. **Codex still owns the independent review** (re-derive
-the four users' expected confidences under the four-gate rules, scrutinise the
-`N_*` / `DENSITY_*` thresholds) before Nadim merges. See `HANDOFF.md` for the
-running intent log.
+**Status: reviewed by both agents, merge-ready pending one verification run.**
+The ground truth, harness logic, and tests all changed after the last green run,
+so the only remaining gate is Khaled re-running `pytest tests/` (expect 13
+passed) + `main.py` (expect 12/12). If green, Nadim merges to `main`. See
+`HANDOFF.md` for the running intent log.
 
 ## Commit message attribution
 Prefix every commit so authorship is obvious in `git log --oneline`:

@@ -4,6 +4,33 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-20 — Claude: folded Codex's review into `branched-out-dih` (merge-ready)
+
+Reviewed Codex's commit `f7d7d9b` (originally on local branch
+`codex/review-branched-out-dih`) and traced it against the fixtures. **Agreed
+with all of it** — the `validate.py` null-area fix is the correct root-cause fix
+for the bug flagged in the first review; C/E tightening to exact `Insufficient
+data` is correct (C is evening-only, E has no weekday-daytime records, so both
+windows are genuinely empty); the near-tie unit-test rescale (6/5 → 30/25)
+correctly re-isolates the closeness gate after `N_MEDIUM` rose to 15.
+
+Codex could not push (its sandbox approval policy blocks outbound network to the
+GitHub remote), so the commit was local-only. Since it's a clean +1 fast-forward
+and is reviewed/approved, per Nadim's call I **fast-forwarded `branched-out-dih`
+to `f7d7d9b` and pushed** — no separate review branch is kept. `origin/branched-
+out-dih` now ends at `f7d7d9b`; Khaled can pull it.
+
+**State:** branch is the agreed state of both agents, **merge-ready pending one
+re-run.** Ground truth + harness logic + tests all changed since Khaled's last
+green run, so his 11/11 no longer covers HEAD.
+
+**Next (the only remaining gate):** Khaled pulls `branched-out-dih`, runs
+`pytest tests/` (expect **13 passed**) and `python main.py sample_data.csv
+ground_truth.json` (expect **12/12** — E-work added one row). If green, Nadim
+merges to `main`. Static trace says it passes; execution must confirm.
+
+---
+
 ## 2026-06-20 — Codex: static review of `branched-out-dih` (branch `codex/review-branched-out-dih`)
 
 Reviewed the five Claude commits in scope after `git fetch --all`:
