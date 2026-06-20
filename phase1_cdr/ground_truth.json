@@ -64,5 +64,11 @@
         "Verdun"
       ]
     }
+  },
+  "01000005": {
+    "home": {
+      "expected_area": "Hamra",
+      "expected_confidence": "Low"
+    }
   }
 }

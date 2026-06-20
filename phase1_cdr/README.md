@@ -52,9 +52,11 @@ areas (those within ~70% of the winner) are surfaced as `alternatives` rather th
 silently dropped. **Frequent** areas are about habits, not a single inferred
 location, so they use the Share gate alone (no closeness / near-tie).
 
-> **Note:** the `N_*` and `DENSITY_*` thresholds in `detection.py` are placeholders
-> calibrated to the current ~28-day synthetic fixtures. They must be re-tuned when
-> `dev_fixtures.py` scales up to realistic call volumes and longer spans.
+> **Thresholds:** `N_HIGH=50` / `N_MEDIUM=15` and `DENSITY_HIGH=0.40` /
+> `DENSITY_MEDIUM=0.15` in `detection.py` are calibrated to the realistic fixtures
+> (per-user volumes of 500–5000 calls over spans of weeks to a year). Share and
+> Closeness are scale-invariant ratios and need no tuning. Re-tune `N_*` / `DENSITY_*`
+> again if the real generator changes the volume or span distribution.
 
 ## Setup
 
@@ -86,14 +88,24 @@ Run the unit tests:
 pytest tests/
 ```
 
-## The four test users
+## The five test users
 
-| User | Pattern | Home expectation | Work expectation |
-|---|---|---|---|
-| A | Consistent | exact area, `High` | exact area, `High` |
-| B | Noisy, real plurality | exact area, ≤ `Medium`, alt `Hamra` | exact area, ≤ `Medium` |
-| C | Sparse (3 records, none in-window) | none, `Insufficient data` | none, `Insufficient data` |
-| D | Adversarial / no stable pattern | exact area, ≤ `Medium`, alt `Achrafieh` | exact area, ≤ `Low`, alts `Mazraa`,`Verdun` |
+Each carries a realistic volume (500–5000 calls) over a different observation span,
+so every gate gets exercised. C is the deliberate small-sample exception.
+
+| User | Pattern | Span / volume | Home expectation | Work expectation |
+|---|---|---|---|---|
+| A | Consistent commuter | ~365d, ~1060 | exact area, `High` | exact area, `High` |
+| B | Noisy, real plurality | ~180d, ~990 | exact area, ≤ `Medium`, alt `Hamra` | exact area, ≤ `Medium` |
+| C | Sparse floor case (no in-window data) | ~21d, ~40 | none, `Insufficient data` | none, `Insufficient data` |
+| D | Adversarial / no stable pattern | ~180d, ~1010 | exact area, ≤ `Medium`, alt `Achrafieh` | exact area, ≤ `Low`, alts `Mazraa`,`Verdun` |
+| E | Long span, sparse window | ~365d, ~600 | exact area, **exactly** `Low` (Density-bound) | — |
+
+User **E** is the dedicated **Density** case: ~30 unanimous overnight calls scattered
+across a full year. N (Medium), Share (High) and Closeness (High) all look strong, but
+~30 active nights over 365 days is thin coverage, so **Density alone caps the result to
+`Low`**. Its home confidence is pinned *exactly* to `Low` (not a ceiling) so the harness
+fails if anything other than Density produced the cap.
 
 User D is the real stress test. The detector still **names** the plurality area (that
 is what it returns), but it must **resist** calling a near-coin-flip or scattered

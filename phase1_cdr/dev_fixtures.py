@@ -1,7 +1,8 @@
 """Throwaway development fixture generator.
 
 Deterministically builds a synthetic CDR dataset (sample_data.csv) and an
-independently-computed ground truth (ground_truth.json) for four test users.
+independently-computed ground truth (ground_truth.json) for five test users at
+REALISTIC per-subscriber volume (most users carry 500-5000 total calls).
 
 IMPORTANT:
   * All data here is synthetic, produced with a fixed seed. No real telecom
@@ -11,6 +12,22 @@ IMPORTANT:
   * ground_truth.json is computed by a LOCAL tally (plain groupby) below --
     it deliberately does NOT import detection.py, so validating detection.py
     against this file actually proves something.
+
+The five users are archetypes chosen to exercise every gate of the four-gate,
+weakest-link confidence model, and each is given a DIFFERENT observation span so
+the relative Density gate actually discriminates:
+
+  A  Consistent commuter  ~365-day span, dense  -> home/work/frequent High
+  B  Noisy, contested      ~180-day span        -> capped at Medium (near-tie)
+  C  Sparse floor case     ~3-week span, ~40 records, no window data -> Low/None
+  D  Adversarial near-tie  ~180-day span        -> home <=Medium, work <=Low
+  E  Long-span, sparse window  ~365-day span     -> Density is the SOLE binder
+
+C is deliberately tiny -- it is the small-sample floor test, the one archetype
+intentionally exempt from the 500-5000 volume target. E is the new user that
+finally exercises Density in the harness: it is well-observed overall (~600
+calls across a full year) but calls overnight only ~30 times, so N/Share/
+Closeness all read strong while Density alone caps the home result to Low.
 """
 
 from __future__ import annotations
@@ -30,26 +47,43 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(HERE, "sample_data.csv")
 GROUND_TRUTH_PATH = os.path.join(HERE, "ground_truth.json")
 
-# 2024-01-01 is a Monday. 28 consecutive days give us 20 weekdays + 8 weekend.
-ALL_DATES = [pd.Timestamp("2024-01-01") + pd.Timedelta(days=d) for d in range(28)]
-WEEKDAY_DATES = [d for d in ALL_DATES if d.weekday() < 5]
-
 CALL_TYPES = [1, 2, 11, 22]
 
 _records: list[dict] = []
 
 
-def _add(phone: str, imei: str, n: int, area: str, window: str) -> None:
-    """Append n synthetic records for one user/area in a given time window."""
+def _date_pool(start: str, ndays: int) -> tuple[list[pd.Timestamp], list[pd.Timestamp]]:
+    """Return (all_dates, weekday_dates) for an ndays span starting at `start`."""
+    base = pd.Timestamp(start)
+    all_dates = [base + pd.Timedelta(days=d) for d in range(ndays)]
+    weekday_dates = [d for d in all_dates if d.weekday() < 5]
+    return all_dates, weekday_dates
+
+
+def _add(
+    phone: str,
+    imei: str,
+    n: int,
+    area: str,
+    window: str,
+    all_dates: list[pd.Timestamp],
+    weekday_dates: list[pd.Timestamp],
+) -> None:
+    """Append n synthetic records for one user/area in a given time window.
+
+    The date is drawn from the user's own observation span (`all_dates`), so each
+    user can be observed for a different length of time -- which is what gives the
+    Density gate something to discriminate on.
+    """
     for _ in range(n):
         if window == "home":  # hour in [0, 6), any day
-            date = random.choice(ALL_DATES)
+            date = random.choice(all_dates)
             hour = random.randint(0, 5)
         elif window == "work":  # hour in [9, 18), weekdays only
-            date = random.choice(WEEKDAY_DATES)
+            date = random.choice(weekday_dates)
             hour = random.randint(9, 17)
         elif window == "evening":  # outside both windows
-            date = random.choice(ALL_DATES)
+            date = random.choice(all_dates)
             hour = random.randint(19, 23)
         else:
             raise ValueError(f"unknown window {window!r}")
@@ -69,37 +103,60 @@ def _add(phone: str, imei: str, n: int, area: str, window: str) -> None:
         )
 
 
-# --- User A: Consistent. Strong home + work plurality -> High confidence. ---
+# --- User A: Consistent commuter. ~365-day span, dense overnight + weekday-day.
+# Strong home (Hamra) and work (Downtown) plurality, many active days -> every
+# gate High. Hamra is also the overall plurality -> frequent High. ~1060 calls.
 A = "01000001"
-_add(A, "350000000000001", 17, "Hamra", "home")
-_add(A, "350000000000001", 2, "Achrafieh", "home")
-_add(A, "350000000000001", 1, "Verdun", "home")
-_add(A, "350000000000001", 14, "Downtown", "work")
-_add(A, "350000000000001", 3, "Achrafieh", "work")
-_add(A, "350000000000001", 2, "Verdun", "work")
-_add(A, "350000000000001", 1, "Hamra", "work")
+A_all, A_wk = _date_pool("2024-01-01", 365)
+_add(A, "350000000000001", 560, "Hamra", "home", A_all, A_wk)
+_add(A, "350000000000001", 50, "Achrafieh", "home", A_all, A_wk)
+_add(A, "350000000000001", 30, "Verdun", "home", A_all, A_wk)
+_add(A, "350000000000001", 360, "Downtown", "work", A_all, A_wk)
+_add(A, "350000000000001", 40, "Achrafieh", "work", A_all, A_wk)
+_add(A, "350000000000001", 20, "Verdun", "work", A_all, A_wk)
 
-# --- User B: Noisy but a real winner (~40-45%) -> Medium, never High. ---
+# --- User B: Noisy but with a real winner (~42%). ~180-day span. Home is a
+# near-tie (Mazraa just ahead of Hamra) so Closeness drags it to Low; the ground
+# truth only asserts the ceiling (<=Medium) and the Hamra alternative. ~990 calls.
 B = "01000002"
-_add(B, "350000000000002", 8, "Mazraa", "home")
-_add(B, "350000000000002", 7, "Hamra", "home")
-_add(B, "350000000000002", 5, "Verdun", "home")
-_add(B, "350000000000002", 9, "Downtown", "work")
-_add(B, "350000000000002", 6, "Hamra", "work")
-_add(B, "350000000000002", 5, "Verdun", "work")
+B_all, B_wk = _date_pool("2024-01-01", 181)
+_add(B, "350000000000002", 210, "Mazraa", "home", B_all, B_wk)
+_add(B, "350000000000002", 180, "Hamra", "home", B_all, B_wk)
+_add(B, "350000000000002", 110, "Verdun", "home", B_all, B_wk)
+_add(B, "350000000000002", 220, "Downtown", "work", B_all, B_wk)
+_add(B, "350000000000002", 140, "Hamra", "work", B_all, B_wk)
+_add(B, "350000000000002", 130, "Verdun", "work", B_all, B_wk)
 
-# --- User C: Sparse. 3 records, none in the home/work windows. ---
+# --- User C: Sparse floor case. ~3-week span, ~40 evening records, NONE in the
+# home/work windows -> both window detectors return Insufficient data. The one
+# archetype deliberately kept below the volume target (it tests the N floor).
 C = "01000003"
-_add(C, "350000000000003", 3, "Hamra", "evening")
+C_all, C_wk = _date_pool("2024-01-01", 21)
+_add(C, "350000000000003", 40, "Hamra", "evening", C_all, C_wk)
 
-# --- User D: Adversarial. Near coin-flip home, scattered work. ---
+# --- User D: Adversarial. ~180-day span. Home is a near coin-flip (Hamra vs
+# Achrafieh) and work is scattered with no dominant area -> home <=Medium with an
+# Achrafieh alternative, work <=Low with two alternatives. ~1010 calls.
 D = "01000004"
-_add(D, "350000000000004", 6, "Hamra", "home")  # 6/11 = 0.545 -> Medium, not High
-_add(D, "350000000000004", 5, "Achrafieh", "home")
-_add(D, "350000000000004", 4, "Downtown", "work")  # 4/12 = 0.33 -> Low
-_add(D, "350000000000004", 3, "Mazraa", "work")
-_add(D, "350000000000004", 3, "Verdun", "work")
-_add(D, "350000000000004", 2, "Hamra", "work")
+D_all, D_wk = _date_pool("2024-01-01", 181)
+_add(D, "350000000000004", 260, "Hamra", "home", D_all, D_wk)
+_add(D, "350000000000004", 230, "Achrafieh", "home", D_all, D_wk)
+_add(D, "350000000000004", 160, "Downtown", "work", D_all, D_wk)
+_add(D, "350000000000004", 140, "Mazraa", "work", D_all, D_wk)
+_add(D, "350000000000004", 130, "Verdun", "work", D_all, D_wk)
+_add(D, "350000000000004", 90, "Hamra", "work", D_all, D_wk)
+
+# --- User E: Long-span, sparse window. ~365-day span. Well-observed overall
+# (~570 evening calls), but only ~30 unanimous Hamra overnight calls scattered
+# across the whole year. N (>=15) -> Medium, Share 100% -> High, Closeness 0 ->
+# High, but ~30 active nights / 365 days -> coverage ~0.08 -> Density LOW. Density
+# is therefore the SOLE binding gate, so the home result is exactly Low. This is
+# the user that finally exercises Density in the harness (ground truth pins the
+# home confidence EXACTLY to Low so it can only pass because Density bound it).
+E = "01000005"
+E_all, E_wk = _date_pool("2024-01-01", 365)
+_add(E, "350000000000005", 30, "Hamra", "home", E_all, E_wk)
+_add(E, "350000000000005", 570, "Hamra", "evening", E_all, E_wk)
 
 df = pd.DataFrame(
     _records,
@@ -156,7 +213,7 @@ def _user(phone: str) -> pd.DataFrame:
 
 
 ground_truth = {
-    # User A: exact area match + High confidence on both windows.
+    # User A: exact area match + High confidence on both windows and frequent.
     A: {
         "home": {"expected_area": _top_area(_user(A), "home"), "expected_confidence": "High"},
         "work": {"expected_area": _top_area(_user(A), "work"), "expected_confidence": "High"},
@@ -189,6 +246,12 @@ ground_truth = {
             "max_confidence": "Low",
             "expected_alternatives": _alternatives(_user(D), "work"),
         },
+    },
+    # User E: clean unanimous home area, but Density alone caps it. Pinned EXACTLY
+    # to Low (not a ceiling) so the harness fails if anything other than Density
+    # produced the cap -- this is the dedicated Density regression case.
+    E: {
+        "home": {"expected_area": _top_area(_user(E), "home"), "expected_confidence": "Low"},
     },
 }
 

@@ -6,6 +6,68 @@ disagreement or open question. See `COLLAB.md` for the protocol.
 
 ---
 
+## 2026-06-20 — Claude: re-tuned thresholds + realistic-scale fixtures (branch `branched-out-dih`)
+
+**Context:** the `N_*` / `DENSITY_*` thresholds were placeholders scaled to the
+tiny ~28-day, ~20-call-per-window fixtures (the standing open item from both
+prior entries). Khaled asked to re-tune them for a realistic dataset (500–5000
+calls per user) and actually run the tests. **pandas now loads in `.venv`
+(3.0.3) on this machine — the Windows Application Control block from 06-18 is
+gone — so pytest + main.py were really executed this time, not just traced.**
+
+**What changed (all on `branched-out-dih`, NOT merged):**
+- `detection.py` — **only the count gates retuned** (Share/Closeness are
+  scale-invariant ratios, left untouched): `N_HIGH 15→50`, `N_MEDIUM 5→15`,
+  `DENSITY_HIGH 0.45→0.40`, `DENSITY_MEDIUM 0.20→0.15`. Calibration comments
+  updated; the four-gate architecture is unchanged (`min()` weakest-link kept,
+  per Khaled's explicit decision not to change it).
+- `dev_fixtures.py` — rebuilt at realistic scale: **5 users, per-user totals
+  500–5000, each with a DIFFERENT observation span** so Density discriminates.
+  `_add` now takes a per-user date pool. A (~365d, dense → all High), B (~180d,
+  near-tie → ≤Medium), C (~21d, ~40 records, no in-window data → Insufficient/
+  Low — kept deliberately sparse as the N-floor case, the one user exempt from
+  the volume target), D (~180d, adversarial → home ≤Medium / work ≤Low).
+- **New User E (`01000005`)** — the open-item Density user: ~30 unanimous Hamra
+  overnight calls scattered over a full year + ~570 evening calls. N=Medium,
+  Share=High, Closeness=High, **Density=Low (0.074)** → home is `Low`, bound
+  SOLELY by Density. Ground truth pins E's home `expected_confidence` EXACTLY to
+  `Low` (not a ceiling) so it fails if any gate other than Density caps it.
+  Density is no longer dormant in the harness.
+- `ground_truth.json` / `sample_data.csv` regenerated (3700 records). Ground
+  truth still tallied independently, no `detection.py` import.
+- `tests/test_detection.py` — rescaled the 4 unit tests that baked in the old
+  numbers (`clear_winner_is_high`→60 recs, `share_gate_caps_thin`→20-rec winner,
+  both `density_gate_*` tests recomputed for the new cutoffs via a new
+  `_spaced_nights` helper). Ratio/tie-break/frequent tests untouched.
+- `README.md` — threshold note rewritten (no longer "placeholders"); user table
+  is now 5 users with spans/volumes + an E explainer.
+
+**Verified (actually executed in `.venv`):**
+- `pytest tests/` → **11 passed**. `python main.py sample_data.csv
+  ground_truth.json` → **11/11**. Per-user gate trace confirms the binding gate
+  for each: A all-High; B/D capped by Closeness (near-tie); E capped by Density
+  alone (N=Medium, Share/Closeness=High).
+
+**Gate-design notes for the reviewer (Codex/Nadim) — NOT acted on, raised per
+Khaled's request; architecture intentionally left as-is:**
+1. **Share and Closeness partially overlap.** A dominant winner (high Share)
+   mechanically tends to produce a small runner-up ratio (good Closeness), so
+   the two gates correlate and `min()` slightly double-weights "dominance". They
+   are not identical (Share = winner vs whole field; Closeness = winner vs #2),
+   but worth a look — possible future merge into one dominance gate.
+2. **`min()` is blind to how MANY gates are weak**, and the system is only as
+   well-calibrated as its single worst threshold. One Medium gate and four
+   Medium gates both report "Medium". A future "demote one level if ≥3 gates sit
+   at the floor" rule would address this; deliberately not done now.
+
+**Open items:** (1) thresholds are now realistic but still synthetic — re-tune
+once the team's real generator defines the true volume/span distribution.
+(2) Decide on the two design notes above. (3) distinct-days vs raw-records
+Density numerator still open from the prior entry. Do NOT merge — Codex reviews
+(re-derive the 5 users' expected confidences under the four gates), Nadim merges.
+
+---
+
 ## 2026-06-20 — Claude: added Density (4th) gate (branch `branched-out-dih`)
 
 **Context:** Nadim + co-founder flagged that the volume question must be

@@ -45,8 +45,8 @@ def test_empty_window_is_insufficient():
 
 
 def test_n_gate_caps_small_sample_at_low():
-    # 4 overnight records, all one area: Share+Closeness say High, but N gate
-    # (4 < 5) caps the weakest link at Low.
+    # 4 overnight records, all one area: Share+Closeness+Density say High, but the
+    # N gate (4 < N_MEDIUM=15) caps the weakest link at Low.
     df = _df([_home("Hamra", 1, d) for d in range(1, 5)])
     result = detect_home(df)
     assert result.total_window_records == 4
@@ -56,11 +56,15 @@ def test_n_gate_caps_small_sample_at_low():
 
 
 def test_clear_winner_is_high():
-    # 17 Hamra, 2 Achrafieh, 1 Verdun overnight -> all three gates High.
-    rows = [_home("Hamra", 1, d) for d in range(1, 18)]
-    rows += [_home("Achrafieh", 2, 18), _home("Achrafieh", 2, 19), _home("Verdun", 3, 20)]
+    # 60 Hamra (N >= N_HIGH=50) across 28 distinct nights, plus light noise ->
+    # N High, Share High, Closeness High, Density High (28 active days / 28-day
+    # span) -> overall High.
+    rows = [("Hamra", f"2024-01-{(i % 28) + 1:02d} 02:00:00") for i in range(60)]
+    rows += [("Achrafieh", f"2024-01-{d:02d} 03:00:00") for d in range(1, 6)]
+    rows += [("Verdun", f"2024-01-{d:02d} 04:00:00") for d in range(1, 4)]
     result = detect_home(_df(rows))
     assert result.area == "Hamra"
+    assert result.gates["N"] == "High"
     assert result.confidence == "High"
     assert result.near_tie is False
     assert result.alternatives == []
@@ -91,10 +95,11 @@ def test_alternatives_only_lists_areas_above_cutoff():
 
 
 def test_share_gate_caps_dominant_but_thin_winner():
-    # Winner 6 vs six distinct 1-night areas: closeness High (1/6), but the
-    # winner only has 6 records -> N gate Medium caps it below High.
-    rows = [_home("Hamra", 1, d) for d in range(1, 7)]
-    rows += [_home(f"Area{i}", 2, 7 + i) for i in range(6)]
+    # Winner 20 (N_MEDIUM=15 <= 20 < N_HIGH=50) vs six distinct 1-night areas:
+    # Share High, Closeness High (1/20), Density High, but only 20 records ->
+    # N gate Medium caps it below High.
+    rows = [_home("Hamra", 1, d) for d in range(1, 21)]
+    rows += [(f"Area{i}", f"2024-01-{20 + i:02d} 02:00:00") for i in range(1, 7)]
     result = detect_home(_df(rows))
     assert result.area == "Hamra"
     assert result.gates["closeness"] == "High"
@@ -145,13 +150,21 @@ def test_frequent_areas_list_and_confidence():
     assert lead.closeness is None  # share-only; closeness not computed
 
 
+def _spaced_nights(area, count, step_days, start="2024-01-01"):
+    """`count` overnight records for one area, one per distinct day, `step_days`
+    apart -- used to dial in a specific Density coverage."""
+    base = pd.Timestamp(start)
+    return [
+        (area, (base + pd.Timedelta(days=i * step_days)).strftime("%Y-%m-%d 02:00:00"))
+        for i in range(count)
+    ]
+
+
 def test_density_gate_caps_long_sparse_span():
-    # 8 unanimous Hamra nights, but spread one-per-month across ~7 months.
-    # N (8 >= 5) -> Medium, Share 100% -> High, Closeness 0 -> High, but only
-    # 8 active days over a 214-day span -> coverage 0.04 -> Density Low caps it.
-    rows = [
-        ("Hamra", f"2024-{m:02d}-01 02:00:00") for m in range(1, 9)
-    ]  # Jan..Aug, 8 distinct days
+    # 20 unanimous Hamra nights (N_MEDIUM=15 <= 20 < N_HIGH=50 -> Medium), one
+    # every 11 days across a ~210-day span. Share 100% -> High, Closeness 0 ->
+    # High, but 20 active days / 210-day span -> coverage ~0.09 -> Density Low.
+    rows = _spaced_nights("Hamra", 20, 11)
     result = detect_home(_df(rows))
     assert result.area == "Hamra"
     assert result.gates["N"] == "Medium"      # absolute count alone allows Medium
@@ -159,17 +172,17 @@ def test_density_gate_caps_long_sparse_span():
     assert result.gates["closeness"] == "High"
     assert result.gates["density"] == "Low"   # relative coverage is the weak link
     assert result.confidence == "Low"
-    assert result.density < 0.20
+    assert result.density < 0.15
 
 
 def test_density_gate_caps_high_to_medium():
-    # 15 unanimous Hamra nights (N High, Share High, Closeness High), but spread
-    # so coverage is 15 active days / 50-day span = 0.30 -> Density Medium caps.
-    rows = [("Hamra", f"2024-01-{d:02d} 02:00:00") for d in range(1, 15)]  # 14 days
-    rows.append(("Hamra", "2024-02-19 02:00:00"))  # 15th day, stretches span to 50
+    # 60 unanimous Hamra nights (N >= N_HIGH=50 -> High, Share High, Closeness
+    # High), one every 3 days so coverage is 60 active days / ~178-day span ~=
+    # 0.34 -> Density Medium is the binding gate.
+    rows = _spaced_nights("Hamra", 60, 3)
     result = detect_home(_df(rows))
     assert result.area == "Hamra"
-    assert result.gates["N"] == "High"        # 15 records clears the absolute floor
+    assert result.gates["N"] == "High"        # clears the absolute floor
     assert result.gates["density"] == "Medium"
     assert result.confidence == "Medium"      # density is the binding gate
-    assert abs(result.density - 0.30) < 1e-9
+    assert 0.15 <= result.density < 0.40

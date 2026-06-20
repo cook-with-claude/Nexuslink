@@ -36,12 +36,15 @@ import pandas as pd
 HOME_WINDOW = range(0, 6)  # 00:00-05:59, any day
 WORK_WINDOW = range(9, 18)  # 09:00-17:59, Mon-Fri only (weekday() < 5)
 
-# --- Three-gate confidence thresholds ---
-# Gate N (sample size). NOTE: these are scaled to the CURRENT synthetic fixtures
-# (~20 calls per window). They are placeholders. When dev_fixtures.py is scaled
-# up to realistic call volumes, raise N_HIGH toward ~50. See HANDOFF.md.
-N_HIGH = 15
-N_MEDIUM = 5
+# --- Four-gate confidence thresholds ---
+# Gate N (sample size). Calibrated for realistic per-subscriber volumes: each
+# synthetic user now carries 500-5000 total calls, so a detection WINDOW subset
+# (overnight, or weekday-daytime) lands in the tens-to-hundreds. N_HIGH=50 is
+# reachable by a regular caller but not by a user with only a sparse window;
+# N_MEDIUM=15 is the floor for "enough records to say anything at all". See
+# HANDOFF.md for the scale-up rationale.
+N_HIGH = 50
+N_MEDIUM = 15
 
 # Gate Share (winner's share of all calls in the window).
 SHARE_HIGH = 0.40
@@ -57,11 +60,14 @@ CLOSENESS_NEAR_TIE = 0.70
 # the total span of days we have observed this user (first record to last).
 # Distinct *days*, not raw record count -- one chatty night should not look like
 # many nights of evidence, and raw volume is already the N gate's job.
-# NOTE: like the N thresholds these are calibrated to the current ~28-day
-# fixtures (User A covers ~0.52) and are placeholders. Revisit when
-# dev_fixtures.py scales up to realistic, longer-span volumes. See HANDOFF.md.
-DENSITY_HIGH = 0.45
-DENSITY_MEDIUM = 0.20
+# Calibrated for the multi-month observation spans the realistic fixtures now use
+# (spans vary per user, from weeks to a full year). A regular caller covers a
+# large fraction of nights (High); a user we have watched for a year but who
+# only calls overnight a handful of times scores Low here even when N, Share and
+# Closeness all look strong -- that long-sparse case is exactly what Density is
+# for (see User E in dev_fixtures.py). See HANDOFF.md.
+DENSITY_HIGH = 0.40
+DENSITY_MEDIUM = 0.15
 
 # Kept for backwards reference; the volume floor is now expressed via N_MEDIUM.
 MIN_RECORDS_FOR_CONFIDENCE = N_MEDIUM
