@@ -42,10 +42,8 @@ def _check_window(test_name: str, user: str, result: DetectionResult, spec: dict
         if expected_area is not None:
             if result.area != expected_area:
                 failures.append("area")
-        else:
-            has_conf_field = "expected_confidence" in spec or "max_confidence" in spec
-            if not has_conf_field and result.area is not None:
-                failures.append("area")
+        elif result.area is not None:
+            failures.append("area")
 
     # --- Confidence check ---
     _check_confidence(result, spec, failures)

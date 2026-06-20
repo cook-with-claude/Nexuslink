@@ -18,8 +18,8 @@ weakest-link confidence model, and each is given a DIFFERENT observation span so
 the relative Density gate actually discriminates:
 
   A  Consistent commuter  ~365-day span, dense  -> home/work/frequent High
-  B  Noisy, contested      ~180-day span        -> capped at Medium (near-tie)
-  C  Sparse floor case     ~3-week span, ~40 records, no window data -> Low/None
+  B  Noisy, contested      ~180-day span        -> home Low, work Medium
+  C  Sparse floor case     ~3-week span, ~40 records, no window data -> Insufficient
   D  Adversarial near-tie  ~180-day span        -> home <=Medium, work <=Low
   E  Long-span, sparse window  ~365-day span     -> Density is the SOLE binder
 
@@ -151,8 +151,9 @@ _add(D, "350000000000004", 90, "Hamra", "work", D_all, D_wk)
 # across the whole year. N (>=15) -> Medium, Share 100% -> High, Closeness 0 ->
 # High, but ~30 active nights / 365 days -> coverage ~0.08 -> Density LOW. Density
 # is therefore the SOLE binding gate, so the home result is exactly Low. This is
-# the user that finally exercises Density in the harness (ground truth pins the
-# home confidence EXACTLY to Low so it can only pass because Density bound it).
+# the user that finally exercises Density in the harness; the review gate trace
+# should confirm Density is the sole binder, since confidence alone cannot encode
+# which gate produced the cap.
 E = "01000005"
 E_all, E_wk = _date_pool("2024-01-01", 365)
 _add(E, "350000000000005", 30, "Hamra", "home", E_all, E_wk)
@@ -229,10 +230,11 @@ ground_truth = {
         "work": {"expected_area": _top_area(_user(B), "work"), "max_confidence": "Medium"},
         "frequent": {"expected_areas": _frequent(_user(B)), "max_confidence": "Medium"},
     },
-    # User C: too sparse to claim anything; just don't overstate confidence.
+    # User C: no home/work window records, so the detector should return no area
+    # and exact Insufficient data, not merely a low-confidence guess.
     C: {
-        "home": {"expected_area": None, "max_confidence": "Low"},
-        "work": {"expected_area": None, "max_confidence": "Low"},
+        "home": {"expected_area": None, "expected_confidence": "Insufficient data"},
+        "work": {"expected_area": None, "expected_confidence": "Insufficient data"},
     },
     # User D: names the plurality area, but must resist High and flag the near-tie.
     D: {
@@ -248,10 +250,11 @@ ground_truth = {
         },
     },
     # User E: clean unanimous home area, but Density alone caps it. Pinned EXACTLY
-    # to Low (not a ceiling) so the harness fails if anything other than Density
-    # produced the cap -- this is the dedicated Density regression case.
+    # to Low (not a ceiling); the separate gate trace/unit tests establish that
+    # Density is the sole binding gate.
     E: {
         "home": {"expected_area": _top_area(_user(E), "home"), "expected_confidence": "Low"},
+        "work": {"expected_area": None, "expected_confidence": "Insufficient data"},
     },
 }
 

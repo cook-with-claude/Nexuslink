@@ -23,7 +23,7 @@ team's real (still synthetic) generator exists.
   four-gate model described below. A near-tie result is tagged (`Low: near tie`) and
   lists the close areas as `alternatives`.
 - **`dev_fixtures.py`** — deterministically builds `sample_data.csv` and an
-  *independently computed* `ground_truth.json` for four test users.
+  *independently computed* `ground_truth.json` for five test users.
 - **`validate.py` / `main.py`** — run the detectors against the ground truth and print
   a pass/fail table.
 
@@ -99,13 +99,14 @@ so every gate gets exercised. C is the deliberate small-sample exception.
 | B | Noisy, real plurality | ~180d, ~990 | exact area, ≤ `Medium`, alt `Hamra` | exact area, ≤ `Medium` |
 | C | Sparse floor case (no in-window data) | ~21d, ~40 | none, `Insufficient data` | none, `Insufficient data` |
 | D | Adversarial / no stable pattern | ~180d, ~1010 | exact area, ≤ `Medium`, alt `Achrafieh` | exact area, ≤ `Low`, alts `Mazraa`,`Verdun` |
-| E | Long span, sparse window | ~365d, ~600 | exact area, **exactly** `Low` (Density-bound) | — |
+| E | Long span, sparse window | ~365d, ~600 | exact area, **exactly** `Low` (Density-bound) | none, `Insufficient data` |
 
 User **E** is the dedicated **Density** case: ~30 unanimous overnight calls scattered
 across a full year. N (Medium), Share (High) and Closeness (High) all look strong, but
 ~30 active nights over 365 days is thin coverage, so **Density alone caps the result to
-`Low`**. Its home confidence is pinned *exactly* to `Low` (not a ceiling) so the harness
-fails if anything other than Density produced the cap.
+`Low`**. Its home confidence is pinned *exactly* to `Low` (not a ceiling), and the
+fixture should still be gate-traced during review because confidence alone cannot
+encode which gate produced the cap.
 
 User D is the real stress test. The detector still **names** the plurality area (that
 is what it returns), but it must **resist** calling a near-coin-flip or scattered

@@ -71,11 +71,14 @@ def test_clear_winner_is_high():
 
 
 def test_near_tie_is_low_with_alternatives():
-    # 6 Hamra vs 5 Achrafieh overnight: closeness 5/6 = 0.83 > 0.70 -> near tie.
-    rows = [_home("Hamra", 1, d) for d in range(1, 7)]
-    rows += [_home("Achrafieh", 2, d) for d in range(7, 12)]
+    # 30 Hamra vs 25 Achrafieh overnight: enough volume/density to isolate the
+    # closeness gate, and closeness 25/30 = 0.83 > 0.70 -> near tie.
+    rows = [_home("Hamra", 1, d) for d in range(1, 31)]
+    rows += [_home("Achrafieh", 2, d) for d in range(1, 26)]
     result = detect_home(_df(rows))
     assert result.area == "Hamra"
+    assert result.gates["N"] == "High"
+    assert result.gates["closeness"] == "Low"
     assert result.confidence == "Low"
     assert result.near_tie is True
     assert result.confidence_label == "Low: near tie"

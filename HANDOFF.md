@@ -4,6 +4,100 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-20 — Codex: static review of `branched-out-dih` (branch `codex/review-branched-out-dih`)
+
+Reviewed the five Claude commits in scope after `git fetch --all`:
+`36d0ac6`, `fda4a26`, `9b4dc0b`, `2a2b600`, `78323b3`. Per Nadim's instruction,
+I did NOT run pytest or `main.py`; I read the recorded execution from git instead
+(`2a2b600` says `pytest tests/` 11 passed and `main.py` harness 11/11). The
+Claude branch's `ground_truth.json` contained 11 checks, so Khaled's 11/11 is
+consistent with the committed spec count. My Codex branch adds one missing work
+expectation for User E, so the next harness run on this branch should have 12
+rows.
+
+**Bugs**
+- `phase1_cdr/validate.py:40` claimed an area check independent of confidence,
+  but the old `expected_area: null` path skipped the area assertion whenever a
+  confidence ceiling was present. That meant C's no-window specs could pass even
+  if a detector returned a bogus `Low` area. Fixed on this branch at
+  `phase1_cdr/validate.py:45` and covered by `phase1_cdr/tests/test_validate.py:9`.
+- `phase1_cdr/ground_truth.json:68` had no User E work check, despite the review
+  target being A-E home/work. Added exact `Insufficient data` for E work in
+  `phase1_cdr/dev_fixtures.py:257` and `phase1_cdr/ground_truth.json:74`.
+
+**Test gaps**
+- C home/work were ceilings (`<= Low`) rather than exact no-window expectations.
+  Tightened them to exact `Insufficient data` in `phase1_cdr/dev_fixtures.py:236`
+  and `phase1_cdr/ground_truth.json:43`.
+- The near-tie unit test was previously also capped by the N gate, so it did not
+  isolate the closeness gate. Rescaled it to 30 vs 25 records and added explicit
+  gate assertions at `phase1_cdr/tests/test_detection.py:73`.
+- Exact `Low` confidence alone cannot prove which gate bound User E. I fixed the
+  overclaiming docs/comments in `phase1_cdr/dev_fixtures.py:155` and
+  `phase1_cdr/README.md:108`; the current proof is the independent gate trace
+  below plus density-gate unit assertions at `phase1_cdr/tests/test_detection.py:166`
+  and `phase1_cdr/tests/test_detection.py:181`. If we want the harness itself to
+  prove sole binding, add expected gate labels to `ground_truth.json`.
+
+**Correctness concerns**
+- Independent gate derivation from the fixture counts (`phase1_cdr/dev_fixtures.py:111`,
+  `:123`, `:135`, `:142`, `:159`) and committed fixture dates:
+  - A home: 560/50/30 = 640 total, observed span 364d, 312 active home days.
+    Gates = N High, Share 0.875 High, Closeness 0.089 High, Density 0.857 High
+    -> `High`. A work: 360/40/20 = 420 total, 207 active work days; gates all
+    High -> `High`. User A clears High with a wide margin.
+  - B home: 210/180/110 = 500 total, density 169/181 = 0.934. Gates = N High,
+    Share 0.420 High, Closeness 0.857 Low, Density High -> actual `Low`, which
+    satisfies the `<= Medium` ground-truth ceiling and lists Hamra as the alt.
+    B work: 220/140/130 = 490 total; N High, Share 0.449 High, Closeness 0.636
+    Medium, Density 0.696 High -> `Medium`.
+  - C home/work: no records in either window -> `Insufficient data`.
+  - D home: 260/230 = 490 total; N High, Share 0.531 High, Closeness 0.885 Low,
+    Density 0.934 High -> actual `Low`, satisfying `<= Medium` and alt
+    Achrafieh. D work: 160/140/130/90 = 520 total; N High, Share 0.308 Medium,
+    Closeness 0.875 Low, Density 0.702 High -> `Low`, matching `<= Low` with
+    alts Mazraa/Verdun.
+  - E home: 30/0 = 30 total, 27 active home days over 365 observed days. Gates =
+    N Medium, Share 1.000 High, Closeness 0.000 High, Density 0.074 Low -> exact
+    `Low`, and Density is the only Low gate. E work: no work-window records ->
+    `Insufficient data`.
+- Density implementation looks correct for the requested metric. Empty windows
+  return before division (`phase1_cdr/detection.py:172`), single-day spans are
+  `max-min + 1` days (`phase1_cdr/detection.py:151`, `:162`), the denominator is
+  passed from the full user frame by `detect_home`/`detect_work`, and active days
+  are distinct normalized dates (`phase1_cdr/detection.py:189`). The weakest-link
+  `min()` includes Density at `phase1_cdr/detection.py:196`.
+- Alternatives are internally consistent with the closeness gate: `Low` closeness
+  starts at runner-up/winner `> 0.70`, and alternatives use the same strict
+  cutoff at `phase1_cdr/detection.py:203`. Exact 0.70 is Medium and not an
+  alternative, which is coherent.
+- I agree with distinct active days as the Density numerator. Raw records/day
+  would duplicate the N gate and can be inflated by one unusually chatty night;
+  distinct days measures temporal spread, which is the missing signal. Keep N
+  and Density: N is the absolute sample floor; Density is coverage relative to
+  observation span.
+- The retuned thresholds are defensible for these synthetic 500-5000-call/user
+  fixtures (`N_HIGH=50`, `N_MEDIUM=15`, `DENSITY_HIGH=0.40`,
+  `DENSITY_MEDIUM=0.15` at `phase1_cdr/detection.py:46` and
+  `phase1_cdr/detection.py:69`). They should still be recalibrated on the real
+  generator's volume/span distribution. Share and Closeness are scale-free, so
+  leaving them untouched is reasonable.
+- I agree the two gate-design notes are later real-data items, not blockers for
+  this merge: Share and Closeness do overlap, and `min()` ignores how many gates
+  are weak. Both are calibration/model-design questions that need real
+  distributions; the current branch is internally coherent and safer than the
+  previous share-only model.
+
+**Nits**
+- `phase1_cdr/README.md:26` still said `dev_fixtures.py` generated four users;
+  fixed to five.
+- `phase1_cdr/README.md:102` showed no E work expectation; fixed to `none,
+  Insufficient data`.
+
+No merge performed. Changes are isolated on `codex/review-branched-out-dih`.
+
+---
+
 > **2026-06-20 — Codex: branch `branched-out-dih` is pushed and ready for your
 > review.** The thresholds are now re-tuned for realistic 500–5000-call/user data
 > and the suite actually runs here (pandas loads in `.venv` again): `pytest
