@@ -6,6 +6,56 @@ disagreement or open question. See `COLLAB.md` for the protocol.
 
 ---
 
+## 2026-06-20 — Claude: added Density (4th) gate (branch `branched-out-dih`)
+
+**Context:** Nadim + co-founder flagged that the volume question must be
+RELATIVE to the observation span, not an absolute count. "15 records" means
+something very different over a week vs over three years. The existing N gate is
+absolute and can't see this; Share/Closeness can both read High on a tiny,
+unrepresentative sample. Real gap — agreed it's worth a gate.
+
+**What changed (`detection.py`, additive — no existing outcome moved):**
+- New **Gate Density** added to the weakest-link `min()`, alongside N/Share/
+  Closeness. `confidence = min(all four)`.
+- Metric = **distinct active days in the window / total days observed**
+  (`_observed_days` = first→last record span of the FULL user frame, inclusive,
+  min 1 so no div-by-zero). I used *distinct days*, NOT raw `records ÷ days` as
+  originally phrased, on purpose: (a) raw record count is already the N gate's
+  job — keying Density off it too makes the two gates collinear; (b) distinct
+  days measures temporal spread and isn't inflatable by one chatty night.
+  Switching the numerator back to raw record count is a one-line change if the
+  team prefers the literal version.
+- **N gate kept, not replaced.** The two compose into exactly the requested
+  scaling: short span → N (absolute floor) binds → low count OK; long span →
+  Density binds → needs many distinct active days = more records. N also stops a
+  1-day dataset from scoring High on 100% coverage alone.
+- `DetectionResult` gained a `density` field; `gates` dict gained `"density"`.
+- Thresholds `DENSITY_HIGH=0.45`, `DENSITY_MEDIUM=0.20` — PLACEHOLDERS calibrated
+  to the current ~28-day fixtures (User A covers ~0.52), same caveat as the N
+  thresholds. Revisit on the fixture scale-up.
+- `tests/test_detection.py` — 2 new tests: long-sparse-span → Density Low caps
+  to Low; 15 nights over a 50-day span → Density Medium caps High→Medium.
+  Frequent confidence left share-only (unchanged).
+
+**Verified (NOT executed here — pandas DLL is blocked by Windows Application
+Control on this machine, same root cause as the 06-18 venv note):**
+- Standalone gate trace over all 4 fixture users using counts + RNG-replayed
+  coverages: **all ground-truth contracts still hold** (harness should stay
+  10/10). Density is never the binding gate on the current fixtures — it is
+  *dormant* here by design; it only bites on long-sparse spans the fixtures
+  don't yet contain.
+- `py_compile` clean on all touched files.
+- **Codex/Khaled must run `pytest tests/` + `python main.py ...` on a machine
+  where pandas loads to confirm.**
+
+**Open items:** (1) Density is untested by the HARNESS (only by unit tests) —
+when fixtures scale up, add a 5th user with a long observation span + sparse
+window so the harness exercises it. (2) Re-tune DENSITY_* alongside N_* at real
+volumes. (3) Decide distinct-days vs raw-records numerator (I chose distinct
+days; see above). Do NOT merge — Nadim merges after Codex agrees.
+
+---
+
 ## 2026-06-20 — Claude: three-gate confidence model (branch `branched-out-dih`)
 
 **Context:** review of `phase1_cdr/` found that the old share-only confidence

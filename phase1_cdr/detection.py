@@ -4,13 +4,21 @@ Pure functions only -- no file or network I/O. Each detector receives a
 DataFrame already filtered to a single phone_number and returns a
 DetectionResult.
 
-Confidence uses a three-gate, weakest-link model. Three independent gates are
-scored, and the final confidence is the LOWEST of the three -- a strong gate
+Confidence uses a four-gate, weakest-link model. Four independent gates are
+scored, and the final confidence is the LOWEST of the four -- a strong gate
 never rescues a weak one:
 
-  Gate N         -- how many calls back the result (sample size)
+  Gate N         -- how many calls back the result (absolute sample size)
   Gate Share     -- the winner's share of all calls in the window (dominance)
   Gate Closeness -- runner-up / winner (inverted: near-tie = low confidence)
+  Gate Density   -- distinct active days in the window / total days observed
+                    (RELATIVE coverage: a handful of records over a week is
+                    decent; the same handful over three years is not)
+
+N is an absolute floor; Density is the same volume question made relative to how
+long we have been watching the user. The two are complementary -- N stops a tiny
+sample from ever scoring High (even at 100% coverage), while Density stops a
+sample that is sparse relative to a long observation span.
 
 The winner itself is always the area with the most calls; the gates only decide
 how much to trust it. When the runner-up is close enough to make it a near-tie,
@@ -45,6 +53,16 @@ SHARE_MEDIUM = 0.10
 CLOSENESS_HIGH = 0.30
 CLOSENESS_NEAR_TIE = 0.70
 
+# Gate Density (RELATIVE volume): distinct active days in the window divided by
+# the total span of days we have observed this user (first record to last).
+# Distinct *days*, not raw record count -- one chatty night should not look like
+# many nights of evidence, and raw volume is already the N gate's job.
+# NOTE: like the N thresholds these are calibrated to the current ~28-day
+# fixtures (User A covers ~0.52) and are placeholders. Revisit when
+# dev_fixtures.py scales up to realistic, longer-span volumes. See HANDOFF.md.
+DENSITY_HIGH = 0.45
+DENSITY_MEDIUM = 0.20
+
 # Kept for backwards reference; the volume floor is now expressed via N_MEDIUM.
 MIN_RECORDS_FOR_CONFIDENCE = N_MEDIUM
 
@@ -68,7 +86,8 @@ class DetectionResult:
     total_window_records: int = 0
     share: Optional[float] = None
     closeness: Optional[float] = None
-    gates: Optional[dict] = None  # {"N": .., "share": .., "closeness": ..}
+    density: Optional[float] = None  # active days in window / days observed
+    gates: Optional[dict] = None  # {"N": .., "share": .., "closeness": .., "density": ..}
 
     @property
     def confidence_label(self) -> str:
@@ -115,8 +134,34 @@ def _gate_closeness(closeness: float) -> str:
     return "Low"
 
 
-def _detect_window(window_df: pd.DataFrame) -> DetectionResult:
-    """Shared three-gate logic for window-based detectors (home/work/frequent)."""
+def _gate_density(coverage: float) -> str:
+    if coverage >= DENSITY_HIGH:
+        return "High"
+    if coverage >= DENSITY_MEDIUM:
+        return "Medium"
+    return "Low"
+
+
+def _observed_days(df: pd.DataFrame) -> int:
+    """Span (in whole days) from the user's first record to their last, inclusive.
+
+    Uses the FULL user frame -- the question the density gate answers is "how
+    long have we been observing this person", which is independent of any single
+    window. A single-day span counts as 1 (never zero), so the gate never
+    divides by zero.
+    """
+    if len(df) == 0:
+        return 0
+    span = df["timestamp"].max() - df["timestamp"].min()
+    return int(span.days) + 1
+
+
+def _detect_window(window_df: pd.DataFrame, observed_days: int) -> DetectionResult:
+    """Shared four-gate logic for window-based detectors (home/work).
+
+    `observed_days` is the user's full observation span (see _observed_days) and
+    powers the Density gate; it is independent of the window filter.
+    """
     total = len(window_df)
     if total == 0:
         return DetectionResult(
@@ -132,11 +177,18 @@ def _detect_window(window_df: pd.DataFrame) -> DetectionResult:
     share = top_count / total
     closeness = second_count / top_count  # top_count > 0 here
 
+    # Distinct calendar days touched in this window, relative to the full span we
+    # have been observing the user. window_df is non-empty here, so it is a
+    # subset of a non-empty frame and observed_days >= 1.
+    active_days = int(window_df["timestamp"].dt.normalize().nunique())
+    coverage = active_days / observed_days if observed_days else 0.0
+
     gate_n = _gate_n(total)
     gate_share = _gate_share(top_count, total)
     gate_closeness = _gate_closeness(closeness)
+    gate_density = _gate_density(coverage)
     confidence = min(
-        [gate_n, gate_share, gate_closeness],
+        [gate_n, gate_share, gate_closeness, gate_density],
         key=lambda c: CONFIDENCE_ORDER[c],
     )
 
@@ -155,14 +207,20 @@ def _detect_window(window_df: pd.DataFrame) -> DetectionResult:
         total_window_records=total,
         share=share,
         closeness=closeness,
-        gates={"N": gate_n, "share": gate_share, "closeness": gate_closeness},
+        density=coverage,
+        gates={
+            "N": gate_n,
+            "share": gate_share,
+            "closeness": gate_closeness,
+            "density": gate_density,
+        },
     )
 
 
 def detect_home(df: pd.DataFrame) -> DetectionResult:
     """Detect the likely home area using overnight records (hour in [0, 6))."""
     window = df[df["timestamp"].dt.hour.isin(HOME_WINDOW)]
-    return _detect_window(window)
+    return _detect_window(window, _observed_days(df))
 
 
 def detect_work(df: pd.DataFrame) -> DetectionResult:
@@ -173,7 +231,7 @@ def detect_work(df: pd.DataFrame) -> DetectionResult:
     hours = df["timestamp"].dt.hour
     weekdays = df["timestamp"].dt.weekday
     window = df[hours.isin(WORK_WINDOW) & (weekdays < 5)]
-    return _detect_window(window)
+    return _detect_window(window, _observed_days(df))
 
 
 def detect_frequent_areas(

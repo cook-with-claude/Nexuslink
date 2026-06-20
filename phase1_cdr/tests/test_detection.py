@@ -1,4 +1,4 @@
-"""Unit tests for the pure three-gate detection logic.
+"""Unit tests for the pure four-gate detection logic.
 
 These hand-build tiny DataFrames so they exercise detection.py directly and do
 NOT depend on the fixture generator.
@@ -143,3 +143,33 @@ def test_frequent_areas_list_and_confidence():
     assert lead.confidence == "High"
     assert lead.near_tie is False
     assert lead.closeness is None  # share-only; closeness not computed
+
+
+def test_density_gate_caps_long_sparse_span():
+    # 8 unanimous Hamra nights, but spread one-per-month across ~7 months.
+    # N (8 >= 5) -> Medium, Share 100% -> High, Closeness 0 -> High, but only
+    # 8 active days over a 214-day span -> coverage 0.04 -> Density Low caps it.
+    rows = [
+        ("Hamra", f"2024-{m:02d}-01 02:00:00") for m in range(1, 9)
+    ]  # Jan..Aug, 8 distinct days
+    result = detect_home(_df(rows))
+    assert result.area == "Hamra"
+    assert result.gates["N"] == "Medium"      # absolute count alone allows Medium
+    assert result.gates["share"] == "High"
+    assert result.gates["closeness"] == "High"
+    assert result.gates["density"] == "Low"   # relative coverage is the weak link
+    assert result.confidence == "Low"
+    assert result.density < 0.20
+
+
+def test_density_gate_caps_high_to_medium():
+    # 15 unanimous Hamra nights (N High, Share High, Closeness High), but spread
+    # so coverage is 15 active days / 50-day span = 0.30 -> Density Medium caps.
+    rows = [("Hamra", f"2024-01-{d:02d} 02:00:00") for d in range(1, 15)]  # 14 days
+    rows.append(("Hamra", "2024-02-19 02:00:00"))  # 15th day, stretches span to 50
+    result = detect_home(_df(rows))
+    assert result.area == "Hamra"
+    assert result.gates["N"] == "High"        # 15 records clears the absolute floor
+    assert result.gates["density"] == "Medium"
+    assert result.confidence == "Medium"      # density is the binding gate
+    assert abs(result.density - 0.30) < 1e-9
