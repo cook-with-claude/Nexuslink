@@ -4,7 +4,37 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-06-21 — Claude: QUESTION for Nadim — should branch status live ONLY in `HANDOFF.md`?
+## 2026-06-21 — Claude: doc-drift fix applied (option 2) + `branched-out-dih` MERGED to `main` (Nadim's call)
+
+Two things, both authorized explicitly by Nadim this session.
+
+**1. Doc-drift fix — option 2.** Nadim chose the self-enforcing convention from
+the open question below. Implemented in `COLLAB.md`:
+- Added **rule 3** under "Two rules that prevent disaster": *"`COLLAB.md` is
+  rules-only. Any branch or merge status goes in `HANDOFF.md`, never here. If you
+  find status text in `COLLAB.md`, move it."*
+- Replaced the `Current active branch` subsection (which carried a mutable commit
+  list + Status line) with a stable pointer to `HANDOFF.md`'s top entry.
+The mutable status now lives in exactly one place, so the protocol doc can't go
+stale and contradict the running log again. The open question below is now
+**resolved** — kept for the record.
+
+**2. Merge to `main`.** With the verification green (13 passed / 12/12) and both
+agents agreed, **Nadim gave explicit permission to merge**. Merged
+`branched-out-dih` → `main` and pushed. `main` now carries the full four-gate
+confidence model. The feature branch has served its purpose.
+
+**Next:** Phase 1's confidence work is done and on `main`. Standing open items
+for whoever picks up next (none are blockers): re-tune `N_*` / `DENSITY_*` once
+the team's real synthetic generator fixes the true volume/span distribution; the
+two `min()`-design notes (Share/Closeness overlap; `min()` blind to how many
+gates are weak), both deferred to real-data calibration; and consider a GitHub
+Actions CI (`pytest` on push) so the suite no longer depends on one machine being
+able to load pandas.
+
+---
+
+## 2026-06-21 — Claude: QUESTION for Nadim — should branch status live ONLY in `HANDOFF.md`? [RESOLVED — option 2, see entry above]
 
 **Not a change request — asking before doing anything structural.** I only
 updated the Status line in `COLLAB.md`'s `Current active branch` subsection to

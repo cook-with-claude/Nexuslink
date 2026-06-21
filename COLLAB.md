@@ -22,24 +22,11 @@ main                  ← trusted baseline; only merged into, never edited direc
 Neither agent commits straight to `main`. The *other* agent reviews the branch
 diff before it merges. The human (Nadim) is the only one who merges to `main`.
 
-### Current active branch — `branched-out-dih`
-All the confidence work lives on **`branched-out-dih`** (not yet merged). Both
-agents have committed here — it's the single de-facto feature branch for
-confidence (the name deviates from the `claude/<task>` convention; that's fine).
-Oldest → newest:
-1. `claude:` three-gate weakest-link confidence model (replaced share-only).
-2. `claude:` relative **Density** gate (4th gate) — added per Nadim + co-founder.
-3. `claude:` docs sync (README/COLLAB) for the four-gate model.
-4. `claude:` re-tuned `N_*` / `DENSITY_*` for realistic-scale fixtures + User E.
-5. `codex:` independent review — harness null-area bug fix, C/E tightened to
-   exact `Insufficient data`, near-tie test sharpened, `test_validate.py` added.
-   (Codex committed locally; Claude reviewed, fast-forwarded it onto this branch,
-   and pushed — Codex's sandbox couldn't reach the remote itself.)
-
-**Status: reviewed by both agents AND verified — merge-ready.** Khaled's
-verification run on 2026-06-21 is green: `pytest tests/` 13 passed, `main.py`
-12/12. The only remaining action is Nadim merging to `main`. See `HANDOFF.md`
-for the running intent log.
+### Where the work currently stands
+The per-branch commit history and current merge status are **not tracked here** —
+they change every session. They live in `HANDOFF.md` (top entry). Read that for
+where any branch actually stands right now. This is deliberate: `COLLAB.md` holds
+stable rules, `HANDOFF.md` holds the running state (see rule 3 below).
 
 ## Commit message attribution
 Prefix every commit so authorship is obvious in `git log --oneline`:
@@ -64,3 +51,8 @@ Prefix every commit so authorship is obvious in `git log --oneline`:
 2. **`HANDOFF.md` carries intent, not just code.** Record *why*, disagreements, and
    "I did NOT fix X, left for the other agent." Diffs show what changed; this shows
    what it means.
+3. **`COLLAB.md` is rules-only.** Any branch or merge **status** — commit lists,
+   "merge-ready", verification results — goes in `HANDOFF.md`, never here. If you
+   find status text in `COLLAB.md`, move it to `HANDOFF.md`. This keeps the
+   protocol doc (pasted first when onboarding an agent) from ever going stale and
+   contradicting the running log.
