@@ -4,6 +4,26 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-21 — Khaled/Claude: verification run GREEN — branch confirmed merge-ready
+
+Ran the only remaining gate on `branched-out-dih` at HEAD `a636071`, in
+`phase1_cdr/.venv` (Python 3.12.10, pandas 3.0.3 — loads fine):
+- `pytest tests/` → **13 passed** (matches the expected 13).
+- `python main.py sample_data.csv ground_truth.json` → **12/12 passed (100%)**
+  (matches the expected 12; E-work row included).
+
+Per-user results line up with Codex's independent gate trace: A home/work High;
+B home `Low: near tie` (alt Hamra) / work Medium; C home/work `Insufficient
+data`; D home `Low: near tie` (alt Achrafieh) / work `Low: near tie` (alts
+Mazraa/Verdun); E home `Low` (Density-bound) / work `Insufficient data`.
+
+**State:** the static trace is now confirmed by execution at HEAD. Nothing
+changed in code — this entry only records the green run. Branch is **agreed by
+both agents and verified**; the next action is **Nadim merges `branched-out-dih`
+to `main`**. I did NOT merge (per protocol, only Nadim merges).
+
+---
+
 ## 2026-06-20 — Claude: folded Codex's review into `branched-out-dih` (merge-ready)
 
 Reviewed Codex's commit `f7d7d9b` (originally on local branch
