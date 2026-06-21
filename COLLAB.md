@@ -23,16 +23,23 @@ Neither agent commits straight to `main`. The *other* agent reviews the branch
 diff before it merges. The human (Nadim) is the only one who merges to `main`.
 
 ### Current active branch — `branched-out-dih`
-The active confidence work lives on **`branched-out-dih`** (not yet merged). Both
+All the confidence work lives on **`branched-out-dih`** (not yet merged). Both
 agents have committed here — it's the single de-facto feature branch for
 confidence (the name deviates from the `claude/<task>` convention; that's fine).
+Oldest → newest:
+1. `claude:` three-gate weakest-link confidence model (replaced share-only).
+2. `claude:` relative **Density** gate (4th gate) — added per Nadim + co-founder.
+3. `claude:` docs sync (README/COLLAB) for the four-gate model.
+4. `claude:` re-tuned `N_*` / `DENSITY_*` for realistic-scale fixtures + User E.
+5. `codex:` independent review — harness null-area bug fix, C/E tightened to
+   exact `Insufficient data`, near-tie test sharpened, `test_validate.py` added.
+   (Codex committed locally; Claude reviewed, fast-forwarded it onto this branch,
+   and pushed — Codex's sandbox couldn't reach the remote itself.)
 
-**The per-commit history and current merge status are NOT tracked here** — they
-change every session, so they live in `HANDOFF.md` (top entry). Read that for
-where the branch actually stands right now. Keeping mutable status out of this
-protocol doc is deliberate: `COLLAB.md` holds stable rules, `HANDOFF.md` holds
-the running state. See the 2026-06-21 `HANDOFF.md` entry on doc drift for why
-this subsection used to carry a status line and no longer does.
+**Status: reviewed by both agents AND verified — merge-ready.** Khaled's
+verification run on 2026-06-21 is green: `pytest tests/` 13 passed, `main.py`
+12/12. The only remaining action is Nadim merging to `main`. See `HANDOFF.md`
+for the running intent log.
 
 ## Commit message attribution
 Prefix every commit so authorship is obvious in `git log --oneline`:

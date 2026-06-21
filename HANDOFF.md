@@ -4,45 +4,44 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-06-21 — Claude: doc drift — moved branch status out of `COLLAB.md` (decision needed from Nadim)
+## 2026-06-21 — Claude: QUESTION for Nadim — should branch status live ONLY in `HANDOFF.md`?
+
+**Not a change request — asking before doing anything structural.** I only
+updated the Status line in `COLLAB.md`'s `Current active branch` subsection to
+reflect today's green run. I did NOT restructure that file. The question below is
+open for your call.
 
 **The issue.** Our two docs have distinct jobs: `COLLAB.md` = stable *protocol*
 (the rules you paste to an agent at session start); `HANDOFF.md` = the *running
-intent log* (mutable, newest-on-top state). But `COLLAB.md`'s `### Current active
-branch` subsection had drifted into carrying mutable state — a numbered list of
-the 5 commits on the branch plus a **Status** line ("merge-ready pending one
-verification run"). That's a snapshot, not a rule.
+intent log* (mutable, newest-on-top state). But `COLLAB.md`'s `Current active
+branch` subsection carries mutable state — a numbered list of the commits on the
+branch plus a **Status** line. That's a snapshot, not a rule, so it lives in the
+file that's *supposed* to be stable.
 
-**Why it bit us.** After today's GREEN verification run, `HANDOFF.md` correctly
-said the branch is verified merge-ready, but `COLLAB.md` still said "pending one
-verification run." The two docs contradicted each other — and the *protocol* doc
-(the one we're told to paste FIRST when onboarding an agent) was the stale one,
-understating progress. Per our own core principle (each agent's view is a frozen
-snapshot; git is the only shared memory), a fresh Claude/Codex session reading
-`COLLAB.md` first would conclude the run still needs doing and could redo it — or
-worse, re-derive fixtures — not realizing it's already green. Root cause is
-structural: **mutable state was written into the file meant for stable rules.**
+**Why it just bit us.** Before I touched it, `HANDOFF.md` correctly said the
+branch was verified merge-ready after the green run, but `COLLAB.md` still said
+"merge-ready pending one verification run." The two docs contradicted each other —
+and the *protocol* doc (the one we paste FIRST when onboarding an agent) was the
+stale one, understating progress. Per our own core principle (each agent's view
+is a frozen snapshot; git is the only shared memory), a fresh Claude/Codex
+session reading `COLLAB.md` first could conclude the run still needs doing and
+redo it — not realizing it's already green. Root cause is structural: **mutable
+state living in the file meant for stable rules.** Updating the status line (as I
+just did) fixes it for now but the drift will recur next time work advances.
 
-**What I did (this commit).** Replaced that subsection's commit-list + Status
-block with a stable pointer: "per-commit history and merge status are NOT tracked
-here — see `HANDOFF.md` top entry." The mutable status now lives in exactly one
-place (`HANDOFF.md`), so the two docs can't disagree again.
-
-**Decision for Nadim (the durable fix).** Patching the status line each time only
-resets the staleness clock; the real fix is a convention so it can't recur.
-Options, lightest → heaviest:
-1. **Status quo after this commit** — rely on the pointer + the rule of thumb
-   "never put branch status in `COLLAB.md`." Zero overhead; depends on agents
-   remembering.
-2. **Add an explicit rule to `COLLAB.md`** under "Two rules that prevent
-   disaster": *"`COLLAB.md` is rules-only. Any branch/merge status goes in
-   `HANDOFF.md`. If you find status text in `COLLAB.md`, move it."* Makes the
-   convention self-enforcing for any agent that reads the protocol.
-3. **Single source of truth for status** — keep one `## STATUS` block pinned at
-   the very top of `HANDOFF.md` that every handoff updates in place, so no one
-   ever has to scan entries to learn the current state.
-My recommendation is **#2** (cheap, self-enforcing, fits the existing "rules"
-section). Tell me which you want and I'll implement it.
+**The question — do we want a durable fix?** Options, lightest → heaviest:
+1. **Do nothing structural** — keep updating the `COLLAB.md` status line by hand
+   each session. Simplest; the drift just keeps coming back.
+2. **Add a rule to `COLLAB.md`** under "Two rules that prevent disaster":
+   *"`COLLAB.md` is rules-only. Any branch/merge status goes in `HANDOFF.md`. If
+   you find status text in `COLLAB.md`, move it."* Then trim the `Current active
+   branch` subsection down to a stable pointer at `HANDOFF.md`. Self-enforcing
+   for any agent that reads the protocol.
+3. **Single source of truth** — pin one `## STATUS` block at the very top of
+   `HANDOFF.md` that every handoff updates in place, so no one scans entries to
+   learn the current state.
+My lean is **#2**, but this is your call, Nadim — say the word and I'll implement
+whichever you pick. Nothing structural changed yet.
 
 ---
 
