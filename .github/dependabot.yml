@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Python deps for the Phase 1 package (requirements.txt lives in phase1_cdr/).
+  # Monthly + grouped so a 3-dependency project doesn't generate PR noise.
+  - package-ecosystem: pip
+    directory: /phase1_cdr
+    schedule:
+      interval: monthly
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  # Keep the GitHub Actions in the CI workflow current (also clears the
+  # "Node 20 is deprecated" warning automatically when newer majors ship).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
