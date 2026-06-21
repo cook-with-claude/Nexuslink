@@ -22,6 +22,12 @@ main                  ← trusted baseline; only merged into, never edited direc
 Neither agent commits straight to `main`. The *other* agent reviews the branch
 diff before it merges. The human (Nadim) is the only one who merges to `main`.
 
+### Where the work currently stands
+The per-branch commit history and current merge status are **not tracked here** —
+they change every session. They live in `HANDOFF.md` (top entry). Read that for
+where any branch actually stands right now. This is deliberate: `COLLAB.md` holds
+stable rules, `HANDOFF.md` holds the running state (see rule 3 below).
+
 ## Commit message attribution
 Prefix every commit so authorship is obvious in `git log --oneline`:
 - Claude → `claude: <what changed>`
@@ -45,3 +51,8 @@ Prefix every commit so authorship is obvious in `git log --oneline`:
 2. **`HANDOFF.md` carries intent, not just code.** Record *why*, disagreements, and
    "I did NOT fix X, left for the other agent." Diffs show what changed; this shows
    what it means.
+3. **`COLLAB.md` is rules-only.** Any branch or merge **status** — commit lists,
+   "merge-ready", verification results — goes in `HANDOFF.md`, never here. If you
+   find status text in `COLLAB.md`, move it to `HANDOFF.md`. This keeps the
+   protocol doc (pasted first when onboarding an agent) from ever going stale and
+   contradicting the running log.

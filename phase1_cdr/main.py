@@ -37,7 +37,7 @@ def main(argv: list[str]) -> int:
     rows = validate(df, ground_truth)
 
     table = pd.DataFrame(rows, columns=[
-        "user", "test", "expected", "detected", "confidence", "result",
+        "user", "test", "expected", "detected", "confidence", "alternatives", "result",
     ])
     # Render the full table without truncation.
     with pd.option_context(

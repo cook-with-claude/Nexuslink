@@ -19,11 +19,44 @@ team's real (still synthetic) generator exists.
   `call_type` and warning about them.
 - **`detection.py`** — pure functions that infer a user's likely **home** area
   (overnight), **work** area (weekday daytime), and most **frequent** areas, each with
-  a confidence label (`High` / `Medium` / `Low` / `Insufficient data`).
+  a confidence label (`High` / `Medium` / `Low` / `Insufficient data`) produced by the
+  four-gate model described below. A near-tie result is tagged (`Low: near tie`) and
+  lists the close areas as `alternatives`.
 - **`dev_fixtures.py`** — deterministically builds `sample_data.csv` and an
-  *independently computed* `ground_truth.json` for four test users.
+  *independently computed* `ground_truth.json` for five test users.
 - **`validate.py` / `main.py`** — run the detectors against the ground truth and print
   a pass/fail table.
+
+## Confidence model (four-gate, weakest-link)
+
+The winner is always the area with the most calls in the window; confidence only
+says **how much to trust it**. Four independent gates are each scored
+`High` / `Medium` / `Low`, and the final confidence is the **lowest** of the four —
+a strong gate never rescues a weak one:
+
+| Gate | Question | Measure |
+|---|---|---|
+| **N** | Enough calls at all? | absolute count in the window |
+| **Share** | Does the winner dominate? | winner / total calls |
+| **Closeness** | Is it a near-tie? | runner-up / winner (inverted) |
+| **Density** | Enough coverage for how long we've watched? | distinct active days ÷ days observed |
+
+**N and Density are complementary** — N is an absolute floor (a tiny sample can
+never score High, even at 100% coverage), while Density makes the same volume
+question *relative* to the observation span: a handful of records over a week is
+decent coverage; the same handful over three years is not. Short span → N governs;
+long span → Density governs.
+
+When Closeness flags a near-tie, the result is tagged `Low: near tie` and the close
+areas (those within ~70% of the winner) are surfaced as `alternatives` rather than
+silently dropped. **Frequent** areas are about habits, not a single inferred
+location, so they use the Share gate alone (no closeness / near-tie).
+
+> **Thresholds:** `N_HIGH=50` / `N_MEDIUM=15` and `DENSITY_HIGH=0.40` /
+> `DENSITY_MEDIUM=0.15` in `detection.py` are calibrated to the realistic fixtures
+> (per-user volumes of 500–5000 calls over spans of weeks to a year). Share and
+> Closeness are scale-invariant ratios and need no tuning. Re-tune `N_*` / `DENSITY_*`
+> again if the real generator changes the volume or span distribution.
 
 ## Setup
 
@@ -55,17 +88,32 @@ Run the unit tests:
 pytest tests/
 ```
 
-## The four test users
+## The five test users
 
-| User | Pattern | Home expectation | Work expectation |
-|---|---|---|---|
-| A | Consistent | exact area, `High` | exact area, `High` |
-| B | Noisy, real plurality | exact area, ≤ `Medium` | exact area, ≤ `Medium` |
-| C | Sparse (3 records) | none, ≤ `Low` | none, ≤ `Low` |
-| D | Adversarial / no stable pattern | none, ≤ `Medium` | none, ≤ `Low` |
+Each carries a realistic volume (500–5000 calls) over a different observation span,
+so every gate gets exercised. C is the deliberate small-sample exception.
 
-User D is the real stress test: the algorithm must **resist** calling a near-coin-flip
-or scattered pattern "High confidence."
+| User | Pattern | Span / volume | Home expectation | Work expectation |
+|---|---|---|---|---|
+| A | Consistent commuter | ~365d, ~1060 | exact area, `High` | exact area, `High` |
+| B | Noisy, real plurality | ~180d, ~990 | exact area, ≤ `Medium`, alt `Hamra` | exact area, ≤ `Medium` |
+| C | Sparse floor case (no in-window data) | ~21d, ~40 | none, `Insufficient data` | none, `Insufficient data` |
+| D | Adversarial / no stable pattern | ~180d, ~1010 | exact area, ≤ `Medium`, alt `Achrafieh` | exact area, ≤ `Low`, alts `Mazraa`,`Verdun` |
+| E | Long span, sparse window | ~365d, ~600 | exact area, **exactly** `Low` (Density-bound) | none, `Insufficient data` |
+
+User **E** is the dedicated **Density** case: ~30 unanimous overnight calls scattered
+across a full year. N (Medium), Share (High) and Closeness (High) all look strong, but
+~30 active nights over 365 days is thin coverage, so **Density alone caps the result to
+`Low`**. Its home confidence is pinned *exactly* to `Low` (not a ceiling), and the
+fixture should still be gate-traced during review because confidence alone cannot
+encode which gate produced the cap.
+
+User D is the real stress test. The detector still **names** the plurality area (that
+is what it returns), but it must **resist** calling a near-coin-flip or scattered
+pattern "High confidence" — instead it caps the confidence and **flags the near-tie**,
+listing the close areas as `alternatives`. (Earlier the ground truth claimed D returned
+*no* area; that was never true — the detector always returned the plurality, so the
+expectation now matches reality and the area check is actually enforced.)
 
 ## Why ground truth is computed independently
 

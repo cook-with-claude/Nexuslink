@@ -8,45 +8,71 @@
       "expected_area": "Downtown",
       "expected_confidence": "High"
     },
-    "frequent": [
-      "Hamra",
-      "Downtown",
-      "Achrafieh"
-    ]
+    "frequent": {
+      "expected_areas": [
+        "Hamra",
+        "Downtown",
+        "Achrafieh"
+      ],
+      "max_confidence": "High"
+    }
   },
   "01000002": {
     "home": {
       "expected_area": "Mazraa",
-      "max_confidence": "Medium"
+      "max_confidence": "Medium",
+      "expected_alternatives": [
+        "Hamra"
+      ]
     },
     "work": {
       "expected_area": "Downtown",
       "max_confidence": "Medium"
     },
-    "frequent": [
-      "Hamra",
-      "Verdun",
-      "Downtown"
-    ]
+    "frequent": {
+      "expected_areas": [
+        "Hamra",
+        "Verdun",
+        "Downtown"
+      ],
+      "max_confidence": "Medium"
+    }
   },
   "01000003": {
     "home": {
       "expected_area": null,
-      "max_confidence": "Low"
+      "expected_confidence": "Insufficient data"
     },
     "work": {
       "expected_area": null,
-      "max_confidence": "Low"
+      "expected_confidence": "Insufficient data"
     }
   },
   "01000004": {
     "home": {
-      "expected_area": null,
-      "max_confidence": "Medium"
+      "expected_area": "Hamra",
+      "max_confidence": "Medium",
+      "expected_alternatives": [
+        "Achrafieh"
+      ]
+    },
+    "work": {
+      "expected_area": "Downtown",
+      "max_confidence": "Low",
+      "expected_alternatives": [
+        "Mazraa",
+        "Verdun"
+      ]
+    }
+  },
+  "01000005": {
+    "home": {
+      "expected_area": "Hamra",
+      "expected_confidence": "Low"
     },
     "work": {
       "expected_area": null,
-      "max_confidence": "Low"
+      "expected_confidence": "Insufficient data"
     }
   }
 }
