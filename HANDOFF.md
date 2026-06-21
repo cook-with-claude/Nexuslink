@@ -4,6 +4,37 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-21 — Claude: added GitHub Actions CI (branch `claude/ci-github-actions`)
+
+Closes the standing open item from the merge: the test suite no longer depends
+on one machine being able to load pandas.
+
+**What changed:** new `.github/workflows/ci.yml`. Triggers on **every push and
+every pull request** (no branch filter — covers `main`, the feature branches,
+and review PRs). On `ubuntu-latest` with **Python 3.12** (matches Khaled's
+verified 3.12.10), it:
+1. installs `phase1_cdr/requirements.txt` (pip cached on that file's hash),
+2. runs `pytest tests/`,
+3. runs the validation harness `python main.py sample_data.csv ground_truth.json`.
+
+Setup was read off the existing structure, not assumed: all steps use
+`working-directory: phase1_cdr` because that's where `requirements.txt`, `tests/`,
+and `conftest.py` live (conftest puts that dir on `sys.path` so tests import
+`detection`/`loader` directly). Harness step included on purpose — `main.py`
+exits non-zero on any failure, so CI enforces the real 12/12 integration check,
+not just the 13 unit tests.
+
+**Verification:** ubuntu's Python loads pandas fine, so the push that creates
+this branch is itself the first live CI run — watch the Actions tab. I could not
+run `pytest` locally (pandas still blocked by Windows Application Control on this
+machine), which is exactly the dependency this CI removes.
+
+**Next:** per protocol, not merged. Codex reviews the workflow, then Nadim merges
+`claude/ci-github-actions` to `main`. Once green, add a status badge to the
+README if Nadim wants one.
+
+---
+
 ## 2026-06-21 — Claude: doc-drift fix applied (option 2) + `branched-out-dih` MERGED to `main` (Nadim's call)
 
 Two things, both authorized explicitly by Nadim this session.

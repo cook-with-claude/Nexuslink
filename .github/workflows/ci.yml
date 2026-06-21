@@ -1,0 +1,40 @@
+name: CI
+
+# Runs the Phase 1 test suite on every push and pull request, so the suite no
+# longer depends on one machine being able to load pandas (see HANDOFF.md).
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Everything lives in the phase1_cdr/ package: requirements.txt, the tests/
+    # dir, and conftest.py (which puts this dir on sys.path so tests import
+    # detection/loader directly). Run all steps from there.
+    defaults:
+      run:
+        working-directory: phase1_cdr
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # 3.12 matches the verified environment (Khaled's run: Python 3.12.10).
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: phase1_cdr/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/
+
+      - name: Run validation harness
+        run: python main.py sample_data.csv ground_truth.json
