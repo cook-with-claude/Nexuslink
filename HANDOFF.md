@@ -4,6 +4,29 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-21 — Claude: session close — Phase 1 shipped & tagged; branch protection skipped
+
+Final state at end of session. Everything below is on `main` and green.
+
+- **PR #3 merged** (`claude/repo-hardening` → `main`, commit `e1746a2`): root
+  `README.md`, `.github/dependabot.yml`, `.github/PULL_REQUEST_TEMPLATE.md`. First
+  clean run through the PR flow.
+- **`v1.0-phase1`** annotated tag pushed, and a **GitHub Release** published from it
+  (release notes on the repo sidebar).
+- **Dependabot** security alerts + auto-fixes enabled; Issues **#1** (threshold
+  re-tune) and **#2** (`min()` design notes) are the canonical tracker for the
+  standing items now.
+- **Branch protection: SKIPPED.** Rulesets/classic protection are plan-gated on a
+  free private repo (403 "Upgrade to GitHub Pro or make this repository public").
+  Per Nadim, we rely on the honor-system PR flow in `COLLAB.md` instead. If the repo
+  later goes public or Pro, add a ruleset on `main` requiring the `test` check + a PR
+  with an admin bypass — that's the only missing piece. (Saved as a project memory so
+  it isn't re-attempted.)
+
+**Phase 1 is complete.** Next work (when picked up) is Issues #1/#2 or Phase 2.
+
+---
+
 ## 2026-06-21 — Claude: repo hardening — root README, Dependabot, PR template, Issues, branch protection (branch `claude/repo-hardening`)
 
 Portfolio + process hardening, approved by Nadim. Several pieces are GitHub-state
@@ -30,10 +53,10 @@ through the new PR-based merge flow** below.
   now — this log just points at them.
 - **Annotated tag `v1.0-phase1`** marking Phase 1 complete — applied **after this
   PR merges** so the milestone captures the documented state.
-- **Branch protection on `main`** — require the CI status check + a PR before
-  merge, with an **admin bypass for Nadim** (per his "both" choice: others can't
-  push straight to `main`; Nadim keeps direct-merge ability). This formalizes the
-  existing "only Nadim merges" rule.
+- **Branch protection on `main`** — intended: require the CI status check + a PR
+  before merge, with an admin bypass for Nadim. **[CORRECTION 2026-06-21: NOT
+  applied — plan-gated (free private repo → 403, needs Pro or public). Nadim chose
+  to SKIP enforcement. See the session-close entry above.]**
 
 **Workflow note:** with branch protection live, the normal path is now PR →
 CI green → Nadim merges. Agents still never merge.
