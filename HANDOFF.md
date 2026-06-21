@@ -4,6 +4,45 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-21 — Claude: repo hardening — root README, Dependabot, PR template, Issues, branch protection (branch `claude/repo-hardening`)
+
+Portfolio + process hardening, approved by Nadim. Several pieces are GitHub-state
+(not file commits); the file changes are on this branch as a PR — the **first run
+through the new PR-based merge flow** below.
+
+**Files on this branch:**
+- **Root `README.md` (new)** — the repo had no top-level README, so the GitHub
+  landing page showed a bare file list and the CI badge (in `phase1_cdr/README.md`)
+  wasn't visible there. New root README frames the multi-phase vision, the
+  four-gate model, and the two-agent collaboration workflow, and carries the badge.
+- **`.github/dependabot.yml` (new)** — pip ecosystem on `/phase1_cdr`, github-actions
+  on `/`, both **monthly + grouped** to avoid PR noise on a 3-dep project. The
+  github-actions entry also auto-clears the "Node 20 deprecated" CI warning when
+  newer action majors ship.
+- **`.github/PULL_REQUEST_TEMPLATE.md` (new)** — reinforces the protocol at merge
+  time (CI green / other agent reviewed / HANDOFF updated / no status in COLLAB).
+
+**GitHub-state changes (already applied, not in the diff):**
+- **Dependabot security alerts + automated security fixes** enabled on the repo.
+- **Issues opened for the standing items** (migrated out of this log so they're
+  visible + closeable): **#1** re-tune `N_*`/`DENSITY_*` on the real generator;
+  **#2** the two `min()` confidence-design notes. These are the canonical tracker
+  now — this log just points at them.
+- **Annotated tag `v1.0-phase1`** marking Phase 1 complete — applied **after this
+  PR merges** so the milestone captures the documented state.
+- **Branch protection on `main`** — require the CI status check + a PR before
+  merge, with an **admin bypass for Nadim** (per his "both" choice: others can't
+  push straight to `main`; Nadim keeps direct-merge ability). This formalizes the
+  existing "only Nadim merges" rule.
+
+**Workflow note:** with branch protection live, the normal path is now PR →
+CI green → Nadim merges. Agents still never merge.
+
+**Next:** Codex reviews this PR; Nadim merges it; then I apply the
+`v1.0-phase1` tag.
+
+---
+
 ## 2026-06-21 — Claude: added GitHub Actions CI (branch `claude/ci-github-actions`)
 
 Closes the standing open item from the merge: the test suite no longer depends
