@@ -1,5 +1,7 @@
 # Phase 1 — CDR Pattern Detection (Algorithm Validation)
 
+[![CI](https://github.com/cook-with-claude/La-Passion/actions/workflows/ci.yml/badge.svg)](https://github.com/cook-with-claude/La-Passion/actions/workflows/ci.yml)
+
 Phase 1 of a CS portfolio project. The goal is narrow and deliberate: **prove the
 pattern-detection algorithm is correct against synthetic data with a known ground
 truth**, before any UI, server, or account work in later phases.
