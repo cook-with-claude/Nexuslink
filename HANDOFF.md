@@ -4,6 +4,26 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-22 — Claude: merged Dependabot CI bump (PR #4) + pruned merged branches
+
+Housekeeping session, authorized by Nadim. No algorithm/code-under-test changes.
+
+- **PR #4 merged** (`de0a05d`): grouped github-actions bump in `.github/workflows/ci.yml`
+  — `actions/checkout` v4→v7, `actions/setup-python` v5→v6. Both CI `test` checks
+  green on the new versions before merge. The 2-dot diff *appeared* to also revert
+  this HANDOFF's session-close entry, but that was a stale-branch artifact: the
+  branch's merge-base was `e1746a2` and it touched only `ci.yml`, so the 3-way merge
+  left HANDOFF.md untouched (verified post-merge).
+- **Stale branches pruned** (all fully merged into `main`, zero unmerged commits):
+  remote `branched-out-dih`, remote `claude/ci-github-actions`, local
+  `codex/review-branched-out-dih`, and the auto-deleted Dependabot branch.
+
+**State:** `main` is the only branch (plus this one), green, Phase 1 still shipped at
+`v1.0-phase1`. Standing future work unchanged: Issues #1 (re-tune `N_*`/`DENSITY_*`)
+and #2 (`min()` design notes).
+
+---
+
 ## 2026-06-21 — Claude: session close — Phase 1 shipped & tagged; branch protection skipped
 
 Final state at end of session. Everything below is on `main` and green.
