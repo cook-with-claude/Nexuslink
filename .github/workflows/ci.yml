@@ -18,10 +18,10 @@ jobs:
         working-directory: phase1_cdr
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # 3.12 matches the verified environment (Khaled's run: Python 3.12.10).
           python-version: "3.12"
