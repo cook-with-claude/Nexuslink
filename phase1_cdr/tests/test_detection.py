@@ -11,6 +11,7 @@ import pandas as pd
 from detection import (
     detect_frequent_areas,
     detect_frequent_confidence,
+    detect_frequent_contacts,
     detect_home,
     detect_work,
     _sorted_areas,
@@ -151,6 +152,63 @@ def test_frequent_areas_list_and_confidence():
     assert lead.confidence == "High"
     assert lead.near_tie is False
     assert lead.closeness is None  # share-only; closeness not computed
+
+
+def _contact_df(rows):
+    """rows: list of (other_party, call_type, timestamp_str). Builds a 9-column
+    CDR frame for one subject; the subject's own area/imei are constant."""
+    return pd.DataFrame(
+        {
+            "phone_number": ["01000000"] * len(rows),
+            "imei": ["350000000000000"] * len(rows),
+            "area": ["Hamra"] * len(rows),
+            "timestamp": pd.to_datetime([r[2] for r in rows]),
+            "call_type": [r[1] for r in rows],
+            "duration_seconds": [60] * len(rows),
+            "other_party": [r[0] for r in rows],
+            "other_imei": ["350000000000999"] * len(rows),
+            "other_area": ["Downtown"] * len(rows),
+        }
+    )
+
+
+def test_frequent_contacts_empty_is_empty_list():
+    assert detect_frequent_contacts(_contact_df([])) == []
+
+
+def test_frequent_contacts_ranks_by_total_with_four_way_breakdown():
+    rows = [
+        ("03100001", 1, "2024-01-01 10:00:00"),   # call out
+        ("03100001", 1, "2024-01-02 10:00:00"),   # call out
+        ("03100001", 1, "2024-01-03 10:00:00"),   # call out
+        ("03100001", 22, "2024-01-04 10:00:00"),  # sms in
+        ("03100002", 2, "2024-01-01 11:00:00"),   # call in
+        ("03100002", 11, "2024-01-02 11:00:00"),  # sms out
+    ]
+    result = detect_frequent_contacts(_contact_df(rows))
+    assert [c.number for c in result] == ["03100001", "03100002"]
+    top = result[0]
+    assert top.total == 4
+    assert (top.call_out, top.call_in, top.sms_out, top.sms_in) == (3, 0, 0, 1)
+    second = result[1]
+    assert second.total == 2
+    assert (second.call_out, second.call_in, second.sms_out, second.sms_in) == (0, 1, 1, 0)
+
+
+def test_frequent_contacts_tie_breaks_on_earliest_then_number():
+    # Both contacts have 1 record; 03100001's is earlier, so it ranks first.
+    rows = [
+        ("03100002", 1, "2024-01-02 10:00:00"),
+        ("03100001", 1, "2024-01-01 10:00:00"),
+    ]
+    result = detect_frequent_contacts(_contact_df(rows))
+    assert [c.number for c in result] == ["03100001", "03100002"]
+
+
+def test_frequent_contacts_respects_top_n():
+    rows = [(f"0310000{i}", 1, f"2024-01-{i:02d} 10:00:00") for i in range(1, 7)]
+    result = detect_frequent_contacts(_contact_df(rows), top_n=5)
+    assert len(result) == 5
 
 
 def _spaced_nights(area, count, step_days, start="2024-01-01"):

@@ -15,7 +15,7 @@ import sys
 import pandas as pd
 
 from loader import CDRValidationError, load_cdr
-from validate import validate
+from validate import validate, validate_contacts
 
 
 def main(argv: list[str]) -> int:
@@ -35,20 +35,29 @@ def main(argv: list[str]) -> int:
         ground_truth = json.load(fh)
 
     rows = validate(df, ground_truth)
+    contact_rows = validate_contacts(df, ground_truth)
 
     table = pd.DataFrame(rows, columns=[
         "user", "test", "expected", "detected", "confidence", "alternatives", "result",
     ])
-    # Render the full table without truncation.
+    contact_table = pd.DataFrame(contact_rows, columns=[
+        "user", "rank", "number", "total",
+        "call_out", "call_in", "sms_out", "sms_in", "result",
+    ])
+    # Render the full tables without truncation.
     with pd.option_context(
         "display.max_rows", None,
         "display.max_colwidth", None,
         "display.width", None,
     ):
+        print("=== Home / Work / Frequent locations ===")
         print(table.to_string(index=False))
+        print("\n=== Frequent contacts (ranked, by communication type) ===")
+        print(contact_table.to_string(index=False))
 
-    total = len(rows)
-    passed = sum(1 for r in rows if r["result"] == "PASS")
+    all_rows = rows + contact_rows
+    total = len(all_rows)
+    passed = sum(1 for r in all_rows if r["result"] == "PASS")
     pct = (passed / total * 100) if total else 0.0
     print(f"\n{passed}/{total} passed ({pct:.0f}%)")
 

@@ -12,10 +12,53 @@
       "expected_areas": [
         "Hamra",
         "Downtown",
-        "Achrafieh"
+        "Achrafieh",
+        "Verdun"
       ],
       "max_confidence": "High"
-    }
+    },
+    "contacts": [
+      {
+        "number": "03200101",
+        "total": 481,
+        "call_out": 106,
+        "call_in": 118,
+        "sms_out": 125,
+        "sms_in": 132
+      },
+      {
+        "number": "03200102",
+        "total": 284,
+        "call_out": 69,
+        "call_in": 66,
+        "sms_out": 66,
+        "sms_in": 83
+      },
+      {
+        "number": "03200103",
+        "total": 152,
+        "call_out": 48,
+        "call_in": 44,
+        "sms_out": 31,
+        "sms_in": 29
+      },
+      {
+        "number": "03200104",
+        "total": 76,
+        "call_out": 20,
+        "call_in": 16,
+        "sms_out": 17,
+        "sms_in": 23
+      },
+      {
+        "number": "03200105",
+        "total": 46,
+        "call_out": 14,
+        "call_in": 12,
+        "sms_out": 12,
+        "sms_in": 8
+      }
+    ]
   },
   "01000002": {
     "home": {
@@ -33,10 +76,53 @@
       "expected_areas": [
         "Hamra",
         "Verdun",
-        "Downtown"
+        "Downtown",
+        "Mazraa"
       ],
       "max_confidence": "Medium"
-    }
+    },
+    "contacts": [
+      {
+        "number": "03200201",
+        "total": 370,
+        "call_out": 99,
+        "call_in": 98,
+        "sms_out": 92,
+        "sms_in": 81
+      },
+      {
+        "number": "03200202",
+        "total": 264,
+        "call_out": 70,
+        "call_in": 65,
+        "sms_out": 58,
+        "sms_in": 71
+      },
+      {
+        "number": "03200203",
+        "total": 184,
+        "call_out": 48,
+        "call_in": 46,
+        "sms_out": 38,
+        "sms_in": 52
+      },
+      {
+        "number": "03200204",
+        "total": 115,
+        "call_out": 34,
+        "call_in": 33,
+        "sms_out": 22,
+        "sms_in": 26
+      },
+      {
+        "number": "03200205",
+        "total": 57,
+        "call_out": 11,
+        "call_in": 11,
+        "sms_out": 15,
+        "sms_in": 20
+      }
+    ]
   },
   "01000003": {
     "home": {
@@ -46,7 +132,33 @@
     "work": {
       "expected_area": null,
       "expected_confidence": "Insufficient data"
-    }
+    },
+    "contacts": [
+      {
+        "number": "03200301",
+        "total": 25,
+        "call_out": 11,
+        "call_in": 5,
+        "sms_out": 5,
+        "sms_in": 4
+      },
+      {
+        "number": "03200302",
+        "total": 11,
+        "call_out": 4,
+        "call_in": 2,
+        "sms_out": 2,
+        "sms_in": 3
+      },
+      {
+        "number": "03200303",
+        "total": 4,
+        "call_out": 0,
+        "call_in": 0,
+        "sms_out": 2,
+        "sms_in": 2
+      }
+    ]
   },
   "01000004": {
     "home": {
@@ -63,7 +175,49 @@
         "Mazraa",
         "Verdun"
       ]
-    }
+    },
+    "contacts": [
+      {
+        "number": "03200401",
+        "total": 334,
+        "call_out": 68,
+        "call_in": 93,
+        "sms_out": 98,
+        "sms_in": 75
+      },
+      {
+        "number": "03200402",
+        "total": 279,
+        "call_out": 84,
+        "call_in": 64,
+        "sms_out": 76,
+        "sms_in": 55
+      },
+      {
+        "number": "03200403",
+        "total": 177,
+        "call_out": 40,
+        "call_in": 44,
+        "sms_out": 40,
+        "sms_in": 53
+      },
+      {
+        "number": "03200404",
+        "total": 102,
+        "call_out": 21,
+        "call_in": 28,
+        "sms_out": 28,
+        "sms_in": 25
+      },
+      {
+        "number": "03200405",
+        "total": 78,
+        "call_out": 19,
+        "call_in": 25,
+        "sms_out": 19,
+        "sms_in": 15
+      }
+    ]
   },
   "01000005": {
     "home": {
@@ -73,6 +227,40 @@
     "work": {
       "expected_area": null,
       "expected_confidence": "Insufficient data"
-    }
+    },
+    "contacts": [
+      {
+        "number": "03200501",
+        "total": 267,
+        "call_out": 67,
+        "call_in": 70,
+        "sms_out": 62,
+        "sms_in": 68
+      },
+      {
+        "number": "03200502",
+        "total": 191,
+        "call_out": 49,
+        "call_in": 46,
+        "sms_out": 44,
+        "sms_in": 52
+      },
+      {
+        "number": "03200503",
+        "total": 96,
+        "call_out": 22,
+        "call_in": 26,
+        "sms_out": 25,
+        "sms_in": 23
+      },
+      {
+        "number": "03200504",
+        "total": 46,
+        "call_out": 15,
+        "call_in": 13,
+        "sms_out": 9,
+        "sms_in": 9
+      }
+    ]
   }
 }

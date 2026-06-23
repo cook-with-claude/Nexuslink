@@ -4,6 +4,55 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-23 — Claude: frequency query extended — locations %% + ranked contacts (branch `frequency-branch`)
+
+**New feature branch `frequency-branch`, cut from `branched-out-dih`** (NOT from
+`main`, because it builds on the unmerged confidence work). Design spec committed
+first at `docs/superpowers/specs/2026-06-23-frequency-query-contacts-design.md`.
+
+**What changed (per Khaled's spec):** the "frequent" query now reports two things —
+(1) top-5 **locations with percentages**, and (2) a new top-5 **contacts** ranking:
+the counterparty numbers the subject communicated with, ranked by total, each split
+**4-way by `call_type`** (1 call-out / 2 call-in / 11 SMS-out / 22 SMS-in).
+
+- **Schema 6 → 9 columns.** Added `other_party`, `other_imei`, `other_area`
+  (`loader.py:14`, `:27`). Every query stays single-subject; only `other_party` is
+  read by a query (contacts). `other_imei`/`other_area` are carried but unused yet —
+  Khaled's explicit scope call.
+- **`detection.py`** — new `ContactRank` dataclass + `detect_frequent_contacts(df,
+  top_n=5)` (`detection.py:104`, `:259`). Pure, no gates (raw frequency ranking,
+  like `detect_frequent_areas`). Same deterministic tie-break as `_sorted_areas`
+  (total desc → earliest ts → number asc). `detect_frequent_areas` default `top_n`
+  3 → 5.
+- **`dev_fixtures.py`** — per-user `CONTACTS` pools + a SEPARATE `_contact_rng`
+  (`dev_fixtures.py:54`). **Key invariant:** contact draws use their own RNG, so the
+  main stream (dates/hours/call_types/areas) is byte-identical to before. Verified:
+  `git show HEAD:...sample_data.csv | cut -d, -f1-6` is identical to the new file,
+  and the ground-truth home/work/confidence blocks are unchanged in the diff. Only
+  `frequent` expanded to 5 and a `contacts` block was added per user. Ground truth
+  for contacts is independently tallied by `_contacts()` (plain groupby, no
+  `detection.py` import).
+- **`validate.py` / `main.py`** — new `validate_contacts()` (one PASS/FAIL row per
+  contact rank so the breakdown is visible); `_check_frequent` now shows each area's
+  %. `main.py` prints two tables and a combined summary.
+- **Tests** — 4 new unit tests for `detect_frequent_contacts` (rank, 4-way split,
+  tie-break, top_n cap). TDD: tests written first, watched fail (ImportError), then
+  implemented.
+
+**Verified (executed in `phase1_cdr/.venv`):** `pytest tests/` → **17 passed**;
+`python main.py sample_data.csv ground_truth.json` → **34/34 (100%)**. The 12 prior
+home/work/frequent/confidence checks still pass unchanged; the rest are the new
+per-rank contact checks.
+
+**For Codex:** independently re-derive a couple of users' top-5 contacts from the
+fixture `CONTACTS` weights vs the committed `ground_truth.json`, and sanity-check the
+RNG-isolation claim (that the old 6 columns are untouched). Do NOT merge — this is a
+fresh feature branch off `branched-out-dih`; Nadim merges. Open question: do we want
+the contacts harness to also pin which `call_type` maps to which label, or is the
+fixed `1/2/11/22` convention enough?
+
+---
+
 ## 2026-06-22 — Claude: merged Dependabot CI bump (PR #4) + pruned merged branches
 
 Housekeeping session, authorized by Nadim. No algorithm/code-under-test changes.

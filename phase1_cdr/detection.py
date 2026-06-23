@@ -101,6 +101,29 @@ class DetectionResult:
         return f"{self.confidence}: near tie" if self.near_tie else self.confidence
 
 
+# Communication-type codes (see loader.VALID_CALL_TYPES).
+CALL_OUT = 1
+CALL_IN = 2
+SMS_OUT = 11
+SMS_IN = 22
+
+
+@dataclass
+class ContactRank:
+    """One counterparty number the subject communicated with, ranked by total.
+
+    The four buckets split that total by communication type (the `call_type`
+    codes above); `total` is the ranking key.
+    """
+
+    number: str
+    total: int
+    call_out: int = 0  # call_type 1
+    call_in: int = 0  # call_type 2
+    sms_out: int = 0  # call_type 11
+    sms_in: int = 0  # call_type 22
+
+
 def _sorted_areas(window_df: pd.DataFrame) -> List[Tuple[str, int]]:
     """Return (area, count) pairs, most frequent first.
 
@@ -241,7 +264,7 @@ def detect_work(df: pd.DataFrame) -> DetectionResult:
 
 
 def detect_frequent_areas(
-    df: pd.DataFrame, top_n: int = 3
+    df: pd.DataFrame, top_n: int = 5
 ) -> List[Tuple[str, int, float]]:
     """Return the top_n areas across all records as (area, count, share).
 
@@ -254,6 +277,38 @@ def detect_frequent_areas(
     for area, count in _sorted_areas(df)[:top_n]:
         result.append((area, count, count / total))
     return result
+
+
+def detect_frequent_contacts(df: pd.DataFrame, top_n: int = 5) -> List[ContactRank]:
+    """Rank the numbers the subject communicated with, most frequent first.
+
+    Groups the subject's own rows by `other_party` and, for each counterparty,
+    counts the total telecommunications plus a 4-way split by `call_type`
+    (call out / call in / SMS out / SMS in). This is a raw frequency ranking,
+    not an inference, so no confidence gates apply.
+
+    Deterministic tie-break: total desc, then earliest timestamp asc, then
+    number asc -- so the order never depends on pandas' internal row ordering.
+    """
+    if len(df) == 0:
+        return []
+
+    grouped = df.groupby("other_party")
+    ranked: List[Tuple[int, pd.Timestamp, str, ContactRank]] = []
+    for number, sub in grouped:
+        types = sub["call_type"]
+        contact = ContactRank(
+            number=str(number),
+            total=int(len(sub)),
+            call_out=int((types == CALL_OUT).sum()),
+            call_in=int((types == CALL_IN).sum()),
+            sms_out=int((types == SMS_OUT).sum()),
+            sms_in=int((types == SMS_IN).sum()),
+        )
+        ranked.append((contact.total, sub["timestamp"].min(), contact.number, contact))
+
+    ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
+    return [item[3] for item in ranked[:top_n]]
 
 
 def detect_frequent_confidence(df: pd.DataFrame) -> DetectionResult:

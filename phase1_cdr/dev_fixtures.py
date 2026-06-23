@@ -49,6 +49,56 @@ GROUND_TRUTH_PATH = os.path.join(HERE, "ground_truth.json")
 
 CALL_TYPES = [1, 2, 11, 22]
 
+# Counterparty assignment uses its OWN RNG instance, kept entirely separate from
+# the main `random`/`np.random` streams. This is deliberate: it means the dates,
+# hours, call_types and areas of every record are byte-identical to the
+# pre-contacts fixtures, so the existing home/work/frequent/confidence ground
+# truth (and the verified 12/12 + 13-passed state) is unchanged -- only the new
+# counterparty columns and the contacts ground-truth block are added.
+_contact_rng = random.Random(20240623)
+
+# Per-user counterparty pools: (number, imei, area, weight). The weight only
+# steers how often a contact is drawn; the ground truth tallies whatever
+# actually lands in the data, so the ranking is self-consistent regardless of
+# weights or ties. A contact keeps the same imei/area across all its rows.
+# Users A and D carry 6 contacts so the top_n=5 cap is exercised.
+CONTACTS: dict[str, list[tuple[str, str, str, int]]] = {
+    "01000001": [  # A: one clear primary, long tail
+        ("03200101", "350000000000201", "Hamra", 50),
+        ("03200102", "350000000000202", "Downtown", 28),
+        ("03200103", "350000000000203", "Achrafieh", 16),
+        ("03200104", "350000000000204", "Verdun", 9),
+        ("03200105", "350000000000205", "Mazraa", 5),
+        ("03200106", "350000000000206", "Hamra", 2),
+    ],
+    "01000002": [  # B
+        ("03200201", "350000000000211", "Mazraa", 40),
+        ("03200202", "350000000000212", "Hamra", 30),
+        ("03200203", "350000000000213", "Verdun", 20),
+        ("03200204", "350000000000214", "Downtown", 12),
+        ("03200205", "350000000000215", "Achrafieh", 6),
+    ],
+    "01000003": [  # C (sparse)
+        ("03200301", "350000000000301", "Hamra", 20),
+        ("03200302", "350000000000302", "Achrafieh", 10),
+        ("03200303", "350000000000303", "Verdun", 5),
+    ],
+    "01000004": [  # D
+        ("03200401", "350000000000401", "Hamra", 35),
+        ("03200402", "350000000000402", "Achrafieh", 33),
+        ("03200403", "350000000000403", "Downtown", 18),
+        ("03200404", "350000000000404", "Mazraa", 10),
+        ("03200405", "350000000000405", "Verdun", 8),
+        ("03200406", "350000000000406", "Hamra", 4),
+    ],
+    "01000005": [  # E
+        ("03200501", "350000000000501", "Hamra", 45),
+        ("03200502", "350000000000502", "Hamra", 25),
+        ("03200503", "350000000000503", "Downtown", 12),
+        ("03200504", "350000000000504", "Verdun", 6),
+    ],
+}
+
 _records: list[dict] = []
 
 
@@ -74,7 +124,13 @@ def _add(
     The date is drawn from the user's own observation span (`all_dates`), so each
     user can be observed for a different length of time -- which is what gives the
     Density gate something to discriminate on.
+
+    The counterparty (other_party/imei/area) is drawn from the user's contact
+    pool using the SEPARATE `_contact_rng`, so it never perturbs the main data
+    stream the existing ground truth depends on.
     """
+    pool = CONTACTS[phone]
+    weights = [c[3] for c in pool]
     for _ in range(n):
         if window == "home":  # hour in [0, 6), any day
             date = random.choice(all_dates)
@@ -91,6 +147,9 @@ def _add(
         ts = date + pd.Timedelta(
             hours=hour, minutes=random.randint(0, 59), seconds=random.randint(0, 59)
         )
+        other_party, other_imei, other_area, _w = pool[
+            _contact_rng.choices(range(len(pool)), weights=weights, k=1)[0]
+        ]
         _records.append(
             {
                 "phone_number": phone,
@@ -99,6 +158,9 @@ def _add(
                 "timestamp": ts,
                 "call_type": random.choice(CALL_TYPES),
                 "duration_seconds": random.randint(10, 600),
+                "other_party": other_party,
+                "other_imei": other_imei,
+                "other_area": other_area,
             }
         )
 
@@ -168,6 +230,9 @@ df = pd.DataFrame(
         "timestamp",
         "call_type",
         "duration_seconds",
+        "other_party",
+        "other_imei",
+        "other_area",
     ],
 )
 df.to_csv(CSV_PATH, index=False)
@@ -205,8 +270,38 @@ def _alternatives(user_df: pd.DataFrame, window: str) -> list[str]:
     return [a for a, c in ranked[1:] if c > 0.70 * top_count]
 
 
-def _frequent(user_df: pd.DataFrame, top_n: int = 3) -> list[str]:
+def _frequent(user_df: pd.DataFrame, top_n: int = 5) -> list[str]:
     return [a for a, _c in _ranked(user_df)[:top_n]]
+
+
+def _contacts(user_df: pd.DataFrame, top_n: int = 5) -> list[dict]:
+    """Independently tally the subject's top counterparties (no detection.py).
+
+    Groups by other_party, counts the total plus a 4-way split by call_type,
+    and ranks total desc -> earliest timestamp asc -> number asc (the same
+    deterministic tie-break the detector uses)."""
+    if len(user_df) == 0:
+        return []
+    ranked: list[tuple[int, pd.Timestamp, str, dict]] = []
+    for number, sub in user_df.groupby("other_party"):
+        types = sub["call_type"]
+        ranked.append(
+            (
+                int(len(sub)),
+                sub["timestamp"].min(),
+                str(number),
+                {
+                    "number": str(number),
+                    "total": int(len(sub)),
+                    "call_out": int((types == 1).sum()),
+                    "call_in": int((types == 2).sum()),
+                    "sms_out": int((types == 11).sum()),
+                    "sms_in": int((types == 22).sum()),
+                },
+            )
+        )
+    ranked.sort(key=lambda r: (-r[0], r[1], r[2]))
+    return [r[3] for r in ranked[:top_n]]
 
 
 def _user(phone: str) -> pd.DataFrame:
@@ -219,6 +314,7 @@ ground_truth = {
         "home": {"expected_area": _top_area(_user(A), "home"), "expected_confidence": "High"},
         "work": {"expected_area": _top_area(_user(A), "work"), "expected_confidence": "High"},
         "frequent": {"expected_areas": _frequent(_user(A)), "max_confidence": "High"},
+        "contacts": _contacts(_user(A)),
     },
     # User B: real winner, but a noisy near-tie -> capped at Medium, alternatives listed.
     B: {
@@ -229,12 +325,14 @@ ground_truth = {
         },
         "work": {"expected_area": _top_area(_user(B), "work"), "max_confidence": "Medium"},
         "frequent": {"expected_areas": _frequent(_user(B)), "max_confidence": "Medium"},
+        "contacts": _contacts(_user(B)),
     },
     # User C: no home/work window records, so the detector should return no area
     # and exact Insufficient data, not merely a low-confidence guess.
     C: {
         "home": {"expected_area": None, "expected_confidence": "Insufficient data"},
         "work": {"expected_area": None, "expected_confidence": "Insufficient data"},
+        "contacts": _contacts(_user(C)),
     },
     # User D: names the plurality area, but must resist High and flag the near-tie.
     D: {
@@ -248,6 +346,7 @@ ground_truth = {
             "max_confidence": "Low",
             "expected_alternatives": _alternatives(_user(D), "work"),
         },
+        "contacts": _contacts(_user(D)),
     },
     # User E: clean unanimous home area, but Density alone caps it. Pinned EXACTLY
     # to Low (not a ceiling); the separate gate trace/unit tests establish that
@@ -255,6 +354,7 @@ ground_truth = {
     E: {
         "home": {"expected_area": _top_area(_user(E), "home"), "expected_confidence": "Low"},
         "work": {"expected_area": None, "expected_confidence": "Insufficient data"},
+        "contacts": _contacts(_user(E)),
     },
 }
 

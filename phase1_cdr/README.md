@@ -17,17 +17,56 @@ team's real (still synthetic) generator exists.
 ## What it does
 
 - **`loader.py`** — reads a `.csv` / `.xlsx` / `.xls` CDR file into a validated
-  DataFrame (6-column schema), dropping rows with bad timestamps or invalid
+  DataFrame (9-column schema, see below), dropping rows with bad timestamps or invalid
   `call_type` and warning about them.
 - **`detection.py`** — pure functions that infer a user's likely **home** area
-  (overnight), **work** area (weekday daytime), and most **frequent** areas, each with
-  a confidence label (`High` / `Medium` / `Low` / `Insufficient data`) produced by the
-  four-gate model described below. A near-tie result is tagged (`Low: near tie`) and
-  lists the close areas as `alternatives`.
+  (overnight), **work** area (weekday daytime), most **frequent** areas, and most
+  **frequent contacts**. Home/work/frequent-areas each carry a confidence label
+  (`High` / `Medium` / `Low` / `Insufficient data`) produced by the four-gate model
+  described below. A near-tie result is tagged (`Low: near tie`) and lists the close
+  areas as `alternatives`.
 - **`dev_fixtures.py`** — deterministically builds `sample_data.csv` and an
-  *independently computed* `ground_truth.json` for five test users.
+  *independently computed* `ground_truth.json` for five test users. Each user also
+  has a fixed **contact pool**; counterparties are drawn with a separate RNG so the
+  home/work/confidence data stays identical to the pre-contacts fixtures.
 - **`validate.py` / `main.py`** — run the detectors against the ground truth and print
-  a pass/fail table.
+  two pass/fail tables (locations, then ranked contacts).
+
+## CDR schema (9 columns)
+
+Each row is one telecommunication event for the **subject** (`phone_number`), and
+also records the **counterparty** it involved:
+
+| Column | Meaning |
+|---|---|
+| `phone_number` | the subject whose CDR this is |
+| `imei` | the subject's device |
+| `area` | the subject's location at the time of the event |
+| `timestamp` | event time |
+| `call_type` | `1` call out · `2` call in · `11` SMS out · `22` SMS in |
+| `duration_seconds` | call duration |
+| `other_party` | the number the subject communicated with |
+| `other_imei` | the counterparty's device |
+| `other_area` | the counterparty's location |
+
+**Every query is single-subject** — a detector looks only at the subject's own
+rows. The counterparty columns exist for realism/consistency; only `other_party`
+is read by any query (the contacts ranking). `other_imei` / `other_area` are
+carried but not yet used.
+
+## The frequency query
+
+`detect_frequent_areas` and `detect_frequent_contacts` together answer "what does
+this subject do most":
+
+- **Frequent locations** — the subject's top-5 areas, each with its **percentage**
+  (share of the subject's calls). Uses the Share gate alone for the lead area's
+  confidence (habits, not a single inferred location).
+- **Frequent contacts** — the subject's top-5 counterparty numbers, ranked by total
+  telecommunications, each broken down **4-way by type** (call out / call in /
+  SMS out / SMS in). A raw frequency ranking — no confidence gates apply.
+
+Both default to top-5 via a `top_n` parameter, so a later UI can request more.
 
 ## Confidence model (four-gate, weakest-link)
 

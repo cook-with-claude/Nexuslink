@@ -18,13 +18,22 @@ REQUIRED_COLUMNS = [
     "timestamp",
     "call_type",
     "duration_seconds",
+    "other_party",
+    "other_imei",
+    "other_area",
 ]
 
 VALID_CALL_TYPES = {1, 2, 11, 22}
 
-# phone_number and imei are kept as strings so leading zeros survive and large
-# numbers never get coerced into scientific notation.
-_STRING_COLUMNS = {"phone_number": str, "imei": str}
+# Number/IMEI columns are kept as strings so leading zeros survive and large
+# numbers never get coerced into scientific notation. This covers both the
+# subject (phone_number/imei) and the counterparty (other_party/other_imei).
+_STRING_COLUMNS = {
+    "phone_number": str,
+    "imei": str,
+    "other_party": str,
+    "other_imei": str,
+}
 
 _SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
