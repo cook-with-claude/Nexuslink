@@ -4,6 +4,170 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-24 - Codex: methodology assessment of CDR inference (branch `codex/methodology-assessment`)
+
+Ran `git fetch --all` first, read `COLLAB.md` and `HANDOFF.md` from fetched
+`origin/main`, then branched from `origin/main` (`0563ad3`). Read the root
+`README.md`, `phase1_cdr/README.md`, `phase1_cdr/detection.py`,
+`docs/superpowers/specs/2026-06-23-frequency-query-contacts-design.md`, and the
+local `EXPERT_BRIEF.md`.
+
+Scope note: this is **not** a code review. I am not a telecom/CDR domain expert,
+so the judgments below are about internal methodological soundness: whether the
+logic is coherent, what assumptions it relies on, and which conclusions cannot be
+settled without real CDR domain expertise or real data.
+
+**SOUND**
+- The baseline is transparent: fixed windows propose candidate contexts, plurality
+  selects the area, and the confidence gates decide how much to trust that area.
+  That separation is methodologically clean for Phase 1 because it avoids hiding
+  the inference behind a black-box score.
+- The home/work/frequent split is coherent as a first heuristic. Overnight events
+  are a plausible home proxy; weekday daytime events are a plausible work proxy;
+  all-record frequent areas are descriptive habits rather than a single anchor.
+- The four gate names map to real failure modes: not enough records (`N`), weak
+  dominance (`Share`), ambiguity against the runner-up (`Closeness`), and sparse
+  temporal coverage (`Density`). This is a better design than share-only confidence.
+- `N` and `Density` are meaningfully distinct in intent. `N` is an absolute sample
+  floor; `Density` asks whether evidence is spread across the observation span. The
+  choice of distinct active days instead of raw event count is sounder than raw
+  events because it does not let one unusually busy day masquerade as broad support.
+- The weakest-link `min()` aggregation is defensible as a conservative Phase 1
+  label. If any gate captures a fatal weakness, letting stronger gates average it
+  away would overstate confidence.
+- Near-tie alternatives are methodologically important. Returning the plurality
+  while tagging close alternatives is better than silently pretending a split
+  anchor is a clean single-location answer.
+- The new frequent-contacts output is meaningful if framed as descriptive analytics:
+  "these are the counterparties with the most events, split by event type." It is
+  not a location inference and should not inherit the confidence-gate language.
+
+**QUESTIONABLE**
+- The fixed home/work windows are plausible but brittle. Night-shift workers,
+  students, remote workers, healthcare/hospitality schedules, dual residences,
+  travel, roaming, and timestamp timezone mistakes can all produce enough data to
+  look confident inside the wrong window. The current gates measure strength inside
+  a window; they do not test whether the window itself fits the subscriber.
+- A cross-check is worth adding. For home, I would not require "dominates weekend
+  daytime" because weekends include leisure/travel, but the home candidate should
+  be tested for support in weekend overnight, late evening, and across multiple
+  weeks. For work, test weekday daytime consistency across weeks and look for a
+  competing weekend/daytime or evening anchor that suggests a non-standard schedule.
+- Plurality-takes-all is too crude as the only winner-selection story. It is clear
+  and reproducible, but "most events in the window" is not necessarily "best anchor"
+  when area labels are noisy, adjacent cells split a real place, or one macro-area
+  covers multiple plausible locations. The method should expose the candidate
+  distribution, not just the top label.
+- The deterministic tie-break is useful for reproducibility but has no evidentiary
+  meaning. Earliest timestamp should never be interpreted as support for the winner;
+  it is only an ordering fallback.
+- `Share` and `Closeness` are not identical, but they overlap. A dominant winner
+  mechanically tends to produce a small runner-up ratio. `Share` catches "winner is
+  only a small slice of a fragmented field"; `Closeness` catches "#2 is too close."
+  Both are useful, but together they partly double-count dominance/ambiguity.
+- `Closeness` only looks at #1 versus #2. It misses multi-way fragmentation where
+  no single runner-up is close but the tail is broad. A concentration metric over
+  the whole distribution (entropy, HHI/effective-number-of-areas, or top-k mass)
+  would measure this more directly.
+- `min()` is conservative, but the final label is lossy. One Medium gate and four
+  Medium gates both report Medium; one Low gate and four Low gates both report Low.
+  The implementation exposes `gates`, but the headline confidence should probably
+  carry the binding gate(s) and/or a weakness count.
+- Current `Density` measures distinct active days in the selected time window, not
+  distinct days supporting the winning area. That adds temporal signal beyond `N`,
+  but it can be inflated by activity in non-winning areas. A candidate-specific
+  density such as "days where the winning area appears / observed days" would align
+  better with "how much evidence supports this inferred anchor."
+
+**NAIVE / MISSING**
+- The `area` idealization is the biggest assumption. The method treats `area` as a
+  clean, opaque, one-area-per-event label. Real serving-cell data has overlapping
+  footprints, variable cell sizes, load/radio effects, handovers, sectorization,
+  and network changes. The confidence model is only as meaningful as the upstream
+  process that turns cells into stable areas.
+- `Share` and `Closeness` are the most fragile gates under realistic cell data.
+  Dense-cell areas can fragment one real place across many cells and look low-share
+  or near-tied; a large macrocell can create high share while being geographically
+  imprecise. These gates may measure network topology as much as user behavior.
+- The model lacks temporal stability checks. A home/work anchor should ideally be
+  stable across subperiods, not just win in aggregate. A vacation, short project,
+  or burst of calls can dominate an aggregate window while being temporally local.
+- Observation span is inferred from first-to-last event. For event-triggered CDRs,
+  that is not the same as a known export window or true monitoring span. If a data
+  extract has explicit start/end dates, Density should use those instead.
+- Ignoring `call_type`, `duration_seconds`, and `imei` is defensible for a clean
+  baseline, but it leaves useful diagnostics on the table. `imei` can reveal device
+  changes, shared SIM/device anomalies, or mixed-user histories. `call_type` and
+  duration may reveal event-source biases, although weighting by them should wait
+  for real source semantics.
+- Direction/duration should not be naively weighted. A 20-minute call is not
+  automatically 120 times stronger than a 10-second call; depending on CDR
+  semantics, location may be start-cell, end-cell, or affected by handover. If used,
+  duration should be capped or handled as a separate diagnostic until validated.
+- Frequent contacts are currently a count, not relationship inference. Total event
+  volume can be distorted by SMS bursts, service/short codes, spam, business calls,
+  observation length, or one person using multiple numbers. The 4-way split helps,
+  but it does not by itself establish closeness or importance.
+- `EXPERT_BRIEF.md` is aligned with the right open questions, but it still describes
+  the older 6-column schema while `main` now has 9 columns. Before external expert
+  review, update that brief so the expert does not reason from stale schema scope.
+
+**NEEDS REAL DOMAIN EXPERTISE OR REAL DATA**
+- Whether 00:00-06:00 and weekday 09:00-18:00 are good windows for the target
+  population cannot be settled internally. It depends on local schedules, timestamp
+  timezone conventions, roaming behavior, and the intended investigative use case.
+- `N_HIGH=50`, `N_MEDIUM=15`, `DENSITY_HIGH=0.40`, and `DENSITY_MEDIUM=0.15` should
+  be treated as fixture-calibrated labels, not general confidence. Real CDR event
+  volumes are event-triggered and likely heavy-tailed by subscriber, plan, period,
+  app usage, and operator logging rules.
+- Share and Closeness are not truly scale-free until `area` granularity is fixed.
+  Changing from neighborhood labels to raw Cell-ID, sectors, clustered cells, or
+  geocoded zones will change the expected concentration distribution.
+- The right upstream `area` derivation needs telecom expertise: raw Cell-ID vs cell
+  clusters vs geocoded zones, how to handle overlapping cells, and whether to use
+  tower/sector metadata or radio measurements if available.
+- Whether `call_type` and duration should influence location evidence depends on
+  source-system semantics: which events carry location, whether the logged cell is
+  start/end/serving cell, and whether SMS/voice/incoming/outgoing records have
+  comparable location reliability.
+- Frequent-contacts ranking needs real data to decide filtering and meaning:
+  service numbers, short codes, duplicated people across numbers, corporate phones,
+  and direction/duration conventions can all change what "top contact" means.
+
+**RECOMMENDATIONS**
+1. Keep the current method as a transparent baseline, but label the confidence as
+   "fixture-calibrated" until real distributions exist. Do not present it as a
+   probability or production-quality confidence score.
+2. Add window-fit diagnostics before changing the core detector: weekend overnight
+   support for home, weekday/weekend contrasts, weekly stability, and warnings for
+   schedules that do not resemble the fixed home/work assumptions.
+3. Keep plurality as the first candidate selector, but always surface the top-k
+   distribution. Treat a single area answer plus hidden tail as too little evidence
+   for human interpretation.
+4. Replace or augment `Share`/`Closeness` with a whole-distribution concentration
+   measure during the next methodology pass. Entropy, HHI/effective number of areas,
+   top-1 minus top-2 margin, and top-k mass are all worth comparing on synthetic
+   adversarial cases before touching real data.
+5. Keep weakest-link `min()` as the conservative floor, but report the gate vector,
+   binding gate(s), and number of weak gates beside the headline confidence. Consider
+   a second severity label for "many gates weak" rather than overloading High/Medium/Low.
+6. Rework Density to be candidate-specific and tied to a known extract span where
+   available: distinct days with winning-area evidence over export days. Keep raw
+   event volume out of Density so it remains distinct from `N`.
+7. Treat `area` derivation as a separate modeling layer with its own tests. Before
+   trusting confidence, simulate realistic cell artifacts: adjacent-cell splitting,
+   macrocell dominance, handover/oscillation, and cell-ID churn.
+8. Audit `call_type`, `duration_seconds`, and `imei` empirically before weighting.
+   Start with diagnostics/segmentation (for example, "home only appears on SMS" or
+   "work changes after IMEI switch") rather than changing scores immediately.
+9. Reframe frequent contacts explicitly as descriptive counts. If it will support
+   analytical conclusions, add active-days-per-contact, recency, voice duration,
+   direction balance, service-number filtering, and possibly entity resolution.
+
+No code changes or merge performed. This branch changes only `HANDOFF.md`.
+
+---
+
 ## 2026-06-24 - Codex: independent review of merged frequency feature (branch `codex/frequency-query-review`)
 
 Reviewed fetched `main` directly after `git fetch --all` + `git fetch --prune`.
