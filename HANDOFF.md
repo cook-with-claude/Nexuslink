@@ -4,11 +4,37 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-24 — Claude: `frequency-branch` rebased onto `main` + fast-forward MERGED (Nadim's call)
+
+Closes the frequency-query feature. Authorized explicitly by Nadim this session
+(Option B from the 2026-06-23 session log).
+
+- **Re-verified green before merge** (in `phase1_cdr/.venv`, pandas 3.0.3):
+  `pytest tests/` → **17 passed**; `python main.py sample_data.csv
+  ground_truth.json` → **34/34 (100%)**.
+- **Option B (skip remote churn).** The branch was already rebased onto `main`
+  last session (linear, `main` 0 behind), so the merge is a trivial
+  fast-forward. Merged `frequency-branch` → `main` and pushed. The shared
+  `origin/frequency-branch` (Khaled's OLD pre-rebase tip) is now irrelevant and
+  deleted; the pre-rebase tip is preserved at `a8959611` if rollback is ever
+  needed.
+- **Codex** still hasn't seen the frequency work, the review, or the rebase — it
+  syncs now via `git fetch` on `main`.
+
+**State:** `main` carries the 9-column schema + frequency query (locations %% +
+ranked contacts). Standing future work unchanged: Issues #1 (`N_*`/`DENSITY_*`
+re-tune) and #2 (`min()` design notes); `EXPERT_BRIEF.md` is queued for outside
+CDR-domain review.
+
+---
+
 ## 2026-06-23 — Claude: frequency query extended — locations %% + ranked contacts (branch `frequency-branch`)
 
-**New feature branch `frequency-branch`, cut from `branched-out-dih`** (NOT from
-`main`, because it builds on the unmerged confidence work). Design spec committed
-first at `docs/superpowers/specs/2026-06-23-frequency-query-contacts-design.md`.
+**New feature branch `frequency-branch`**, originally cut from `branched-out-dih`
+(NOT from `main`) because it built on the then-unmerged confidence work.
+**[CORRECTION 2026-06-24: rebased onto `main` and fast-forward-merged — see the
+entry above. The branch no longer sits on `branched-out-dih`.]** Design spec
+committed first at `docs/superpowers/specs/2026-06-23-frequency-query-contacts-design.md`.
 
 **What changed (per Khaled's spec):** the "frequent" query now reports two things —
 (1) top-5 **locations with percentages**, and (2) a new top-5 **contacts** ranking:
@@ -47,7 +73,8 @@ per-rank contact checks.
 **For Codex:** independently re-derive a couple of users' top-5 contacts from the
 fixture `CONTACTS` weights vs the committed `ground_truth.json`, and sanity-check the
 RNG-isolation claim (that the old 6 columns are untouched). Do NOT merge — this is a
-fresh feature branch off `branched-out-dih`; Nadim merges. Open question: do we want
+fresh feature branch off `branched-out-dih`; Nadim merges. **[DONE 2026-06-24 —
+merged by Nadim; see top entry.]** Open question: do we want
 the contacts harness to also pin which `call_type` maps to which label, or is the
 fixed `1/2/11/22` convention enough?
 
