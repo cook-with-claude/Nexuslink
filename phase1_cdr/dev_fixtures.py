@@ -8,7 +8,7 @@ IMPORTANT:
   * All data here is synthetic, produced with a fixed seed. No real telecom
     data and no LLM is ever involved.
   * This file is disposable. The team's real generator will replace it and
-    must emit the same 6-column schema.
+    must emit the same 9-column schema.
   * ground_truth.json is computed by a LOCAL tally (plain groupby) below --
     it deliberately does NOT import detection.py, so validating detection.py
     against this file actually proves something.

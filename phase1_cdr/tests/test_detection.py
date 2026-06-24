@@ -205,6 +205,16 @@ def test_frequent_contacts_tie_breaks_on_earliest_then_number():
     assert [c.number for c in result] == ["03100001", "03100002"]
 
 
+def test_frequent_contacts_tie_breaks_on_number_after_equal_timestamp():
+    # Same total and same earliest timestamp: smaller number wins last.
+    rows = [
+        ("03100002", 1, "2024-01-01 10:00:00"),
+        ("03100001", 2, "2024-01-01 10:00:00"),
+    ]
+    result = detect_frequent_contacts(_contact_df(rows))
+    assert [c.number for c in result] == ["03100001", "03100002"]
+
+
 def test_frequent_contacts_respects_top_n():
     rows = [(f"0310000{i}", 1, f"2024-01-{i:02d} 10:00:00") for i in range(1, 7)]
     result = detect_frequent_contacts(_contact_df(rows), top_n=5)

@@ -4,6 +4,77 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-24 - Codex: independent review of merged frequency feature (branch `codex/frequency-query-review`)
+
+Reviewed fetched `main` directly after `git fetch --all` + `git fetch --prune`.
+Commit range was `aee46da` (design), `87606d9` (feature), `0aa3d1b` (merge
+handoff). No merge performed.
+
+**Verdicts**
+- **RNG isolation: CONFIRMED.** I compared git blobs for
+  `phase1_cdr/sample_data.csv` at `f2fac0e` and `HEAD`, projecting only the
+  original 6 columns (`phone_number,imei,area,timestamp,call_type,duration_seconds`):
+  byte-for-byte equal projection, 216550 bytes on both sides. Parsed
+  `phase1_cdr/ground_truth.json` from both revisions: all five users' `home` and
+  `work` blocks are exactly equal. The separate contact stream is present at
+  `phase1_cdr/dev_fixtures.py:58` and used only for counterparty assignment at
+  `phase1_cdr/dev_fixtures.py:150`; it does not perturb the main `random` stream.
+- **Contacts ground truth: ACCEPTABLE WITH CAVEAT.** I rederived contacts from
+  `sample_data.csv` using stdlib `csv` + counters only (no `detection.py`, no
+  `dev_fixtures._contacts`) and matched `ground_truth.json` for all five users.
+  Spot examples: User A top two are `03200101` total 481 = 106/118/125/132 and
+  `03200102` total 284 = 69/66/66/83; User D top two are `03200401` total 334 =
+  68/93/98/75 and `03200402` total 279 = 84/64/76/55. Every contact rank's
+  `total` equals the sum of the four buckets. Caveat: `_contacts()` at
+  `phase1_cdr/dev_fixtures.py:277` is intentionally close to
+  `detect_frequent_contacts()` at `phase1_cdr/detection.py:282`, so it proves
+  implementation consistency more than conceptual correctness. That is acceptable
+  for generated fixture ground truth because the hand-written unit tests also pin
+  the mapping and sort behavior.
+
+**Bugs**
+- None found in the merged feature behavior.
+
+**Test gaps**
+- The generated fixture has no contact ties, so `sample_data.csv`/the harness do
+  not exercise the tie-break. Code is correct at `phase1_cdr/detection.py:310`.
+  Fixed on this Codex branch by adding the missing final-key unit test at
+  `phase1_cdr/tests/test_detection.py:208` (same total + same earliest timestamp
+  -> lower number wins). Existing tests already cover total ranking and 4-way
+  buckets at `phase1_cdr/tests/test_detection.py:179`, plus earliest-timestamp
+  tie-break at `phase1_cdr/tests/test_detection.py:198`.
+
+**Correctness concerns**
+- **Call-type labels:** I do not think the generated harness should be the thing
+  that pins `1/2/11/22 -> call_out/call_in/sms_out/sms_in`; because it is generated
+  by `_contacts()`, that would still share conceptual errors. The current hardcoded
+  convention is fine if kept explicit in `phase1_cdr/loader.py:26` and
+  `phase1_cdr/detection.py:105`, with the hand-written unit test at
+  `phase1_cdr/tests/test_detection.py:179` serving as the real guard. If stronger
+  independence is wanted later, add a tiny hand-authored CSV/ground-truth fixture,
+  not another generated check.
+- **Unused schema columns:** `phase1_cdr/loader.py:14` requires all 9 columns and
+  fails missing ones at `phase1_cdr/loader.py:61`, while `other_imei`/`other_area`
+  are documented as carried-but-unused at `phase1_cdr/README.md:53`. My lean:
+  acceptable if the real generator contract has intentionally moved to 9 columns;
+  otherwise it is integration risk because valid home/work/frequent-area data will
+  be rejected only for missing unused columns. Related later hardening: if the real
+  generator can emit blank `other_party`, pandas `groupby("other_party")` at
+  `phase1_cdr/detection.py:296` will drop null counterparties silently unless the
+  loader rejects or normalizes them.
+
+**Nits**
+- `phase1_cdr/dev_fixtures.py:11` still said the future generator must emit the
+  old 6-column schema. Fixed on this Codex branch to 9-column.
+
+**Verification**
+- `phase1_cdr/.venv`: `python -m pytest tests` -> **18 passed** (17 existing +
+  the new tie-break test).
+- `phase1_cdr/.venv`: `python main.py sample_data.csv ground_truth.json` ->
+  **34/34 (100%)**.
+
+---
+
 ## 2026-06-24 — Claude: `frequency-branch` rebased onto `main` + fast-forward MERGED (Nadim's call)
 
 Closes the frequency-query feature. Authorized explicitly by Nadim this session
