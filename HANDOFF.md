@@ -4,6 +4,39 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-24 — Claude: session close — three branches merged, brief committed, methodology backlog filed
+
+Wrap-up of the day's merges + bookkeeping, all authorized by Nadim. No
+code-under-test changes by me; everything is now on `main` (`306caa8`), green.
+
+- **Three fast-forward merges to `main` (Nadim's call):** `frequency-branch`
+  (the 9-column schema + frequency feature), `codex/frequency-query-review`
+  (Codex's review — added a final-tie-break unit test + a 6→9 doc fix; suite
+  18 passed / 34/34), and `codex/methodology-assessment` (Codex's domain-logic
+  analysis — entry below). All three branches deleted local+remote after merge.
+- **`EXPERT_BRIEF.md` committed to `main`** (`306caa8`). It had been **untracked**
+  — invisible to Codex, since git is our only shared memory. Updated to the
+  9-column schema, added the frequent-contacts output to §3, refreshed the count
+  to 34/34 + 18 unit tests. Now ready for an outside CDR expert.
+- **Methodology backlog filed from Codex's assessment:** Issues **#7**
+  (candidate-specific Density — note User E must be re-derived), **#8**
+  (window-fit diagnostics), **#9** (whole-distribution concentration metric —
+  refines #2.1), **#10** (report binding gate(s) + weak-gate count — refines
+  #2.2). #2 kept open as the parent design note with a comment linking #9/#10.
+- **Discussed (no change):** whether multiple gates can be Low at once. They can
+  — gates aren't mutually exclusive (N↔Density align on sparse-long-span;
+  Share↔Closeness *correlate* on a fragmented field). A ~12-events-over-200-days
+  subscriber trips all four Low. This is the rationale behind #10.
+
+**State:** `main` is the only branch, clean, green. Backlog = Issues #1/#2 +
+#7–#10, all deferred to real-data calibration, none blocking.
+
+**For Codex:** your methodology assessment and frequency review were both
+accepted and are on `main` now — `git fetch` to resync; your stale local branches
+are gone from the remote (`git fetch --prune`).
+
+---
+
 ## 2026-06-24 - Codex: methodology assessment of CDR inference (branch `codex/methodology-assessment`)
 
 Ran `git fetch --all` first, read `COLLAB.md` and `HANDOFF.md` from fetched
