@@ -196,11 +196,11 @@ CREATE INDEX idx_records_dataset_phone ON cdr_records(dataset_id, phone_number);
 
 targets (
   id           INTEGER PRIMARY KEY,
-  name         TEXT NOT NULL,
+  name         TEXT NOT NULL,            -- display label only, NOT an identity key
   dataset_id   INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
   phone_number TEXT NOT NULL,
   created_at   TEXT NOT NULL,
-  UNIQUE(dataset_id, phone_number, name)
+  UNIQUE(dataset_id, phone_number)       -- one target per phone per dataset, full stop
 );
 
 analysis_results (
@@ -256,7 +256,7 @@ requires a valid session.
 | `GET` | `/api/datasets` | `[{id, name, filename, imported_at, row_count, skipped_count}]` |
 | `GET` | `/api/datasets/<id>/phone-numbers` | distinct numbers + counts |
 | `DELETE` | `/api/datasets/<id>` | cascade-delete → `{ok}` |
-| `POST` | `/api/targets` | `{name, dataset_id, phone_number}` → 201; 404 if dataset/number absent |
+| `POST` | `/api/targets` | `{name, dataset_id, phone_number}` → 201; 404 if dataset/number absent; **409** if a target already exists for that `(dataset_id, phone_number)` |
 | `GET` | `/api/targets` | list targets |
 | `DELETE` | `/api/targets/<id>` | delete → `{ok}` |
 | `POST` | `/api/targets/<id>/analyze` | run detection, store + return result |
@@ -321,7 +321,9 @@ The single seam to Phase 1 (no Phase 1 edits):
   `timestamp` / negative `duration` → skipped with itemized reasons, valid rows
   stored; corrupt/non-xlsx → `BAD_FILE`, no crash.
 - **targets** — create/list/delete; create against nonexistent dataset or
-  phone_number → 404; cascade delete removes targets + results.
+  phone_number → 404; creating a second target for an already-targeted
+  `(dataset_id, phone_number)` → 409 (even with a different name); cascade delete
+  removes targets + results.
 - **analysis** — run on a target → full response shape; **bridge equivalence**:
   equals a direct Phase 1 call on the same rows.
 - **audit** — login/import/analysis/target/setup events each land a row with
