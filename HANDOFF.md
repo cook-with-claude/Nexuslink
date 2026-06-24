@@ -4,6 +4,61 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-24 (session 2) — Claude: Phase 2A design + plan complete; SDD execution NOT yet started (RESUME HERE)
+
+Brainstormed, spec'd, and wrote a full implementation plan for **Phase 2A —
+Backend Foundation**. **No application code written yet** — the next session
+starts executing the plan. Everything is on branch **`claude/phase2a-design`**
+(pushed to origin), `main` untouched.
+
+### What exists now (all committed on `claude/phase2a-design`)
+- **Spec:** `docs/superpowers/specs/2026-06-24-phase2a-backend-design.md`
+  (commits `569bb33` + fix `7c987a4`).
+- **Plan:** `docs/superpowers/plans/2026-06-24-phase2a-backend-foundation.md`
+  (commit `f252f1e`) — **14 TDD tasks**, full code in every step.
+- Branch tip: `f252f1e`. Three commits ahead of `main`; zero `phase1_cdr/`
+  changes (Phase 1 stays byte-identical to tag `v1.0-phase1`).
+
+### Decisions locked during brainstorming (do not re-litigate)
+1. **9-column CDR schema** for import/storage (matches v1.0; the prompt's older
+   6-col list was wrong — frequent-contacts needs `other_party`).
+2. **Single account** per install.
+3. **SQLCipher via `sqlcipher3-wheels`** — the only binding with prebuilt Windows
+   wheels (official `sqlcipher3-binary` is Linux-only; `pysqlcipher3` needs a VS
+   build). SQLCipher 4, self-contained, Py 3.11 ✓.
+4. **Envelope key management** — random 256-bit DB key, AES-GCM-wrapped by a
+   scrypt-derived KEK from the password; bcrypt is the password verifier. Raw
+   db_key never on disk. Non-secret `auth.json` sidecar holds
+   {username, bcrypt_hash, kdf_salt, db_key_nonce, wrapped_db_key, created_at}.
+5. **First-run `POST /api/setup`** (409 once an account exists).
+6. **change-password endpoint: IN.** Login lockout: OUT (YAGNI, localhost).
+7. **Delete-dataset endpoint: IN.** Analysis response exposes the **full gate
+   trace** (gates/share/closeness/density), not just headline confidence.
+8. Targets are **`UNIQUE(dataset_id, phone_number)`** — name is a label, not an
+   identity key; duplicate create → 409.
+
+### EXACT resume instructions (next session)
+1. `git fetch && git checkout claude/phase2a-design` (tip should be `f252f1e`).
+2. Re-invoke **superpowers:subagent-driven-development** on the plan file above.
+3. **Progress ledger:** `.superpowers/sdd/progress.md` — currently **0 of 14
+   tasks complete**. Resume at **Task 1** (deps/config/gitignore). If the ledger
+   is gone (`git clean`), trust `git log` — anything past `f252f1e` is done work.
+4. **Task 1 Step 2 is a hard gate:** `pip install -r requirements.txt` then
+   import-check `sqlcipher3` on this Windows machine BEFORE relying on it. If that
+   import fails, stop and resolve it first — all 14 tasks rest on it.
+5. Plan has one deliberate wrinkle (documented in Task 6): the app factory
+   registers 4 blueprints that don't exist until Tasks 7–12 → comment them out,
+   get Task 6 green, uncomment each as its task lands.
+6. Per `COLLAB.md`: stay on the `claude/` branch, Codex reviews the diff, only
+   Nadim merges to `main`.
+
+### For Codex
+The branch is review-ready as a **design + plan** (no app code yet). Worth a read
+of the spec + plan now if you want to flag anything before implementation; the
+implementation diff will come task-by-task next session.
+
+---
+
 ## 2026-06-24 — Claude: session close — three branches merged, brief committed, methodology backlog filed
 
 Wrap-up of the day's merges + bookkeeping, all authorized by Nadim. No
