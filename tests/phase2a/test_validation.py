@@ -41,3 +41,10 @@ def test_negative_duration_skipped():
            "call_type": "1", "duration_seconds": "-3"}
     clean, reason = validation.validate_row(row)
     assert clean is None and "duration" in reason
+
+
+def test_missing_required_field_skipped():
+    row = {"phone_number": "", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
+           "call_type": "1", "duration_seconds": "5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "phone_number" in reason

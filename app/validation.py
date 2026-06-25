@@ -22,12 +22,12 @@ from loader import REQUIRED_COLUMNS, VALID_CALL_TYPES  # noqa: E402
 _REQUIRED_NONEMPTY = ("phone_number", "area")
 
 
-def missing_columns(columns) -> list[str]:
+def missing_columns(columns: list[str]) -> list[str]:
     present = set(columns)
     return [c for c in REQUIRED_COLUMNS if c not in present]
 
 
-def validate_row(row: dict):
+def validate_row(row: dict) -> tuple[dict | None, str | None]:
     for field in _REQUIRED_NONEMPTY:
         value = row.get(field)
         if value is None or str(value).strip() == "":
