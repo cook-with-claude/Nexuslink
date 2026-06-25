@@ -1,5 +1,6 @@
 import pathlib
 import pytest
+import pandas as pd
 
 
 @pytest.fixture()
@@ -8,9 +9,6 @@ def app_data_dir(tmp_path, monkeypatch):
     d = tmp_path / "appdata"
     monkeypatch.setenv("APP_DATA_DIR", str(d))
     return pathlib.Path(d)
-
-
-import pandas as pd
 
 
 @pytest.fixture()

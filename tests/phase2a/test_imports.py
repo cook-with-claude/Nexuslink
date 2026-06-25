@@ -64,3 +64,4 @@ def test_delete_dataset_cascades(client, sample_xlsx):
     ds_id = _upload(client, sample_xlsx).get_json()["data"]["dataset_id"]
     assert client.delete(f"/api/datasets/{ds_id}").status_code == 200
     assert client.get("/api/datasets").get_json()["data"] == []
+    assert client.get(f"/api/datasets/{ds_id}/phone-numbers").status_code == 404
