@@ -9,6 +9,7 @@ the caller (the Flask app holds it for the session) but never written to disk.
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import os
 from datetime import datetime, timezone
@@ -78,7 +79,9 @@ def authenticate(username: str, password: str) -> bytes:
     if not account_exists():
         raise AuthError("no account")
     rec = _load()
-    if username != rec["username"] or not crypto.verify_password(password, rec["bcrypt_hash"]):
+    username_ok = hmac.compare_digest(username, rec["username"])
+    password_ok = crypto.verify_password(password, rec["bcrypt_hash"])
+    if not (username_ok and password_ok):
         raise AuthError("bad credentials")
     kek = crypto.derive_kek(password, _b64d(rec["kdf_salt"]))
     try:
@@ -88,6 +91,8 @@ def authenticate(username: str, password: str) -> bytes:
 
 
 def change_password(old_password: str, new_password: str) -> None:
+    if not account_exists():
+        raise AuthError("no account")
     rec = _load()
     db_key = authenticate(rec["username"], old_password)  # raises AuthError if wrong
     salt = os.urandom(config.SCRYPT_SALT_BYTES)

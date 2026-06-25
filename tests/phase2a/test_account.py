@@ -47,3 +47,8 @@ def test_change_password_wrong_old_raises(app_data_dir):
     account.create_account("nadim", "hunter2")
     with pytest.raises(account.AuthError):
         account.change_password("WRONG", "newpass9")
+
+
+def test_change_password_no_account_raises(app_data_dir):
+    with pytest.raises(account.AuthError):
+        account.change_password("whatever", "newpass9")
