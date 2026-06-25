@@ -7,7 +7,7 @@ import os
 
 from flask import Flask, g, jsonify, request, session
 
-from app import account, config, storage
+from app import account, storage
 
 
 def ok(data=None, status: int = 200):
