@@ -43,3 +43,7 @@ def test_missing_dataset_or_number_is_404(client, dataset_id):
                        "phone_number": "01000001"}).status_code == 404
     assert client.post("/api/targets", json={"name": "x", "dataset_id": dataset_id,
                        "phone_number": "09999999"}).status_code == 404
+
+
+def test_delete_unknown_target_404(client):
+    assert client.delete("/api/targets/9999").status_code == 404
