@@ -9,6 +9,8 @@ The raw database key is never written to disk; only its wrapped form is.
 
 from __future__ import annotations
 
+import os
+
 import bcrypt
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
@@ -36,8 +38,6 @@ def derive_kek(password: str, salt: bytes) -> bytes:
 
 
 def wrap_key(kek: bytes, db_key: bytes) -> tuple[bytes, bytes]:
-    import os
-
     nonce = os.urandom(config.GCM_NONCE_BYTES)
     ciphertext = AESGCM(kek).encrypt(nonce, db_key, None)
     return nonce, ciphertext

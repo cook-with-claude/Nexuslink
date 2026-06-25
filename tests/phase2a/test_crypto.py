@@ -15,7 +15,9 @@ def test_envelope_roundtrip_recovers_db_key():
     salt = os.urandom(16)
     db_key = os.urandom(32)
     kek = crypto.derive_kek("hunter2", salt)
+    assert len(kek) == 32
     nonce, ct = crypto.wrap_key(kek, db_key)
+    assert len(nonce) == 12
     assert crypto.unwrap_key(kek, nonce, ct) == db_key
 
 
