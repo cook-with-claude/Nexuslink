@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import pytest
+from sqlcipher3 import dbapi2 as sqlcipher
 from app import storage, config
 
 
@@ -38,7 +39,7 @@ def test_foreign_keys_enforced(app_data_dir):
     key = os.urandom(32)
     conn = storage.connect(key)
     storage.init_schema(conn)
-    with pytest.raises(Exception):
+    with pytest.raises(sqlcipher.IntegrityError):
         conn.execute(
             "INSERT INTO targets (name, dataset_id, phone_number, created_at) "
             "VALUES (?, ?, ?, ?)",

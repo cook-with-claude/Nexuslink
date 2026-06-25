@@ -64,12 +64,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
-def connect(db_key: bytes):
+def connect(db_key: bytes) -> sqlcipher.Connection:
     conn = sqlcipher.connect(str(config.db_path()))
-    conn.row_factory = sqlcipher.Row
     # PRAGMA key MUST be the first statement. Raw key as a hex blob (x'..').
     conn.execute(f"PRAGMA key = \"x'{db_key.hex()}'\"")
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlcipher.Row
     return conn
 
 
