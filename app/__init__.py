@@ -93,7 +93,7 @@ def create_app() -> Flask:
     app.register_blueprint(imports_bp)
     from app.targets import bp as targets_bp
     app.register_blueprint(targets_bp)
-    # from app.analysis import bp as analysis_bp
-    # app.register_blueprint(analysis_bp)
+    from app.analysis import bp as analysis_bp
+    app.register_blueprint(analysis_bp)
 
     return app
