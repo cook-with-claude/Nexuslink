@@ -89,8 +89,8 @@ def create_app() -> Flask:
     # Uncomment each block as its task lands.
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp)
-    # from app.imports import bp as imports_bp
-    # app.register_blueprint(imports_bp)
+    from app.imports import bp as imports_bp
+    app.register_blueprint(imports_bp)
     # from app.targets import bp as targets_bp
     # app.register_blueprint(targets_bp)
     # from app.analysis import bp as analysis_bp
