@@ -27,7 +27,7 @@ _COLUMNS = [
 def rows_to_frame(rows: list[dict]) -> pd.DataFrame:
     df = pd.DataFrame(list(rows), columns=_COLUMNS)
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    df["call_type"] = pd.to_numeric(df["call_type"], errors="coerce").astype("Int64").astype(int)
+    df["call_type"] = pd.to_numeric(df["call_type"], errors="coerce").astype("Int64").fillna(0).astype(int)
     df["duration_seconds"] = pd.to_numeric(df["duration_seconds"], errors="coerce").fillna(0).astype(int)
     return df
 

@@ -29,6 +29,8 @@ def test_bridge_matches_direct_phase1_call(user_a_rows):
     assert bridge["home"]["confidence"] == direct_home.confidence
     assert bridge["home"]["gates"] == direct_home.gates
 
+    assert bridge["work"]["area"] == detection.detect_work(frame).area
+
     direct_contacts = detection.detect_frequent_contacts(frame)
     assert [c["number"] for c in bridge["frequent_contacts"]] == [c.number for c in direct_contacts]
 
