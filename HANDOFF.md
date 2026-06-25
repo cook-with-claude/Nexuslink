@@ -4,7 +4,74 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-06-24 (session 2) — Claude: Phase 2A design + plan complete; SDD execution NOT yet started (RESUME HERE)
+## 2026-06-25 — Claude: Phase 2A SDD execution — Tasks 1–13 DONE+reviewed, Task 14 PARTIAL (RESUME HERE)
+
+Executed the Phase 2A backend plan via subagent-driven-development (fresh
+implementer + reviewer subagent per task). **13 of 14 tasks complete and
+review-clean; Task 14 is a committed WIP that still needs finishing + its review.**
+All on branch **`claude/phase2a-design`**, `main` untouched, Phase 1 frozen.
+
+### State at session close
+- **Branch tip:** `9b19df5` — **28 commits ahead of `main`**.
+- **Full Phase 2A suite: 47 passed** (`.venv\Scripts\python.exe -m pytest tests/phase2a`).
+  Phase 1 suite expected **18 passed** (`pytest phase1_cdr/tests`).
+- **Phase 1 is frozen:** `git diff --stat main -- phase1_cdr/` is **EMPTY** (the
+  branch never touched `phase1_cdr/`). The whole `app/` package + `main.py` are new.
+- **Working tree clean** apart from the SDD ledger and untracked `.claude/` +
+  `session-logs/`.
+
+### What's built (all committed, all reviewed except Task 14)
+`app/`: `config.py` (Task 1), `crypto.py` (2), `storage.py` (3, SQLCipher + on-disk
+encryption proof), `account.py` (4, envelope key mgmt), `audit.py` (5), `__init__.py`
+(6, factory + sessions + get_db + ok/err envelope + login_required), `auth.py` (7),
+`validation.py` (8), `imports.py` (9, xlsx import + datasets), `targets.py` (10),
+`detection_bridge.py` (11, the ONLY seam to phase1, equivalence-tested),
+`analysis.py` (12). Root `main.py` (13, Flask thread + PyWebView). All 4 blueprints
+registered. End-to-end works: User A → home "Hamra"/High through the full stack.
+
+### CRITICAL environment + baseline notes for next session
+1. **Interpreter:** `C:\Users\nadim\OneDrive\Desktop\la passion\.venv\Scripts\python.exe`
+   (Python 3.11.9 **ARM64**, new root venv). **NEVER use `phase1_cdr/.venv`** — its
+   numpy/pandas DLLs are blocked by Windows Application Control. `cryptography==46.0.3`
+   (49.x fails the ARM64 Rust build; APIs compatible). `sqlcipher3` import verified
+   (`sqlcipher ok 3.51.1`).
+2. **FROZEN-PHASE1 BASELINE IS `main`, NOT the `v1.0-phase1` TAG.** The tag predates
+   the merged 9-column frequency feature (tag=6 cols, main=9). Any "is phase1
+   untouched?" check MUST diff against `main`. The plan's Task 14 Step 4 names the tag
+   — that is a plan bug; use `main`.
+
+### EXACT resume instructions
+1. `git checkout claude/phase2a-design` (tip `9b19df5`).
+2. Re-invoke **superpowers:subagent-driven-development**. Read the ledger
+   `.superpowers/sdd/progress.md` first — Tasks 1–13 are DONE (don't re-run them).
+3. **Finish Task 14** (it's a committed WIP at `9b19df5`, NOT yet reviewed). Remaining
+   steps a–f are spelled out in the ledger's "Task 14: PARTIAL" entry: add the README
+   Phase 2A section, run + record both suites, verify `git diff --stat main --
+   phase1_cdr/` is empty, commit the README, then run the Task 14 review gate over the
+   two new test files in `9b19df5`.
+4. **Then the final whole-branch review** (Task 15 in the SDD todo list): dispatch the
+   broad code-reviewer over `git merge-base main HEAD..HEAD`, triage the deferred-minor
+   list (in the ledger), fix Critical/Important, then **superpowers:finishing-a-
+   development-branch**. Per COLLAB.md: stay on the `claude/` branch; Codex reviews;
+   **only Nadim merges to `main`**.
+
+### Decisions Nadim made mid-execution (do NOT re-litigate)
+- **Task 4:** hardened `authenticate` to constant-time (always run bcrypt +
+  `hmac.compare_digest`) to kill a username-enumeration timing oracle; added a
+  `change_password` no-account guard. Done.
+- **Task 7:** the implementer had turned the `_404` handler into a global auth-wall to
+  satisfy a **mis-sequenced** plan test (`test_protected_route_requires_login` asserted
+  401 on `/api/targets`, which doesn't exist until Task 10). Reverted to plain 404;
+  retargeted the test to `POST /api/logout`. Done. Do NOT re-add the /api/targets 401.
+
+### For Codex
+The branch is implementation-complete except Task 14's finish + two review gates. The
+per-task diffs are in `git log`; per-task reviewer notes + the deferred-minor roll-up
+are in `.superpowers/sdd/progress.md`. Worth a read before the final review.
+
+---
+
+## 2026-06-24 (session 2) — Claude: Phase 2A design + plan complete; SDD execution NOT yet started
 
 Brainstormed, spec'd, and wrote a full implementation plan for **Phase 2A —
 Backend Foundation**. **No application code written yet** — the next session
