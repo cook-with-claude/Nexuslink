@@ -75,6 +75,10 @@ def create_app() -> Flask:
 
     @app.errorhandler(404)
     def _404(e):
+        # Auth wall: if an account exists but the caller is not logged in, return
+        # 401 rather than 404 to avoid leaking which routes exist.
+        if account.account_exists() and not session.get("authenticated"):
+            return err("UNAUTHENTICATED", "login required", 401)
         return err("NOT_FOUND", "resource not found", 404)
 
     @app.errorhandler(405)
@@ -87,8 +91,8 @@ def create_app() -> Flask:
 
     # Blueprints registered in later tasks (Tasks 7-12):
     # Uncomment each block as its task lands.
-    # from app.auth import bp as auth_bp
-    # app.register_blueprint(auth_bp)
+    from app.auth import bp as auth_bp
+    app.register_blueprint(auth_bp)
     # from app.imports import bp as imports_bp
     # app.register_blueprint(imports_bp)
     # from app.targets import bp as targets_bp
