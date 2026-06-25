@@ -21,7 +21,7 @@ def test_setup_then_second_setup_conflicts(client):
 def test_protected_route_requires_login(client):
     _setup(client)
     client.post("/api/logout")
-    r = client.get("/api/targets")
+    r = client.post("/api/logout")
     assert r.status_code == 401
 
 

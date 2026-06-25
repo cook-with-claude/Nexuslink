@@ -75,10 +75,6 @@ def create_app() -> Flask:
 
     @app.errorhandler(404)
     def _404(e):
-        # Auth wall: if an account exists but the caller is not logged in, return
-        # 401 rather than 404 to avoid leaking which routes exist.
-        if account.account_exists() and not session.get("authenticated"):
-            return err("UNAUTHENTICATED", "login required", 401)
         return err("NOT_FOUND", "resource not found", 404)
 
     @app.errorhandler(405)

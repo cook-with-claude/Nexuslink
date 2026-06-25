@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, request, session
 
-from app import account, audit, err, get_db, login_required, ok, storage
+from app import account, audit, err, get_db, login_required, ok
 
 bp = Blueprint("auth", __name__, url_prefix="/api")
 
