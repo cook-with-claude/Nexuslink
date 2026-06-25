@@ -1,0 +1,8 @@
+pandas
+openpyxl
+pytest
+flask
+pywebview
+bcrypt
+cryptography
+sqlcipher3-wheels

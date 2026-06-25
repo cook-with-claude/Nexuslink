@@ -7,3 +7,8 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Phase 2A app-data (encrypted DB + auth sidecar) — never committed
+data/
+*.db
+auth.json
