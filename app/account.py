@@ -12,6 +12,7 @@ import base64
 import hmac
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 
 from cryptography.exceptions import InvalidTag
@@ -45,9 +46,21 @@ def _load() -> dict:
 
 
 def _save(record: dict) -> None:
-    with open(config.auth_path(), "w", encoding="utf-8") as fh:
-        json.dump(record, fh, indent=2)
-        fh.write("\n")
+    auth_path = config.auth_path()
+    auth_dir = auth_path.parent
+    auth_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=auth_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(record, fh, indent=2)
+            fh.write("\n")
+        os.replace(tmp_path, auth_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _now() -> str:

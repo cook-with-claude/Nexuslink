@@ -1,5 +1,9 @@
+import json
+import os
+
 import pytest
-from app import account, storage
+
+from app import account, config, storage
 
 
 def test_setup_creates_account_and_encrypted_db(app_data_dir):
@@ -52,3 +56,45 @@ def test_change_password_wrong_old_raises(app_data_dir):
 def test_change_password_no_account_raises(app_data_dir):
     with pytest.raises(account.AuthError):
         account.change_password("whatever", "newpass9")
+
+
+# ---------------------------------------------------------------------------
+# Atomic _save tests
+# ---------------------------------------------------------------------------
+
+def test_save_roundtrip_no_temp_files(app_data_dir):
+    """_save followed by _load round-trips correctly; no temp files remain."""
+    account.create_account("nadim", "hunter2")
+    auth_dir = config.auth_path().parent
+    files_after = set(os.listdir(auth_dir))
+    assert "auth.json" in files_after
+    # No leftover .tmp files
+    assert not any(f.endswith(".tmp") for f in files_after)
+    # Round-trip check via authenticate (which calls _load internally)
+    key = account.authenticate("nadim", "hunter2")
+    assert isinstance(key, bytes) and len(key) == 32
+
+
+def test_failed_atomic_write_preserves_original(app_data_dir, monkeypatch):
+    """If os.replace raises, the original auth.json is left intact and no temp file remains."""
+    account.create_account("nadim", "hunter2")
+    auth_path = config.auth_path()
+    original_content = auth_path.read_text(encoding="utf-8")
+    original_record = json.loads(original_content)
+
+    # Monkeypatch os.replace to simulate a failure during the atomic swap.
+    def failing_replace(src, dst):
+        raise OSError("simulated os.replace failure")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    with pytest.raises(OSError, match="simulated os.replace failure"):
+        account.change_password("hunter2", "newpass9")
+
+    # Original auth.json must be completely intact.
+    restored_content = auth_path.read_text(encoding="utf-8")
+    assert json.loads(restored_content) == original_record
+
+    # No temp files left behind.
+    auth_dir = auth_path.parent
+    assert not any(f.endswith(".tmp") for f in os.listdir(auth_dir))
