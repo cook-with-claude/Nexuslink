@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, request
+from sqlcipher3 import dbapi2 as sqlcipher
 
 from app import audit, err, get_db, login_required, ok
 
@@ -37,10 +38,22 @@ def create_target():
     if dup is not None:
         return err("CONFLICT", "a target already exists for this phone in this dataset", 409)
 
-    cur = db.execute(
-        "INSERT INTO targets (name, dataset_id, phone_number, created_at) VALUES (?, ?, ?, ?)",
-        (name, dataset_id, phone_number, datetime.now(timezone.utc).isoformat()),
-    )
+    created_at = datetime.now(timezone.utc).isoformat()
+    try:
+        cur = db.execute(
+            "INSERT INTO targets (name, dataset_id, phone_number, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (name, dataset_id, phone_number, created_at),
+        )
+    except sqlcipher.IntegrityError as exc:
+        db.rollback()
+        if "UNIQUE constraint failed" in str(exc) and "targets" in str(exc):
+            return err(
+                "CONFLICT",
+                "a target already exists for this phone in this dataset",
+                409,
+            )
+        raise
     tid = cur.lastrowid
     audit.write_audit(db, current_app.config["USERNAME"], audit.TARGET_CREATE,
                       {"target_id": tid, "dataset_id": dataset_id})

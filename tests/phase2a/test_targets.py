@@ -1,5 +1,7 @@
 import io
 import pytest
+from sqlcipher3 import dbapi2 as sqlcipher
+
 from app import create_app
 
 
@@ -35,6 +37,33 @@ def test_duplicate_pair_conflicts_even_with_new_name(client, dataset_id):
                 "dataset_id": dataset_id, "phone_number": "01000001"})
     r = client.post("/api/targets", json={"name": "different label",
                     "dataset_id": dataset_id, "phone_number": "01000001"})
+    assert r.status_code == 409
+
+
+def test_duplicate_insert_race_returns_conflict(client, dataset_id, monkeypatch):
+    from app import targets
+
+    real_get_db = targets.get_db
+
+    class RacingDb:
+        def __init__(self, db):
+            self._db = db
+
+        def execute(self, sql, params=()):
+            if sql.startswith("INSERT INTO targets"):
+                raise sqlcipher.IntegrityError(
+                    "UNIQUE constraint failed: targets.dataset_id, targets.phone_number"
+                )
+            return self._db.execute(sql, params)
+
+        def rollback(self):
+            return self._db.rollback()
+
+    monkeypatch.setattr(targets, "get_db", lambda: RacingDb(real_get_db()))
+
+    r = client.post("/api/targets", json={"name": "race",
+                    "dataset_id": dataset_id, "phone_number": "01000001"})
+
     assert r.status_code == 409
 
 
