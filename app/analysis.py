@@ -28,8 +28,10 @@ def analyze(target_id: int):
         return err("NOT_FOUND", "target not found", 404)
 
     try:
-        top_n = int(request.args.get("top_n", 5))
-    except ValueError:
+        # Clamp to >= 0: a negative top_n would become a negative list slice
+        # (e.g. [:-2] = "all but the last two"), silently returning a wrong ranking.
+        top_n = max(0, int(request.args.get("top_n", 5)))
+    except (TypeError, ValueError):
         top_n = 5
 
     rows = db.execute(

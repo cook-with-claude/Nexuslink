@@ -32,7 +32,10 @@ def wait_until_ready(port: int, timeout: float = 10.0) -> None:
                 if r.status == 200:
                     return
         except Exception:
-            time.sleep(0.05)
+            pass
+        # Back off on every non-success path (including a non-200 response),
+        # so a server that is up but not yet returning 200 can't hot-loop the CPU.
+        time.sleep(0.05)
     raise RuntimeError("server did not become ready in time")
 
 

@@ -55,7 +55,11 @@ def validate_row(row: dict) -> tuple[dict | None, str | None]:
         if _is_blank(value):
             return None, f"{field} is required"
 
-    ts = pd.to_datetime(row.get("timestamp"), errors="coerce")
+    # Pin the format to ISO-8601 rather than letting pandas infer it. Inference
+    # would silently misread locale formats (e.g. DD/MM/YYYY) where day <= 12 and
+    # coerce the rest to NaT -- partly wrong, partly dropped, with no signal. The
+    # DB stores timestamps as .isoformat(), so ISO-8601 is the natural contract.
+    ts = pd.to_datetime(row.get("timestamp"), errors="coerce", format="ISO8601")
     if pd.isna(ts):
         return None, "unparseable timestamp"
 

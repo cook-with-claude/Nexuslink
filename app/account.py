@@ -29,6 +29,24 @@ class AuthError(Exception):
     pass
 
 
+class PasswordTooLongError(Exception):
+    """The password exceeds bcrypt's hard limit (see MAX_PASSWORD_BYTES)."""
+
+
+# bcrypt rejects inputs longer than 72 bytes. Up to and including bcrypt 4.x this
+# was a SILENT truncation; bcrypt >= 5.0 raises ValueError instead. We guard at
+# this layer so the routes can return a clean 400 rather than a 500, independent
+# of the installed bcrypt version.
+MAX_PASSWORD_BYTES = 72
+
+
+def _check_password_length(password: str) -> None:
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise PasswordTooLongError(
+            f"password must be at most {MAX_PASSWORD_BYTES} bytes"
+        )
+
+
 def _b64e(b: bytes) -> str:
     return base64.b64encode(b).decode("ascii")
 
@@ -55,6 +73,8 @@ def _save(record: dict) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(record, fh, indent=2)
             fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())  # durably persist contents before the swap
         os.replace(tmp_path, auth_path)
     except Exception:
         try:
@@ -71,6 +91,7 @@ def _now() -> str:
 def create_account(username: str, password: str) -> bytes:
     if account_exists():
         raise AccountExistsError("an account already exists")
+    _check_password_length(password)
     salt = os.urandom(config.SCRYPT_SALT_BYTES)
     db_key = os.urandom(config.DB_KEY_BYTES)
     kek = crypto.derive_kek(password, salt)
@@ -128,6 +149,7 @@ def authenticate(username: str, password: str) -> bytes:
 def change_password(old_password: str, new_password: str) -> None:
     if not account_exists():
         raise AuthError("no account")
+    _check_password_length(new_password)
     try:
         rec = _load()
         username = rec["username"]

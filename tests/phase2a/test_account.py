@@ -80,6 +80,21 @@ def test_change_password_no_account_raises(app_data_dir):
         account.change_password("whatever", "newpass9")
 
 
+def test_create_account_rejects_overlong_password(app_data_dir):
+    with pytest.raises(account.PasswordTooLongError):
+        account.create_account("nadim", "x" * 73)
+    # The rejection happened before anything was written.
+    assert account.account_exists() is False
+
+
+def test_change_password_rejects_overlong_new_password(app_data_dir):
+    account.create_account("nadim", "hunter2")
+    with pytest.raises(account.PasswordTooLongError):
+        account.change_password("hunter2", "y" * 73)
+    # The old password is untouched.
+    assert isinstance(account.authenticate("nadim", "hunter2"), bytes)
+
+
 # ---------------------------------------------------------------------------
 # Atomic _save tests
 # ---------------------------------------------------------------------------

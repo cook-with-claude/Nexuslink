@@ -43,3 +43,15 @@ def test_result_404_before_any_analysis(client, target_id):
 
 def test_analyze_unknown_target_404(client):
     assert client.post("/api/targets/999/analyze").status_code == 404
+
+
+def test_negative_top_n_does_not_return_garbage(client, target_id):
+    """A negative top_n is clamped to 0 rather than becoming a negative slice
+    (which would silently return 'all but the last N' frequent areas/contacts)."""
+    r = client.post(f"/api/targets/{target_id}/analyze?top_n=-2")
+    assert r.status_code == 200
+    data = r.get_json()["data"]
+    assert data["frequent_areas"] == []
+    assert data["frequent_contacts"] == []
+    # Home/work detection is independent of top_n and still works.
+    assert data["home"]["area"] == "Hamra"

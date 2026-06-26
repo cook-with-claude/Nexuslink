@@ -32,6 +32,8 @@ def setup():
         db_key = account.create_account(username, password)
     except account.AccountExistsError:
         return err("ACCOUNT_EXISTS", "an account already exists", 409)
+    except account.PasswordTooLongError as exc:
+        return err("BAD_REQUEST", str(exc), 400)
     _unlock(username, db_key)
     _audit(username, audit.SETUP)
     return ok({"username": username}, status=201)
@@ -46,16 +48,14 @@ def login():
     try:
         db_key = account.authenticate(username, password)
     except account.AuthError:
-        # Record the failure by unlocking with the stored account is not possible
-        # without the password. Buffer it: open the DB only if we can derive the
-        # key from a subsequent success. Simplest correct approach: stash failed
-        # attempts in app.config and flush them on the next successful login.
-        fails = current_app.config.setdefault("PENDING_FAILS", [])
-        fails.append({"username": username})
+        # The audit_log table lives inside the encrypted DB, which can't be
+        # opened without a successful unlock. So a failed login is recorded to a
+        # plaintext sidecar instead -- durably, with its real timestamp, and
+        # without depending on the attacker ever succeeding (which is exactly the
+        # event we most want to keep). See audit.write_failed_login.
+        audit.write_failed_login(username)
         return err("UNAUTHENTICATED", "bad credentials", 401)
     _unlock(username, db_key)
-    for f in current_app.config.pop("PENDING_FAILS", []):
-        _audit(f["username"], audit.LOGIN_FAIL, f)
     _audit(username, audit.LOGIN_SUCCESS)
     return ok({"username": username})
 
@@ -80,6 +80,8 @@ def change_password():
         return err("BAD_REQUEST", "old_password and new_password required", 400)
     try:
         account.change_password(old, new)
+    except account.PasswordTooLongError as exc:
+        return err("BAD_REQUEST", str(exc), 400)
     except account.AuthError:
         return err("UNAUTHENTICATED", "old password incorrect", 401)
     username = current_app.config.get("USERNAME")

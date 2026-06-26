@@ -60,6 +60,15 @@ def test_corrupt_file_does_not_crash(client, tmp_path):
     assert r.get_json()["error"]["code"] == "BAD_FILE"
 
 
+def test_oversized_upload_rejected_413(client):
+    # Shrink the cap for this test, then post a body that exceeds it.
+    client.application.config["MAX_CONTENT_LENGTH"] = 1024
+    data = {"name": "big", "file": (io.BytesIO(b"x" * 4096), "big.xlsx")}
+    r = client.post("/api/imports", data=data, content_type="multipart/form-data")
+    assert r.status_code == 413
+    assert r.get_json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
+
+
 def test_delete_dataset_cascades(client, sample_xlsx):
     ds_id = _upload(client, sample_xlsx).get_json()["data"]["dataset_id"]
     assert client.delete(f"/api/datasets/{ds_id}").status_code == 200

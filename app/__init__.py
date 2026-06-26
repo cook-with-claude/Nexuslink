@@ -52,6 +52,9 @@ def create_app() -> Flask:
         SECRET_KEY=os.urandom(32),          # per-launch; no hardcoded secret
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
+        # Cap upload size so a huge/malicious .xlsx can't OOM the process; the
+        # import pipeline reads the whole file into a DataFrame.
+        MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50 MiB
         DB_KEY=None,
         USERNAME=None,
     )
@@ -80,6 +83,10 @@ def create_app() -> Flask:
     @app.errorhandler(405)
     def _405(e):
         return err("METHOD_NOT_ALLOWED", "method not allowed", 405)
+
+    @app.errorhandler(413)
+    def _413(e):
+        return err("PAYLOAD_TOO_LARGE", "uploaded file is too large", 413)
 
     @app.errorhandler(500)
     def _500(e):  # pragma: no cover

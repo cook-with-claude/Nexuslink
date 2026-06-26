@@ -43,6 +43,23 @@ def test_unparseable_timestamp_skipped():
     assert clean is None and "timestamp" in reason
 
 
+def test_non_iso_locale_date_is_rejected_not_misparsed():
+    """A DD/MM/YYYY date is non-ISO and must be rejected deterministically rather
+    than silently misread (day<=12) or partially coerced to NaT."""
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "13/06/2026 08:00:00",
+           "call_type": "1", "duration_seconds": "5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "timestamp" in reason
+
+
+def test_iso_timestamp_with_t_separator_accepted():
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01T03:15:00",
+           "call_type": "1", "duration_seconds": "5"}
+    clean, reason = validation.validate_row(row)
+    assert reason is None
+    assert clean["timestamp"].startswith("2024-01-01T03:15:00")
+
+
 def test_negative_duration_skipped():
     row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
            "call_type": "1", "duration_seconds": "-3"}
