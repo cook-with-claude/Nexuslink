@@ -64,8 +64,9 @@ the *other* agent reviews the diff, and only Nadim merges to `main`. The convent
 live in [`COLLAB.md`](COLLAB.md); the running intent log (what changed and *why*) lives
 in [`HANDOFF.md`](HANDOFF.md).
 
-CI runs `pytest` and the validation harness on every push and pull request, so
-correctness no longer depends on any one machine being able to run the suite.
+CI runs both suites on every push and pull request — the Phase 1 unit tests + validation
+harness, and the Phase 2A backend tests (`tests/phase2a`) — so correctness no longer
+depends on any one machine being able to run them.
 
 ## Quick start
 

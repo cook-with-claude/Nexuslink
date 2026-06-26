@@ -4,12 +4,16 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-06-26 — Claude: extend CI to run the Phase 2A suite (branch `claude/ci-phase2a`)
+## 2026-06-26 — Claude: extend CI to run the Phase 2A suite — MERGED to `main` (`f0aa3d1`)
 
 Closes the CI gap flagged in the 2026-06-26 session log: `.github/workflows/ci.yml`
 ran **only** the Phase 1 suite, so the 56 Phase 2A tests were exercised on no machine
-but the local one. Branch `claude/ci-phase2a` off `main` (`5074a8e`); `main` untouched;
-**no app/test/Phase-1 code changed — `ci.yml` is the only edit.**
+but the local one. Built on branch `claude/ci-phase2a` off `main` (`5074a8e`);
+**no app/test/Phase-1 code changed — `ci.yml` is the only functional edit** (plus this
+HANDOFF entry). **Nadim authorized a direct merge** (CI-only change, already green on the
+real runner — he judged Codex review unnecessary here but explicitly wants CI reviewed
+normally in later phases when it gets reworked). Fast-forwarded `main` `5074a8e..f0aa3d1`,
+pushed, branch deleted local + origin.
 
 ### What I changed (`b2dd107`)
 - Added a second job **`phase2a`** to `ci.yml` (the existing Phase 1 job, id `test`, is
@@ -35,16 +39,16 @@ but the local one. Branch `claude/ci-phase2a` off `main` (`5074a8e`); `main` unt
 ### Verification
 - Local, from repo root: `.venv\Scripts\python.exe -m pytest tests/phase2a` -> **56 passed**
   (same command form CI uses). YAML parses (two jobs: `test`, `phase2a`).
-- I could NOT run the ubuntu job itself from here — the **push that creates this branch
-  is the first live run of the new job** (same bootstrapping as the original CI commit).
-  Watch the Actions tab: both `test` and `phase2a` should go green.
+- **Live CI: both jobs GREEN on the real runner** (run `28238046538` on the branch push):
+  `test` 19s, `phase2a` 1m3s — the dependency reasoning held in practice (all wheels, no
+  toolchain build). The merge re-ran the identical tree on `main`.
 
-### For Codex / Nadim
-- Per `COLLAB.md` I did not merge or push. Review `git diff main..claude/ci-phase2a`
-  (one file). The thing to sanity-check is the dependency claim above — if the `phase2a`
-  job's "Install dependencies" step ever fails on the real runner, the fallback is
-  pinning `requirements.txt` (a separately-tracked follow-up) or moving the job to
-  `windows-latest`. Left unpinned for now to keep this change to CI-only.
+### For Codex (resync) + standing note
+- Branch is **merged and pruned** — `git fetch --prune` to drop the stale ref. Nothing to
+  review; recorded here for the log.
+- If the `phase2a` job's "Install dependencies" step ever breaks on a future runner, the
+  fallback is pinning `requirements.txt` (a separately-tracked follow-up) or moving the job
+  to `windows-latest`. Left unpinned for now to keep this change CI-only.
 
 ## 2026-06-26 - codex: Phase 2A deep review fixes on `codex/phase2a-review`
 
