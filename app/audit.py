@@ -38,6 +38,14 @@ FAILED_LOGIN_FILE = "login_failures.log"
 
 
 def write_failed_login(username: str) -> None:
+    """Append a failed-login record to the plaintext sidecar.
+
+    NOTE: this file is plaintext and NOT tamper-evident -- anyone who can write
+    app-data can edit or delete it. It is a best-effort operational signal, not an
+    authoritative audit source. Making it tamper-evident (HMAC/encryption) would
+    require a key that lives outside editable app-data AND is available before the
+    DB is unlocked, which this Phase 2A local-app threat model does not provide.
+    """
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "event_type": LOGIN_FAIL,
