@@ -4,6 +4,73 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-26 — Claude: code-review fixes on `claude/review-fixes` — FOR CODEX REVIEW
+
+Nadim asked for a whole-codebase review "with the current library versions in
+mind" (post-Context7). Reviewed every app/ + phase1 source file against the
+**installed** deps (bcrypt 5.0.0, Flask 3.1.3, cryptography 46.0.3, pandas 3.0.3,
+openpyxl 3.1.5 — `requirements.txt` is unpinned, so latest ships). Branch
+`claude/review-fixes` off `main` (`f0aa3d1`); fixes + tests in **one commit
+`4e97121`**, this HANDOFF entry separate. **`main` untouched; Phase 1 byte-frozen**
+(`git diff --stat main -- phase1_cdr/` empty). Nadim flagged this as worth a Codex
+review (auth/audit, behavior-changing) rather than a direct merge.
+
+### What I changed (`4e97121`)
+1. **bcrypt 5.0 >72-byte regression (the headline).** `bcrypt.hashpw`/`checkpw`
+   now **raise `ValueError`** above 72 bytes (was silent truncation ≤4.x); confirmed
+   live in the venv. `/setup` caught only `AccountExistsError` and
+   `/change-password` only `AuthError`, so a long password → unhandled 500. Added
+   `account.PasswordTooLongError` + `MAX_PASSWORD_BYTES=72` guard in
+   `create_account`/`change_password`; routes map it to **400**. (Login was already
+   safe — `authenticate` lists `ValueError` in its except tuple → 401.)
+2. **Failed-login audit redesign.** Was: buffer failures in
+   `current_app.config["PENDING_FAILS"]`, flush to DB `audit_log` on the *next
+   successful* login — so failures were lost on restart, never recorded for an
+   attacker who never succeeds, stamped with the *success* time, and the buffer was
+   unbounded + thread-racy. Now: `audit.write_failed_login()` appends to a plaintext
+   `login_failures.log` sidecar in app_data_dir immediately, with the real failure
+   timestamp, independent of DB unlock. **Behavior change:** `LOGIN_FAIL` no longer
+   appears in the encrypted `audit_log` table — it's in the sidecar. (No secrets in
+   it; `json.dumps` escapes the attacker-supplied username.)
+3. **Negative `top_n`** (`analysis.py`) became a negative slice (`[:-2]` = "all but
+   last 2" → garbage ranking, persisted). Clamp `max(0, int(...))`.
+4. **Excel timestamp parsing** (`validation.py`): pinned `format="ISO8601"` so
+   non-ISO locale dates (DD/MM) reject deterministically instead of being silently
+   misread (day≤12) or coerced to NaT and dropped. ISO sample data (space- and
+   T-separated) still parses — verified.
+5. **`wait_until_ready`** (`main.py`) hot-looped on a non-200 response (sleep was
+   only in `except`); back off on every non-success path.
+6. **Hardening:** `MAX_CONTENT_LENGTH=50 MiB` + JSON `413` handler (`__init__.py`);
+   `fsync` before `os.replace` in `account._save`.
+
+### Verification
+- `.venv\Scripts\python.exe -m pytest tests/phase2a` → **65 passed** (was 56; +9
+  regression tests: long-pw→400 ×2, failure-logged-without-success + real ts,
+  no LOGIN_FAIL in DB, negative-top_n empty, oversized→413, non-ISO date rejected,
+  ISO-T accepted, `PasswordTooLongError` ×2).
+- `pytest phase1_cdr/tests` → **18 passed**. `git diff --stat main -- phase1_cdr/`
+  empty. All changed modules compile.
+
+### Deliberately NOT done (Codex: confirm you agree)
+- **Finding #6** (NULL `other_party` dropped by `groupby` default) is in **frozen
+  Phase 1** — left as a doc note, not touched.
+- **scrypt N bump (2^14→2^17):** skipped — re-derives the KEK, would lock out any
+  existing on-disk account; needs a migration, not a drive-by.
+- **`create_account` TOCTOU** (account_exists→_save): negligible for a single-user
+  desktop app; skipped.
+- **`requirements.txt` still unpinned:** the #1 guard makes the code correct on any
+  bcrypt version, so pinning stays the separately-tracked follow-up Nadim deferred.
+  (But note: the bcrypt regression is *why* pinning matters — an unpinned dep changed
+  runtime behavior under us. Worth reconsidering the deferral.)
+
+### For Codex
+Whole-branch diff: `git diff main..claude/review-fixes` (1 fix commit + this
+HANDOFF). Two things most worth a skeptical second look: (a) the **audit sidecar
+behavior change** — is moving `LOGIN_FAIL` out of the encrypted DB into a plaintext
+sidecar the right call, or should it be a separately-encrypted/HMAC'd file? (b) the
+**`format="ISO8601"` contract** — does it reject any timestamp the real generator
+will legitimately emit? Don't merge; Nadim merges.
+
 ## 2026-06-26 — Claude: extend CI to run the Phase 2A suite — MERGED to `main` (`f0aa3d1`)
 
 Closes the CI gap flagged in the 2026-06-26 session log: `.github/workflows/ci.yml`
