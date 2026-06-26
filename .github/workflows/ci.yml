@@ -1,12 +1,14 @@
 name: CI
 
-# Runs the Phase 1 test suite on every push and pull request, so the suite no
-# longer depends on one machine being able to load pandas (see HANDOFF.md).
+# Runs both suites on every push and pull request, so correctness no longer
+# depends on one machine being able to load pandas (Phase 1) or the SQLCipher /
+# crypto stack (Phase 2A). See HANDOFF.md.
 on:
   push:
   pull_request:
 
 jobs:
+  # Phase 1 — algorithm validation. Self-contained in phase1_cdr/.
   test:
     runs-on: ubuntu-latest
 
@@ -38,3 +40,31 @@ jobs:
 
       - name: Run validation harness
         run: python main.py sample_data.csv ground_truth.json
+
+  # Phase 2A — backend (Flask + SQLCipher). Runs from the repo root, where the
+  # root requirements.txt, pytest.ini, the app/ package, and tests/phase2a/ live.
+  phase2a:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          # 3.11 matches the locally-verified Phase 2A environment (3.11.9).
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # sqlcipher3-wheels ships manylinux x86_64 wheels and cryptography/bcrypt
+          # have prebuilt wheels, so no SQLCipher/OpenSSL/Rust toolchain is needed.
+          # pywebview's base install pulls no GTK/Qt and the tests never import it
+          # (the window lives behind `if __name__`/pragma-no-cover in main.py).
+          pip install -r requirements.txt
+
+      - name: Run Phase 2A tests
+        run: pytest tests/phase2a
