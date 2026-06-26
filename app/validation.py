@@ -6,6 +6,7 @@ drift from the algorithm. Phase 1 is imported read-only; nothing there is edited
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 
@@ -27,37 +28,56 @@ def missing_columns(columns: list[str]) -> list[str]:
     return [c for c in REQUIRED_COLUMNS if c not in present]
 
 
+def _is_blank(value) -> bool:
+    if value is None:
+        return True
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip() == ""
+
+
+def _parse_integer(value, field: str) -> tuple[int | None, str | None]:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None, f"invalid {field}"
+    if not math.isfinite(parsed) or not parsed.is_integer():
+        return None, f"invalid {field}"
+    return int(parsed), None
+
+
 def validate_row(row: dict) -> tuple[dict | None, str | None]:
     for field in _REQUIRED_NONEMPTY:
         value = row.get(field)
-        if value is None or str(value).strip() == "":
+        if _is_blank(value):
             return None, f"{field} is required"
 
     ts = pd.to_datetime(row.get("timestamp"), errors="coerce")
     if pd.isna(ts):
         return None, "unparseable timestamp"
 
-    try:
-        call_type = int(float(row.get("call_type")))
-    except (TypeError, ValueError):
-        return None, "invalid call_type"
+    call_type, reason = _parse_integer(row.get("call_type"), "call_type")
+    if reason is not None:
+        return None, reason
     if call_type not in VALID_CALL_TYPES:
         return None, f"call_type {call_type} not in {sorted(VALID_CALL_TYPES)}"
 
-    try:
-        duration = int(float(row.get("duration_seconds")))
-    except (TypeError, ValueError):
-        return None, "invalid duration_seconds"
+    duration, reason = _parse_integer(row.get("duration_seconds"), "duration_seconds")
+    if reason is not None:
+        return None, reason
     if duration < 0:
         return None, "negative duration_seconds"
 
     def _s(v):
-        return None if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)
+        return None if _is_blank(v) else str(v).strip()
 
     clean = {
-        "phone_number": str(row["phone_number"]),
+        "phone_number": str(row["phone_number"]).strip(),
         "imei": _s(row.get("imei")),
-        "area": str(row["area"]),
+        "area": str(row["area"]).strip(),
         "timestamp": ts.isoformat(),
         "call_type": call_type,
         "duration_seconds": duration,

@@ -29,6 +29,13 @@ def test_bad_call_type_skipped():
     assert clean is None and "call_type" in reason
 
 
+def test_fractional_call_type_skipped():
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
+           "call_type": "1.5", "duration_seconds": "5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "call_type" in reason
+
+
 def test_unparseable_timestamp_skipped():
     row = {"phone_number": "x", "area": "Hamra", "timestamp": "not-a-date",
            "call_type": "1", "duration_seconds": "5"}
@@ -43,8 +50,23 @@ def test_negative_duration_skipped():
     assert clean is None and "duration" in reason
 
 
+def test_fractional_duration_skipped():
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
+           "call_type": "1", "duration_seconds": "2.5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "duration" in reason
+
+
 def test_missing_required_field_skipped():
     row = {"phone_number": "", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
            "call_type": "1", "duration_seconds": "5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "phone_number" in reason
+
+
+def test_nan_required_field_skipped():
+    row = {"phone_number": float("nan"), "area": "Hamra",
+           "timestamp": "2024-01-01 03:00:00", "call_type": "1",
+           "duration_seconds": "5"}
     clean, reason = validation.validate_row(row)
     assert clean is None and "phone_number" in reason
