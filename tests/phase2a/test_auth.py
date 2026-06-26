@@ -33,6 +33,18 @@ def test_login_good_and_bad(client):
     assert client.post("/api/login", json={"username": "nadim", "password": "no"}).status_code == 401
 
 
+def test_login_malformed_auth_sidecar_is_401(client):
+    _setup(client)
+    client.post("/api/logout")
+    from app import config
+
+    config.auth_path().write_text("{not json", encoding="utf-8")
+    r = client.post("/api/login", json={"username": "nadim", "password": "hunter2"})
+
+    assert r.status_code == 401
+    assert r.get_json()["error"]["code"] == "UNAUTHENTICATED"
+
+
 def test_change_password_flow(client):
     _setup(client)
     assert client.post("/api/change-password",

@@ -9,6 +9,7 @@ the caller (the Flask app holds it for the session) but never written to disk.
 from __future__ import annotations
 
 import base64
+import binascii
 import hmac
 import json
 import os
@@ -33,7 +34,7 @@ def _b64e(b: bytes) -> str:
 
 
 def _b64d(s: str) -> bytes:
-    return base64.b64decode(s.encode("ascii"))
+    return base64.b64decode(s.encode("ascii"), validate=True)
 
 
 def account_exists() -> bool:
@@ -91,23 +92,48 @@ def create_account(username: str, password: str) -> bytes:
 def authenticate(username: str, password: str) -> bytes:
     if not account_exists():
         raise AuthError("no account")
-    rec = _load()
-    username_ok = hmac.compare_digest(username, rec["username"])
-    password_ok = crypto.verify_password(password, rec["bcrypt_hash"])
+    try:
+        rec = _load()
+        stored_username = rec["username"]
+        bcrypt_hash = rec["bcrypt_hash"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise AuthError("bad credentials") from None
+
+    try:
+        username_ok = hmac.compare_digest(
+            username.encode("utf-8"),
+            stored_username.encode("utf-8"),
+        )
+        password_ok = crypto.verify_password(password, bcrypt_hash)
+    except (AttributeError, TypeError, ValueError):
+        raise AuthError("bad credentials") from None
+
     if not (username_ok and password_ok):
         raise AuthError("bad credentials")
-    kek = crypto.derive_kek(password, _b64d(rec["kdf_salt"]))
+
     try:
-        return crypto.unwrap_key(kek, _b64d(rec["db_key_nonce"]), _b64d(rec["wrapped_db_key"]))
-    except InvalidTag as exc:  # pragma: no cover - defence in depth
-        raise AuthError("bad credentials") from exc
+        kek = crypto.derive_kek(password, _b64d(rec["kdf_salt"]))
+        db_key = crypto.unwrap_key(
+            kek,
+            _b64d(rec["db_key_nonce"]),
+            _b64d(rec["wrapped_db_key"]),
+        )
+    except (InvalidTag, KeyError, TypeError, ValueError, binascii.Error):
+        raise AuthError("bad credentials") from None
+    if len(db_key) != config.DB_KEY_BYTES:
+        raise AuthError("bad credentials")
+    return db_key
 
 
 def change_password(old_password: str, new_password: str) -> None:
     if not account_exists():
         raise AuthError("no account")
-    rec = _load()
-    db_key = authenticate(rec["username"], old_password)  # raises AuthError if wrong
+    try:
+        rec = _load()
+        username = rec["username"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise AuthError("bad credentials") from None
+    db_key = authenticate(username, old_password)  # raises AuthError if wrong
     salt = os.urandom(config.SCRYPT_SALT_BYTES)
     kek = crypto.derive_kek(new_password, salt)
     nonce, wrapped = crypto.wrap_key(kek, db_key)

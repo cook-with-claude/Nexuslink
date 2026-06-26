@@ -39,6 +39,28 @@ def test_authenticate_rejects_bad_password_and_user(app_data_dir):
         account.authenticate("someoneelse", "hunter2")
 
 
+def test_authenticate_rejects_tampered_wrapped_key(app_data_dir):
+    account.create_account("nadim", "hunter2")
+    auth_path = config.auth_path()
+    rec = json.loads(auth_path.read_text(encoding="utf-8"))
+    rec["wrapped_db_key"] = rec["wrapped_db_key"][:-2] + "AA"
+    auth_path.write_text(json.dumps(rec), encoding="utf-8")
+
+    with pytest.raises(account.AuthError):
+        account.authenticate("nadim", "hunter2")
+
+
+def test_authenticate_rejects_malformed_auth_record(app_data_dir):
+    account.create_account("nadim", "hunter2")
+    auth_path = config.auth_path()
+    rec = json.loads(auth_path.read_text(encoding="utf-8"))
+    rec["bcrypt_hash"] = "not-a-bcrypt-hash"
+    auth_path.write_text(json.dumps(rec), encoding="utf-8")
+
+    with pytest.raises(account.AuthError):
+        account.authenticate("nadim", "hunter2")
+
+
 def test_change_password_preserves_db_key(app_data_dir):
     original = account.create_account("nadim", "hunter2")
     account.change_password("hunter2", "newpass9")
