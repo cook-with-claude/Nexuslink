@@ -24,11 +24,20 @@ any UI, server, or account work is layered on.
 | Phase | Scope | Status |
 |---|---|---|
 | **1 — Algorithm validation** | Home/work/frequent detection + a four-gate confidence model, validated against an independently-computed ground truth on synthetic data. | ✅ Complete — CI green |
-| 2+ | Real (still synthetic) data generator, then product layers. | Planned |
+| **2A — Backend foundation** | A Flask + PyWebView desktop app over a SQLCipher-encrypted database: single-account auth, xlsx import, targets, and an analysis bridge that reuses the Phase 1 detectors unchanged. | 🚧 In progress |
+| 2B+ | Frontend UI, then further product layers. | Planned |
 
 **Phase 1 lives in [`phase1_cdr/`](phase1_cdr/) — see its
 [README](phase1_cdr/README.md) for the full algorithm, the four-gate confidence model,
 the five test users, and how to run it.**
+
+### Phase 2A — Backend (desktop app)
+
+A Flask backend behind a PyWebView desktop window, over a SQLCipher-encrypted
+SQLite database with single-account auth. The detection algorithm is reused
+unchanged via a thin bridge — Phase 1 stays frozen. Run the API tests with
+`pytest tests/phase2a`; launch the desktop app with `python main.py`.
+See [`docs/superpowers/specs/2026-06-24-phase2a-backend-design.md`](docs/superpowers/specs/2026-06-24-phase2a-backend-design.md).
 
 ### The four-gate confidence model (Phase 1 in one table)
 
