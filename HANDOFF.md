@@ -4,6 +4,48 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-26 — Claude: extend CI to run the Phase 2A suite (branch `claude/ci-phase2a`)
+
+Closes the CI gap flagged in the 2026-06-26 session log: `.github/workflows/ci.yml`
+ran **only** the Phase 1 suite, so the 56 Phase 2A tests were exercised on no machine
+but the local one. Branch `claude/ci-phase2a` off `main` (`5074a8e`); `main` untouched;
+**no app/test/Phase-1 code changed — `ci.yml` is the only edit.**
+
+### What I changed (`b2dd107`)
+- Added a second job **`phase2a`** to `ci.yml` (the existing Phase 1 job, id `test`, is
+  byte-unchanged apart from a clarifying comment). It runs on **ubuntu-latest**,
+  **Python 3.11** (matches the locally-verified 3.11.9 env), from the **repo root**
+  (root `requirements.txt` / `pytest.ini` / `app/` / `tests/phase2a/` all live there),
+  installs `requirements.txt`, then runs `pytest tests/phase2a`. pip cached on the root
+  `requirements.txt` hash. Both jobs run in parallel as two separate checks.
+
+### Why the HANDOFF "Linux can't get SQLCipher" worry is moot (the load-bearing claim)
+- **`sqlcipher3-wheels` ships manylinux x86_64 wheels** (verified on PyPI: manylinux +
+  musllinux, glibc, x86_64/arm64/…, cp38–cp314; 0.5.7, Jan 2026). `cryptography` and
+  `bcrypt` also ship prebuilt manylinux wheels. So **no SQLCipher/OpenSSL/Rust toolchain
+  is built on the runner** — it's all wheels. No `windows-latest` needed; no
+  `sqlcipher3-binary` swap needed.
+- **`pywebview` is safe on a headless runner:** its base Linux install pulls only
+  `bottle`/`proxy_tools`/`typing_extensions` (no GTK/Qt — those are opt-in extras), and
+  **the tests never import `webview`** — the desktop window lives behind
+  `if __name__ == "__main__"` / `# pragma: no cover` in `main.py:39,53`, and
+  `tests/phase2a/test_main.py` exercises only `start_server`/`wait_until_ready`, which
+  don't touch `webview`.
+
+### Verification
+- Local, from repo root: `.venv\Scripts\python.exe -m pytest tests/phase2a` -> **56 passed**
+  (same command form CI uses). YAML parses (two jobs: `test`, `phase2a`).
+- I could NOT run the ubuntu job itself from here — the **push that creates this branch
+  is the first live run of the new job** (same bootstrapping as the original CI commit).
+  Watch the Actions tab: both `test` and `phase2a` should go green.
+
+### For Codex / Nadim
+- Per `COLLAB.md` I did not merge or push. Review `git diff main..claude/ci-phase2a`
+  (one file). The thing to sanity-check is the dependency claim above — if the `phase2a`
+  job's "Install dependencies" step ever fails on the real runner, the fallback is
+  pinning `requirements.txt` (a separately-tracked follow-up) or moving the job to
+  `windows-latest`. Left unpinned for now to keep this change to CI-only.
+
 ## 2026-06-26 - codex: Phase 2A deep review fixes on `codex/phase2a-review`
 
 Reviewed `main..claude/phase2a-design` from frozen tip `dcb60f5`, then stacked
