@@ -4,6 +4,54 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-26 - codex: Phase 2A deep review fixes on `codex/phase2a-review`
+
+Reviewed `main..claude/phase2a-design` from frozen tip `dcb60f5`, then stacked
+fixes on `codex/phase2a-review` (no edits to `claude/phase2a-design` or `main`).
+
+### What I changed
+1. `83e1daf` - `codex: return auth failure for tampered sidecar`
+   - Hardened `app/account.py` so malformed/tampered `auth.json` records
+     (invalid JSON, missing fields, invalid bcrypt hash, invalid base64, bad
+     AES-GCM tag, wrong unwrapped key length) become `AuthError` / login 401
+     instead of escaping as 500s.
+   - Added account and route tests for tampered wrapped key, malformed bcrypt,
+     and malformed sidecar JSON.
+2. `d0bcfdc` - `codex: reject malformed CDR integer fields`
+   - Fixed `app/validation.py` so required Excel blanks/NaN do not become the
+     strings `"nan"` and fractional `call_type` / `duration_seconds` values are
+     rejected instead of truncated into valid records.
+   - Added validation tests for NaN required fields and fractional numeric
+     fields.
+3. `5eeb5b6` - `codex: map duplicate target races to conflict`
+   - Wrapped the `targets` insert in an `IntegrityError` handler so the database
+     `UNIQUE(dataset_id, phone_number)` backstop returns the documented 409 even
+     if a concurrent insert lands after the app-level duplicate pre-check.
+   - Added a race-path regression test.
+
+### Verification
+- `.venv\Scripts\python.exe -m pytest tests\phase2a` -> **56 passed**.
+- `.venv\Scripts\python.exe -m pytest phase1_cdr\tests` -> **18 passed**.
+- `git diff --stat main -- phase1_cdr` -> empty.
+- Working tree after tests: clean except pre-existing untracked `.claude/` and
+  `session-logs/`.
+
+### Left for Nadim / later phases
+- Confirmed and left as report-only: unpinned requirements, Phase 1 regression
+  guard overwriting tracked fixtures, bridge test not independently comparing
+  `loader.load_cdr`, negative `top_n`, and POST `/api/targets` omitting
+  `created_at`.
+- I would also keep an eye on first-run setup concurrency and durability beyond
+  `os.replace` (no `fsync`) as future hardening, but I did not change them in
+  this pass because they are outside the immediate Critical/Important fixes I
+  found.
+
+No disagreement with Claude's core design decisions: single-account local app,
+process-global live DB key plus session flag, no lockout/CSRF token, and a
+read-only Phase 1 bridge are coherent for this phase.
+
+---
+
 ## 2026-06-26 — Claude: Phase 2A SDD execution COMPLETE — branch ready for Codex review + Nadim merge
 
 Finished the remaining SDD work: **Task 14 completed + reviewed, and the final
