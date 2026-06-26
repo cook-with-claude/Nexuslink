@@ -2,10 +2,11 @@
 
 **Plan:** `docs/superpowers/plans/2026-06-24-phase2a-backend-foundation.md`
 **Branch:** `claude/phase2a-design` (base = `main`)
-**Status:** in progress — 13 of 14 done; **Task 14 PARTIAL (committed WIP, NOT reviewed)**.
-**Resume at:** finish Task 14 (see the Task 14 WIP entry at the bottom), then the
-final whole-branch review (Task 15 in the todo list).
-**Branch tip at session close:** `9b19df5` (27→28 commits ahead of `main`).
+**Status:** **COMPLETE** — all 14 tasks done+reviewed; final whole-branch review done
+(verdict: merge with fixes); the one Important finding (atomic `auth.json` write) FIXED
+at `1706282`. Ready for `finishing-a-development-branch`; only Nadim merges to `main`.
+**Branch tip:** `1706282`. Phase 2A suite 47→49 passed (2 new atomic-write tests).
+**Earlier resume tip (historical):** `9b19df5` (Task 14 WIP).
 **Full phase2a suite: 47 passed** (46 + the new regression guard). Phase 1
 unit suite expected 18. `git diff --stat main -- phase1_cdr/` is EMPTY (frozen).
 **Interpreter for all tasks:** `C:\Users\nadim\OneDrive\Desktop\la passion\.venv\Scripts\python.exe` (Python 3.11.9 ARM64). `phase1_cdr/.venv` is DLL-blocked — do not use it. `cryptography==46.0.3` (49.x fails ARM64 build); APIs compatible.
@@ -35,7 +36,8 @@ the 6→9 column frequency diff and fail.
 - [x] Task 11: Detection bridge (only seam to phase1)
 - [x] Task 12: Analysis blueprint
 - [x] Task 13: Desktop entry point (main.py)
-- [ ] Task 14: Full-suite gate — Phase 2A + Phase 1 regression
+- [x] Task 14: Full-suite gate — Phase 2A + Phase 1 regression
+- [x] Task 15: Final whole-branch review (opus) — merge-with-fixes; 1 Important fixed
 
 When a task's review comes back clean, append:
 `Task N: complete (commits <base7>..<head7>, review clean)`
@@ -173,10 +175,38 @@ sys.path). **STILL TODO to finish Task 14:**
   f. Then run the Task 14 REVIEW gate (it was never run — the WIP is unreviewed),
      covering the two new test files at `9b19df5`.
 
+Task 14: complete (commits e9b3b6a..215d054, review clean). Finished the WIP:
+README Phase 2A section (table row + subsection, commit 215d054); recorded both
+suites (**phase2a 47 passed**, **phase1 18 passed** on root .venv); verified Phase 1
+frozen vs `main` (`git diff --stat main -- phase1_cdr/` EMPTY, named source files
+EMPTY); git status clean apart from README (regenerated fixtures byte-identical).
+Reviewer (sonnet) APPROVED — no Critical/Important. Regression guard's assertion
+deviates from the plan's literal `34/34` example → asserts `"passed (100%)"` substring
+(matches real harness output; non-vacuous, confirmed by the green run). 3 Minor findings
+added to the deferred list below for Task 15 triage.
+
 INTERPRETER for everything: `C:\Users\nadim\OneDrive\Desktop\la passion\.venv\Scripts\python.exe`
 (Python 3.11.9 ARM64). NEVER use `phase1_cdr/.venv` (DLL-blocked). cryptography==46.0.3.
 
-DEFERRED-MINOR LIST for the final whole-branch review (Task 15) to triage:
+FINAL WHOLE-BRANCH REVIEW (Task 15, opus, range 5a0bb52..215d054):
+Verdict **merge-with-fixes**. No Critical. ONE Important — non-atomic `auth.json`
+write in `account._save` (interrupted change-password could destroy the only copy of
+the wrapped db_key) → **FIXED at `1706282`** (temp file + `os.replace`, 2 new tests;
+phase2a suite now 49 passed). Reviewer praised: crypto layering, constant-time auth,
+the on-disk-encryption proof and bridge-equivalence test both genuinely prove their
+claims, uniform parameterized SQL + ok/err envelope + get_db lifecycle.
+Triage of the deferred list below: only T4a was fix-now (done); ALL OTHERS = defer.
+NEW follow-ups the final review raised (all Minor, deferred — track post-merge):
+- regression test runs `dev_fixtures.py` which overwrites git-tracked phase1 fixtures
+  at runtime (deterministic today; byte-drift on a different pandas/numpy build would
+  dirty "frozen" phase1 — regen into a temp dir or assert `git diff --quiet phase1_cdr/`).
+- bridge-equivalence test feeds the bridge-built frame to BOTH sides (proves the
+  serialization seam, not that `rows_to_frame` == phase1 `loader.load_cdr`).
+- `analysis.top_n` accepts negatives (clamp to `max(1, …)`).
+- POST /targets response omits `created_at` (GET includes it).
+- pin `requirements.txt` (esp. cryptography + sqlcipher3-wheels) at a stabilization point.
+
+DEFERRED-MINOR LIST (per-task) — final-review triage = all DEFER except T4a (fixed):
 - T1: requirements.txt leaves sqlcipher3-wheels unpinned (other-machine install risk).
 - T2: verify_password could wrap bcrypt.checkpw in bool() for annotation strictness.
 - T4: account _save not atomic (temp+rename would harden); InvalidTag defence branch
@@ -192,6 +222,12 @@ DEFERRED-MINOR LIST for the final whole-branch review (Task 15) to triage:
   (GET includes it); phone_number falsy-check accepts int 0.
 - T13: wait_until_ready sleeps only in except branch (never fires for this server);
   test_main doesn't assert thread.is_alive() False after join.
+- T14 (all Minor, reviewer): (1) regression test fn named `test_phase1_harness_passes`
+  vs plan's `_still_passes` (cosmetic, the "still" conveys regression intent);
+  (2) test_main.py loads root main via importlib without guarding `_spec`/`_spec.loader`
+  before `exec_module` — AttributeError instead of a clear msg if main.py ever missing
+  (one-line `assert _spec and _spec.loader`); (3) loaded module not registered in
+  `sys.modules` (conventional idiom; no real risk under pytest's import model).
 - T13 (design, NOT a bug): main() opens the window at /api/health — correct for
   backend-only Phase 2A; revisit when a UI phase adds a `/` route.
 

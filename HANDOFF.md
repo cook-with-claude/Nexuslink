@@ -4,6 +4,52 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-26 — Claude: Phase 2A SDD execution COMPLETE — branch ready for Codex review + Nadim merge
+
+Finished the remaining SDD work: **Task 14 completed + reviewed, and the final
+whole-branch review done.** All 14 tasks are now done and review-clean. Branch
+**`claude/phase2a-design`** is implementation-complete; **`main` untouched, Phase 1
+frozen.** Per COLLAB.md the next moves are not mine: **Codex reviews the diff, Nadim
+merges.** I did not merge or push.
+
+### State at session close
+- **Branch tip:** `1706282` — **31 commits ahead of `main`**.
+- **Phase 2A suite: 49 passed** (`.venv\Scripts\python.exe -m pytest tests/phase2a`).
+  Phase 1 suite: **18 passed** (`.venv\Scripts\python.exe -m pytest phase1_cdr/tests`).
+- **Phase 1 frozen:** `git diff --stat main -- phase1_cdr/` is **EMPTY**.
+- Working tree clean apart from the SDD ledger + untracked `.claude/`/`session-logs/`.
+
+### What changed this session (on top of the prior `9b19df5` Task 14 WIP)
+1. **Task 14 finished** — added the Phase 2A section to root `README.md` (table row +
+   subsection; commit `215d054`); recorded both suites; verified Phase 1 frozen vs
+   `main` (NOT the `v1.0-phase1` tag — the tag is 6-col, predates the merged frequency
+   feature). Task 14 review (sonnet) **Approved**, no Critical/Important.
+2. **Final whole-branch review (opus, range `5a0bb52..215d054`)** — verdict
+   **merge-with-fixes**, no Critical, **one Important**: `account._save` rewrote
+   `auth.json` non-atomically, so an interrupted change-password could destroy the only
+   copy of the wrapped db_key. **Fixed at `1706282`** — temp file + `os.replace`, plus 2
+   new tests (incl. a failed-replace-preserves-original test). Suite 47→49.
+   Reviewer confirmed the on-disk-encryption proof and the bridge-equivalence test
+   genuinely prove their claims; crypto layering, constant-time auth, and uniform
+   parameterized SQL all called out as strengths.
+
+### Deferred follow-ups (all Minor — final review said DEFER; track post-merge)
+See `.superpowers/sdd/progress.md` (final-review block + per-task deferred list) for the
+full triage. Highlights: pin `requirements.txt` (cryptography + sqlcipher3-wheels);
+regression test overwrites git-tracked phase1 fixtures at runtime (byte-drift risk on a
+different pandas/numpy build) — regen into a temp dir or assert `git diff --quiet`;
+bridge-equivalence reuses the bridge-built frame on both sides; `analysis.top_n` accepts
+negatives; POST /targets omits `created_at`.
+
+### For Codex
+Whole-branch diff is `git diff main..claude/phase2a-design` (31 commits). Per-task
+reviewer notes + the deferred-minor roll-up + Nadim's mid-flight decisions are in
+`.superpowers/sdd/progress.md`. The two load-bearing tests to sanity-check are
+`tests/phase2a/test_storage.py` (on-disk encryption proof) and
+`tests/phase2a/test_bridge.py` (bridge equivalence vs direct phase1 detectors).
+
+---
+
 ## 2026-06-25 — Claude: Phase 2A SDD execution — Tasks 1–13 DONE+reviewed, Task 14 PARTIAL (RESUME HERE)
 
 Executed the Phase 2A backend plan via subagent-driven-development (fresh
