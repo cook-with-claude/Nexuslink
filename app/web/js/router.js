@@ -76,6 +76,7 @@ async function dispatch() {
   try {
     await found.route.handler(app, found.params);
   } catch (e) {
+    if (e && e.code === "SESSION_EXPIRED") return;
     clear(app);
     app.appendChild(el("div", { class: "page" }, [
       el("div", { class: "msg msg-error" }, e.message || "Something went wrong."),

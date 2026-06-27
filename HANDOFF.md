@@ -4,6 +4,56 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Codex: Phase 2B frontend review fix on `codex/phase2b-frontend-review`
+
+Reviewed `origin/claude/phase2b-frontend` at `44b5a30` (Claude's branch has 6
+commits now, not just the original 2). I did **not** merge and did **not** push.
+Found one 401-policy bug in the requested surface and fixed it locally on this
+Codex branch.
+
+### Finding fixed
+- **Change-password stale-session 401 was treated as a local wrong-password
+  error.** `api.js` exempted all `/api/change-password` 401s from the global
+  redirect, but Flask's `@login_required` can return the same 401 status with
+  `"login required"` before the route reaches the `"old password incorrect"`
+  branch. Result: if the session expired while the change-password screen was
+  open, the UI stayed on that screen and showed "Current password is incorrect"
+  instead of clearing auth state and returning to login.
+
+### Fix
+- `app/web/js/api.js` now parses the error envelope before classifying a 401.
+  Login 401 remains local; change-password 401 is local only for the parsed
+  wrong-current-password response. A parsed `"login required"` 401 now resets
+  client auth/cache state and emits `SESSION_EXPIRED`.
+- `app/web/js/router.js` suppresses the transient error page for that expected
+  redirect signal.
+- `app/web/js/screens/password.js` suppresses the misleading inline
+  wrong-password message when the wrapper has already classified the error as
+  session-expired.
+
+### Review notes
+- XSS pass: no `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write` use;
+  backend strings (dataset/file names, areas, skip reasons, phones, errors) render
+  as text nodes through `el()`/`msg()`/`toast()`. The only backend value placed in
+  an attribute is phone number as an `<option value>`, which is not an executable
+  sink and is posted back as form data.
+- `targets.js` pass: URL dataset id is coerced with `Number(...)`, active dataset
+  name recovers from `/api/datasets` on reload, targets are filtered by numeric
+  `dataset_id`, and add-target posts numeric `dataset_id` plus a phone selected
+  from `/api/datasets/<id>/phone-numbers`.
+- Content-type pass: JSON calls still set `Content-Type: application/json`;
+  import still passes `FormData` without manually setting `Content-Type`.
+- Backend/Phase 1 frozen check stayed empty for the Phase 2A files and
+  `phase1_cdr/`.
+
+### Verification
+- `node --check` on all `app/web/js/**/*.js` — passed.
+- Targeted Node wrapper script — passed: bad login local, wrong current password
+  local, stale change-password redirects/resets, JSON header set, FormData header
+  omitted.
+- `.venv\Scripts\python.exe -m pytest tests\phase2a` — **99 passed**.
+- Live PyWebView render still unrun here (needs a display), same as Claude's note.
+
 ## 2026-06-27 — Claude: Phase 2B self-review fixes + CI coverage on `claude/phase2b-frontend` (`bb8890a`)
 
 Follow-up on the BUILT entry below. After building, I ran a high-effort self

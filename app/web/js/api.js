@@ -4,10 +4,11 @@
 // API-MISMATCH #7: a 401 means two different things. For the authenticated area
 // it means "session gone" -> redirect to login. But /login and /change-password
 // return 401 for *bad credentials / wrong current password*, which must be shown
-// inline on the page. So the 401 redirect is skipped for those two endpoints
-// (LOCAL_401_PATHS); callers there catch the ApiError and render it.
+// inline on the page. Login 401s are always local; change-password 401s are local
+// only when the parsed envelope says the current password was wrong. A stale
+// session still follows the global redirect.
 
-import { store } from "./store.js";
+import { reset } from "./store.js";
 
 export class ApiError extends Error {
   constructor(code, message, status) {
@@ -18,6 +19,21 @@ export class ApiError extends Error {
 }
 
 const LOCAL_401_PATHS = new Set(["/api/login", "/api/change-password"]);
+
+function redirectToLogin() {
+  reset();
+  if (location.hash !== "#/login") location.hash = "#/login";
+  return new ApiError("SESSION_EXPIRED", "login required", 401);
+}
+
+function isLocal401(path, body) {
+  if (path === "/api/login") return true;
+  if (path === "/api/change-password") {
+    const e = (body && body.error) || {};
+    return !(e.code === "UNAUTHENTICATED" && e.message === "login required");
+  }
+  return false;
+}
 
 async function request(method, path, { json, form, query } = {}) {
   const opts = { method, headers: {} };
@@ -44,23 +60,23 @@ async function request(method, path, { json, form, query } = {}) {
     throw new ApiError("NETWORK", "could not reach the server", 0);
   }
 
-  if (res.status === 401 && !LOCAL_401_PATHS.has(path)) {
-    // Session expired / not authenticated in the app area -> drop client auth
-    // state THEN bounce to login. Clearing first is what stops a redirect loop:
-    // the guard keys off store.authenticated, so without this the login screen
-    // would bounce straight back to dashboard, which 401s again.
-    store.authenticated = false;
-    store.username = null;
-    if (location.hash !== "#/login") location.hash = "#/login";
-    throw new ApiError("UNAUTHENTICATED", "login required", 401);
-  }
-
   let body = null;
   try {
     body = await res.json();
   } catch {
+    if (res.status === 401 && !LOCAL_401_PATHS.has(path)) {
+      throw redirectToLogin();
+    }
     // Non-JSON error (e.g. a raw 413/500 HTML page) — synthesize from status.
     throw new ApiError("HTTP_" + res.status, "request failed (" + res.status + ")", res.status);
+  }
+
+  if (res.status === 401 && !isLocal401(path, body)) {
+    // Session expired / not authenticated in the app area -> drop client auth
+    // state THEN bounce to login. Clearing first is what stops a redirect loop:
+    // the guard keys off store.authenticated, so without this the login screen
+    // would bounce straight back to dashboard, which 401s again.
+    throw redirectToLogin();
   }
 
   if (body && body.ok) return body.data;

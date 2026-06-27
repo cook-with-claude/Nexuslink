@@ -40,6 +40,7 @@ export async function passwordScreen(app) {
       form.reset();
       slot.appendChild(msg("Password updated.", "ok"));
     } catch (err) {
+      if (err instanceof ApiError && err.code === "SESSION_EXPIRED") return;
       const text = err instanceof ApiError
         ? (err.status === 401 ? "Current password is incorrect." : err.message)
         : "Could not change password.";
