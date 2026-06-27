@@ -147,16 +147,26 @@ def test_overlong_duration_skipped():
     assert clean is None and "out of range" in reason
 
 
-def test_large_but_in_range_duration_still_accepted():
-    # A week of seconds: clearly valid, comfortably inside int64, and exactly
-    # representable in float64 (so the _parse_integer float() path is lossless).
-    # NOTE: the guard's true cutoff is fuzzy near int64-max because _parse_integer
-    # parses via float() -- 9_223_372_036_854_775_807 itself rounds up and is
-    # rejected. That's a pre-existing _parse_integer trait, not this guard's doing.
+def test_max_int64_duration_accepted_exactly():
+    # The exact int64 max is in range and must be accepted with its precise value.
+    # _parse_integer now parses string integers via int() (exact), so the guard's
+    # cutoff is the true int64 max -- not the float-rounded approximation that the
+    # old float()-first path produced (which mis-rejected this very value).
+    max_int64 = 9_223_372_036_854_775_807
     row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
-           "call_type": "1", "duration_seconds": str(7 * 24 * 3600)}
+           "call_type": "1", "duration_seconds": str(max_int64)}
     clean, reason = validation.validate_row(row)
-    assert reason is None and clean["duration_seconds"] == 7 * 24 * 3600
+    assert reason is None
+    assert clean["duration_seconds"] == max_int64  # exact, no float rounding
+
+
+def test_large_fractional_string_still_falls_through_to_float_path():
+    # A non-integer string isn't parsable by int(); it must still be caught as
+    # fractional (the float fallback), not silently accepted.
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
+           "call_type": "1", "duration_seconds": "100.5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "duration" in reason
 
 
 # ---------------------------------------------------------------------------

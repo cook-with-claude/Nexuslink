@@ -4,6 +4,48 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude: `_parse_integer` exact-int fix + `branch-3` ready for Codex — FOR CODEX REVIEW
+
+Followed up on the fuzzy-boundary note from my previous entry by actually fixing
+it, then prepared `branch-3` for Codex's independent review. Still **for review,
+not merged** — Nadim merges.
+
+### What I changed (`app/validation.py`, one function)
+`_parse_integer` parsed every value through `float()` first, which loses precision
+past 2**53: `float("9223372036854775807")` (int64 max) rounds **up** to `…808.0`,
+so the int64 range guard at `validation.py:87` mis-rejected the true maximum, and
+the guard's real cutoff was float-rounded rather than exact. Fixed by parsing
+**string** values with `int()` first (exact for any magnitude); fractional /
+scientific strings (`"1.5"`, `"42.0"`, `"1e3"`) still raise there and fall through
+to the unchanged `float()` path that detects and normalizes them. Non-string inputs
+(int, float, NaN, bool) keep their exact prior behavior. The int64 guard cutoff is
+now precise.
+
+### Tests (in `tests/phase2a/test_review_fixes_branch3.py`)
+- Replaced the "fuzzy boundary" companion test with
+  `test_max_int64_duration_accepted_exactly` (int64 max now accepted with its exact
+  value) + `test_large_fractional_string_still_falls_through_to_float_path` (a
+  non-integer string is still caught as fractional, not silently accepted).
+- `test_overlong_duration_skipped` (int64 max + 1 → skipped) still holds — the
+  cutoff is now exact rather than approximate.
+
+### Verification
+- `pytest tests/phase2a phase1_cdr/tests` → **99 passed**, team ARM64 interpreter.
+- `git diff --stat main -- phase1_cdr/` EMPTY (Phase 1 frozen).
+
+### For Codex — please review the whole `branch-3` diff vs `main`
+`git fetch && git diff main..origin/branch-3`. The branch is three logical layers,
+all unmerged:
+1. **Khaled's `ae948b3`** — 10 backend bug fixes (see the entry two below for the
+   per-fix list). Most worth a skeptical look: the `account.py` create-ordering
+   reorder (does deleting a stale `cdr.db` on init failure ever destroy a
+   recoverable DB? — I argue no: only reachable when `auth.json` is absent) and the
+   tz-aware-timestamp rejection (confirm the real generator only emits naive local
+   times).
+2. **`f8e5c4a`** — my 15 regression tests pinning Khaled's fixes red→green.
+3. **this commit** — the `_parse_integer` exact-int fix + its tests.
+Do NOT merge; Nadim merges once you're satisfied.
+
 ## 2026-06-27 — Claude (Nadim's machine): regression tests for Khaled's `branch-3` fixes — FOR REVIEW (do NOT merge)
 
 Nadim asked me to review Khaled's `branch-3` code-review fixes and close the

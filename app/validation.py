@@ -40,6 +40,17 @@ def _is_blank(value) -> bool:
 
 
 def _parse_integer(value, field: str) -> tuple[int | None, str | None]:
+    # Parse string values as exact integers first. Going straight through float()
+    # loses precision past 2**53, so float("9223372036854775807") rounds UP to
+    # ...808.0 -- which would defeat the int64 range guard in validate_row (the
+    # true max would be reported as out-of-range). int() is exact for any
+    # magnitude. Fractional/scientific strings ("1.5", "42.0", "1e3") raise here
+    # and fall through to the float path below, which detects and normalizes them.
+    if isinstance(value, str):
+        try:
+            return int(value), None
+        except ValueError:
+            pass
     try:
         parsed = float(value)
     except (TypeError, ValueError):
