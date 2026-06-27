@@ -38,8 +38,22 @@ desktop UI is built, additive, and verified. **Not merged** — branched off `ma
   old→401 inline, correct→200) → logout → post-logout 401. All assertions pass.
 - **JS syntax:** `node --check` clean on all 13 modules.
 
+### Pushed to origin (ready to fetch)
+Both `main` and the feature branch are on origin. `origin/main` was 1 commit
+behind (only the doc commit `a3ebf83`); synced it first so the review diff is
+clean. Review range for Codex:
+```bash
+git fetch --all
+git log --oneline main..origin/claude/phase2b-frontend   # e575eb6, 12bb029
+git diff main...origin/claude/phase2b-frontend           # 18 files, +1398/-1
+```
+
 ### What's left / open
-- **Codex review** of the branch (then Nadim merge).
+- **Codex review** of `origin/claude/phase2b-frontend` (then Nadim merge). Review
+  prompt has been handed to Nadim to paste into Codex; focus areas flagged:
+  api.js 401 policy (#7), router auth-guard loops, XSS surface (all backend
+  strings must go through `textContent`/`el()`, not the `html` attr), targets.js
+  active-dataset recovery + `dataset_id` numeric coercion.
 - The one verification step I can't run headlessly: live render in the PyWebView
   window (`python main.py`) — needs a display. Code is wired and the API contract
   is fully validated, but a human should click through once before merge.
