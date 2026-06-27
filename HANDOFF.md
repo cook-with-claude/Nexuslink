@@ -4,6 +4,48 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude: Phase 2B self-review fixes + CI coverage on `claude/phase2b-frontend` (`bb8890a`)
+
+Follow-up on the BUILT entry below. After building, I ran a high-effort self
+code-review of the frontend, fixed the findings, and added CI coverage. Branch is
+now at **`bb8890a`** on origin; **CI all green** (3 jobs); still **not merged**.
+
+### Self-review findings fixed (`5add8a1`)
+- **#1 (HIGH) duplicate nav+page on in-place refresh.** A screen re-invoking
+  itself after a delete/add (datasets, targets) re-ran `shell()`, which appended
+  a *second* nav + page (the router only `clear()`s on dispatch, not on a direct
+  recursive call). Fix: `shell()` (`app/web/js/layout.js`) now `clear()`s `app`
+  first — single source of truth, every render path safe.
+- **#2 (MED) live session not restored on reload.** `GET /api/status` reports
+  `authenticated:true` after a reload but does NOT return the username; the guard
+  keyed off `store.username`, so an in-session reload bounced a logged-in user to
+  login. Fix: split auth state — `store.authenticated` drives the guard
+  (`router.js`/`store.js`/`login.js`), username is display-only. `api.js` now
+  clears auth state on a global 401 *before* redirecting, killing a
+  login↔dashboard ping-pong the fix would otherwise expose.
+- **#3 (LOW)** results-screen dataset-name join now fetches targets+datasets in
+  parallel. **#4 (LOW)** folded two `store.js` imports in `layout.js`.
+- **Footgun:** removed the unused `innerHTML` branch from `el()` — all backend
+  strings render via `textContent`, so there is no XSS sink.
+
+### CI coverage (`bb8890a`)
+- `tests/phase2a/test_ui.py` (8 tests, runs in the existing **phase2a** job, no
+  Node): serves `index.html` at `/`, css/js assets incl. the nested `screens/`
+  path converter, 404 on missing asset, and registering `ui_bp` doesn't disturb
+  the API. Suite **109 → 117 passed**.
+- `ci.yml` new lightweight **frontend** job: `node --check` on every JS module
+  (vanilla no-build SPA → no test framework by design; this is a syntax guard).
+- Verified on GitHub Actions run 28292740247: `test` ✓, `frontend` ✓, `phase2a`
+  ✓. (One harmless GitHub-wide deprecation *warning* re: setup-node node20 → not
+  a failure, not from our config.)
+
+### What's still left (unchanged from below)
+- **Codex review** of `origin/claude/phase2b-frontend` @ `bb8890a` (prompt handed
+  to Nadim). Then **Nadim merge** (only Nadim merges).
+- **Live PyWebView click-through** (`python main.py`) — the one check not runnable
+  headlessly; verify the two behavioural fixes: delete a dataset → no duplicate
+  nav; reload mid-session → stays logged in.
+
 ## 2026-06-27 — Claude: Phase 2B (frontend) BUILT on `claude/phase2b-frontend` (`12bb029`) — ready for Codex review
 
 Executed the Phase 2B plan (`~/.claude/plans/smooth-plotting-reef.md`). The full
