@@ -68,3 +68,22 @@ jobs:
 
       - name: Run Phase 2A tests
         run: pytest tests/phase2a
+
+  # Phase 2B — frontend. The SPA is vanilla, no-build JS, so there is nothing to
+  # compile and no JS test framework (by design). This job is a cheap guard:
+  # node --check syntax-validates every module so a broken file can't merge.
+  # (Behavioural coverage of app/ui.py lives in the phase2a pytest job above.)
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Syntax-check all JS modules
+        run: |
+          find app/web/js -name '*.js' -print0 | xargs -0 -n1 node --check
