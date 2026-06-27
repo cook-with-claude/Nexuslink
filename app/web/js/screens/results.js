@@ -21,16 +21,14 @@ export async function resultsScreen(app, params) {
     ? store.lastResult : null;
   if (!payload) payload = await api.result(targetId);
 
-  // Join dataset name (gap #6): target -> dataset_id -> dataset name.
+  // Join dataset name (gap #6): target -> dataset_id -> dataset name. The two
+  // lookups are independent, so fetch them in parallel.
   let datasetName = store.activeDataset ? store.activeDataset.name : null;
   try {
-    const targets = await api.targets();
+    const [targets, datasets] = await Promise.all([api.targets(), api.datasets()]);
     const t = targets.find((x) => x.id === targetId);
-    if (t) {
-      const datasets = await api.datasets();
-      const d = datasets.find((x) => x.id === t.dataset_id);
-      if (d) { datasetName = d.name; store.activeDataset = { id: d.id, name: d.name }; }
-    }
+    const d = t && datasets.find((x) => x.id === t.dataset_id);
+    if (d) { datasetName = d.name; store.activeDataset = { id: d.id, name: d.name }; }
   } catch { /* name is best-effort; results still render without it */ }
 
   clear(body);

@@ -42,6 +42,10 @@ async function dispatch() {
     try {
       const s = await api.status();
       store.accountExists = s.account_exists;
+      // Restore auth state from the live session cookie. status does not return
+      // the username, so username stays null on reload (nav shows blank) while
+      // the user remains logged in — better than bouncing them to login.
+      store.authenticated = !!s.authenticated;
       if (!s.authenticated) store.username = null;
     } catch {
       // status is unauthenticated/public; if it fails we still render login.
@@ -53,17 +57,17 @@ async function dispatch() {
 
   // Default route -> dashboard if logged in, else login.
   if (!found || hash === "#/" || hash === "#") {
-    location.hash = store.username ? "#/dashboard" : "#/login";
+    location.hash = store.authenticated ? "#/dashboard" : "#/login";
     return;
   }
 
-  // Auth guard: a protected route with no known user -> login.
-  if (found.route.auth && !store.username) {
+  // Auth guard: a protected route with no live session -> login.
+  if (found.route.auth && !store.authenticated) {
     location.hash = "#/login";
     return;
   }
   // Already logged in but sitting on login -> dashboard.
-  if (!found.route.auth && store.username && hash.startsWith("#/login")) {
+  if (!found.route.auth && store.authenticated && hash.startsWith("#/login")) {
     location.hash = "#/dashboard";
     return;
   }

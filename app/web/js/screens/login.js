@@ -46,6 +46,7 @@ export async function loginScreen(app) {
       btn.disabled = true;
       try {
         const data = isSetup ? await api.setup(username, password) : await api.login(username, password);
+        store.authenticated = true;
         store.username = data.username;
         store.accountExists = true;
         location.hash = "#/dashboard";

@@ -1,10 +1,9 @@
 // Shared chrome: the top nav rendered on every authenticated screen. Returns a
 // .page container the caller fills with screen content.
 
-import { el } from "./components.js";
-import { store } from "./store.js";
+import { el, clear } from "./components.js";
+import { store, reset } from "./store.js";
 import { api } from "./api.js";
-import { reset } from "./store.js";
 
 const NAV = [
   ["#/dashboard", "Dashboard"],
@@ -12,6 +11,12 @@ const NAV = [
 ];
 
 export function shell(app, activeHash) {
+  // Clear first so in-place refreshes (a screen re-invoking itself after a
+  // delete/add, not via the router) don't stack a second nav + page. The router
+  // also clears before its initial dispatch; clearing here is the single
+  // source of truth so every render path is safe.
+  clear(app);
+
   const links = NAV.map(([href, label]) =>
     el("a", { href, class: location.hash.startsWith(href) ? "active" : "" }, label),
   );

@@ -7,6 +7,8 @@
 // inline on the page. So the 401 redirect is skipped for those two endpoints
 // (LOCAL_401_PATHS); callers there catch the ApiError and render it.
 
+import { store } from "./store.js";
+
 export class ApiError extends Error {
   constructor(code, message, status) {
     super(message || code || "request failed");
@@ -43,7 +45,12 @@ async function request(method, path, { json, form, query } = {}) {
   }
 
   if (res.status === 401 && !LOCAL_401_PATHS.has(path)) {
-    // Session expired / not authenticated in the app area -> bounce to login.
+    // Session expired / not authenticated in the app area -> drop client auth
+    // state THEN bounce to login. Clearing first is what stops a redirect loop:
+    // the guard keys off store.authenticated, so without this the login screen
+    // would bounce straight back to dashboard, which 401s again.
+    store.authenticated = false;
+    store.username = null;
     if (location.hash !== "#/login") location.hash = "#/login";
     throw new ApiError("UNAUTHENTICATED", "login required", 401);
   }
