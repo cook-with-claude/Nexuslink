@@ -117,6 +117,43 @@ def test_create_target_non_string_name_is_400(client):
 
 
 # ---------------------------------------------------------------------------
+# Codex follow-up - dataset_id / phone_number are bound straight into SQL, so a
+# JSON object/array must be rejected with 400 (not raise InterfaceError -> 500).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("dataset_id", [{"x": 1}, [1, 2], "1", 1.0, True])
+def test_create_target_non_int_dataset_id_is_400(client, dataset_id):
+    r = client.post("/api/targets",
+                    json={"name": "t", "dataset_id": dataset_id, "phone_number": "01000001"})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "BAD_REQUEST"
+
+
+@pytest.mark.parametrize("phone_number", [{"x": 1}, [1, 2], 1000001, ""])
+def test_create_target_non_string_phone_number_is_400(client, phone_number):
+    r = client.post("/api/targets",
+                    json={"name": "t", "dataset_id": 1, "phone_number": phone_number})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "BAD_REQUEST"
+
+
+def test_create_target_valid_request_still_succeeds(client, sample_xlsx):
+    """The tightened type guard must not block a well-formed create (201)."""
+    import io
+
+    with open(sample_xlsx, "rb") as fh:
+        data = {"name": "ds", "file": (io.BytesIO(fh.read()), "sample.xlsx")}
+    up = client.post("/api/imports", data=data, content_type="multipart/form-data").get_json()
+    ds_id = up["data"]["dataset_id"]
+    phone = client.get(f"/api/datasets/{ds_id}/phone-numbers").get_json()["data"][0]["phone_number"]
+
+    r = client.post("/api/targets",
+                    json={"name": "Suspect A", "dataset_id": ds_id, "phone_number": phone})
+    assert r.status_code == 201
+    assert r.get_json()["data"]["dataset_id"] == ds_id
+
+
+# ---------------------------------------------------------------------------
 # Fix #5 - a timezone-aware timestamp is rejected at import (naive-local
 # contract) instead of poisoning a later analysis.
 # ---------------------------------------------------------------------------

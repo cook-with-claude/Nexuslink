@@ -19,7 +19,16 @@ def create_target():
     name = body.get("name")
     dataset_id = body.get("dataset_id")
     phone_number = body.get("phone_number")
-    if not isinstance(name, str) or not name.strip() or dataset_id is None or not phone_number:
+    # Validate TYPES before any DB call. dataset_id and phone_number are bound
+    # straight into SQL below; a JSON object/array (or other non-bindable type)
+    # would otherwise raise sqlcipher3.InterfaceError -> 500. dataset_id must be a
+    # real int (bool is an int subclass -> reject explicitly); phone_number a
+    # non-empty string (the column is TEXT and the dataset lookup is an exact match).
+    if (
+        not isinstance(name, str) or not name.strip()
+        or not isinstance(dataset_id, int) or isinstance(dataset_id, bool)
+        or not isinstance(phone_number, str) or not phone_number
+    ):
         return err("BAD_REQUEST", "name, dataset_id, phone_number required", 400)
     name = name.strip()
 
