@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, request
+from flask import Blueprint, current_app
 from sqlcipher3 import dbapi2 as sqlcipher
 
-from app import audit, err, get_db, login_required, ok
+from app import audit, err, get_db, json_body, login_required, ok
 
 bp = Blueprint("targets", __name__, url_prefix="/api")
 
@@ -15,12 +15,13 @@ bp = Blueprint("targets", __name__, url_prefix="/api")
 @bp.post("/targets")
 @login_required
 def create_target():
-    body = request.get_json(silent=True) or {}
-    name = (body.get("name") or "").strip()
+    body = json_body()
+    name = body.get("name")
     dataset_id = body.get("dataset_id")
     phone_number = body.get("phone_number")
-    if not name or dataset_id is None or not phone_number:
+    if not isinstance(name, str) or not name.strip() or dataset_id is None or not phone_number:
         return err("BAD_REQUEST", "name, dataset_id, phone_number required", 400)
+    name = name.strip()
 
     db = get_db()
     if db.execute("SELECT 1 FROM datasets WHERE id = ?", (dataset_id,)).fetchone() is None:

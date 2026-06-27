@@ -68,6 +68,11 @@ def connect(db_key: bytes) -> sqlcipher.Connection:
     conn = sqlcipher.connect(str(config.db_path()))
     # PRAGMA key MUST be the first statement. Raw key as a hex blob (x'..').
     conn.execute(f"PRAGMA key = \"x'{db_key.hex()}'\"")
+    # Each request opens its own connection and the desktop server is threaded,
+    # so two requests can write at once. Without a busy_timeout SQLite's default
+    # is 0 ms -- the second writer instantly raises "database is locked". Wait
+    # instead of failing the request.
+    conn.execute("PRAGMA busy_timeout = 5000")
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlcipher.Row
     return conn

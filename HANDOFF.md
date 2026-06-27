@@ -4,6 +4,78 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude: code-review pass + bug fixes on `branch-3` — FOR REVIEW (do NOT merge)
+
+Khaled asked for a fresh code-review of the merged Phase 2A backend and to fix
+any bugs. Ran the `code-review` skill (high-recall) over `app/` + `main.py`
+(branch base = `main` `3fbf7c0`; `branch-3` had no prior diff). Fixes are in the
+working tree on **`branch-3`**; **`main` untouched, Phase 1 byte-frozen**
+(`git diff --stat main -- phase1_cdr/` empty). Nadim merges — this is for review.
+
+### Bugs fixed (10 files, 10 issues)
+1. **`account.create_account` ordering (data-loss).** Wrote `auth.json` BEFORE
+   creating the encrypted DB; if `init_schema` failed (disk error, or a stale
+   `cdr.db` the new random key can't open) the account became openable over a
+   schema-less DB — permanently unusable, `/setup` then 409s — and the conn
+   leaked. Now: build+init the DB first, on failure `close()`+`unlink()` the db
+   and re-raise so `auth.json` is never written (setup retryable); close conn.
+2. **`storage.connect` no `busy_timeout` (concurrency).** Threaded server + a
+   per-request connection each → a second writer instantly hit "database is
+   locked" (default 0 ms). Added `PRAGMA busy_timeout = 5000`.
+3. **Non-object JSON body → 500.** `request.get_json(silent=True) or {}` kept a
+   JSON array/scalar, then `body.get(...)` raised. Added `app.json_body()` (coerces
+   non-dict → `{}`); used in auth setup/login/change-password + targets create.
+4. **Non-string `username`/`password`/`name` → 500 (and a non-string username
+   PERMANENTLY locked out the account via the auth `AttributeError`→`AuthError`
+   path).** Added `isinstance(..., str)` guards → clean 400.
+5. **tz-aware timestamps admitted then crashed analyze.** `validate_row` accepted
+   offset-bearing ISO timestamps; a dataset mixing offsets makes pandas yield an
+   object-dtype column and the frozen `detect_home`'s `.dt.hour` raises 500 at
+   analyze. Now rejected at import (naive-local contract; skip reason recorded).
+6. **`duration_seconds` unbounded → whole import aborts.** Only a `<0` guard
+   existed; a value above SQLite's signed-64-bit max made the bulk `executemany`
+   raise `OverflowError`, 500-ing the entire import (0 rows stored). Now that one
+   row is skipped (`> 9_223_372_036_854_775_807`).
+7. **`delete_dataset` wrote no audit row** (every other state-changing endpoint
+   does). Added `audit.DATASET_DELETE` + write it before commit (rowcount>0).
+8. **Import upload handle never closed** (Windows temp-file leak under repeated
+   imports). `finally: upload.close()`.
+9. **`detection_bridge.rows_to_frame` didn't drop NaT-timestamp rows** like the
+   frozen loader does (divergence; a tampered DB could feed NaT to the detectors).
+   Added `df[df["timestamp"].notna()].reset_index(drop=True)` to mirror loader.
+10. **`main.py` leaked the listening socket** — `server.shutdown()` doesn't close
+    the FD. Added `server.server_close()` after `join()`.
+
+### Deliberately NOT fixed (reviewed, left for decision / known weakness)
+- `top_n=0` → empty `frequent_areas/contacts`: intentional and locked by
+  `test_negative_top_n_does_not_return_garbage`. Left as-is.
+- `read_excel(dtype=str)` stringifying numeric phone cells to `'…0.0'`/sci-notation:
+  real, but matches frozen Phase 1's own `loader` behavior and depends on the
+  still-open "real CDR `area`/number format" question (EXPERT_BRIEF §2). Needs a
+  data-contract decision, not a silent heuristic.
+- Global `DB_KEY`/`USERNAME` in `current_app.config` (cross-request race under the
+  threaded server) and the chunked-`Content-Length` CSRF-guard gap: architectural
+  items in Khaled's "weaknesses to review later" bucket, not drive-by fixes.
+
+### Verification
+- `pytest tests/phase2a` → **65 passed**; `pytest phase1_cdr/tests` → **18 passed**
+  (83 total), on a fresh local `.venv` (Python 3.11→3.12, flask 3.1.3, pandas 3.0.3;
+  the team interpreter is Nadim-machine-only, so I rebuilt deps from
+  `requirements.txt`). `git diff --stat main -- phase1_cdr/` EMPTY.
+- NOTE: the existing suite did not *prove* these fixes — no tests exercise the bad
+  inputs (non-dict body, tz timestamp, oversized duration, account-init failure,
+  busy_timeout, dataset-delete audit). **Regression tests still TODO** — offered to
+  Khaled; not yet written. A reviewer should treat these fixes as test-gap-covered
+  by reasoning, not by a red→green test.
+
+### For the reviewer (Codex/Nadim)
+Whole-branch diff: `git diff main..branch-3` (one fix commit + this HANDOFF entry).
+Two worth a skeptical look: (a) **account.py reorder** — does deleting a stale
+`cdr.db` on init failure ever destroy a legitimate prior DB? (only reachable when
+`auth.json` is absent, i.e. no recoverable account); (b) **tz-aware rejection** —
+confirm the real data generator will only ever emit naive local timestamps, or
+this turns valid rows into skips.
+
 ## 2026-06-26 — Claude: code-review fixes on `claude/review-fixes` — FOR CODEX REVIEW
 
 Nadim asked for a whole-codebase review "with the current library versions in

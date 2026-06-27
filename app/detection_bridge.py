@@ -29,6 +29,11 @@ def rows_to_frame(rows: list[dict]) -> pd.DataFrame:
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     df["call_type"] = pd.to_numeric(df["call_type"], errors="coerce").astype("Int64").fillna(0).astype(int)
     df["duration_seconds"] = pd.to_numeric(df["duration_seconds"], errors="coerce").fillna(0).astype(int)
+    # Mirror the frozen Phase 1 loader, which drops rows whose timestamp can't be
+    # parsed rather than feeding NaT into the detectors (detect_home/work read
+    # .dt.hour). Validated imports never produce NaT here; this guards a tampered
+    # or hand-edited DB from 500-ing analysis.
+    df = df[df["timestamp"].notna()].reset_index(drop=True)
     return df
 
 

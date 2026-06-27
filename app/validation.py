@@ -62,6 +62,13 @@ def validate_row(row: dict) -> tuple[dict | None, str | None]:
     ts = pd.to_datetime(row.get("timestamp"), errors="coerce", format="ISO8601")
     if pd.isna(ts):
         return None, "unparseable timestamp"
+    # Phase 1's time-window logic (home/work) works on naive local wall-clock
+    # times. A tz-aware timestamp would be stored with its offset and, once a
+    # dataset mixes offsets, pandas can no longer build a datetime column -- the
+    # detectors' .dt.hour access then raises at analyze time. Reject here so the
+    # bad row is skipped at import rather than poisoning a later analysis.
+    if ts.tzinfo is not None:
+        return None, "timezone-aware timestamp not supported (expected naive local time)"
 
     call_type, reason = _parse_integer(row.get("call_type"), "call_type")
     if reason is not None:
@@ -74,6 +81,11 @@ def validate_row(row: dict) -> tuple[dict | None, str | None]:
         return None, reason
     if duration < 0:
         return None, "negative duration_seconds"
+    # SQLite stores INTEGERs as signed 64-bit; a larger value makes the bulk
+    # executemany raise OverflowError and abort the ENTIRE import. Skip the one
+    # offending row instead.
+    if duration > 9_223_372_036_854_775_807:
+        return None, "duration_seconds out of range"
 
     def _s(v):
         return None if _is_blank(v) else str(v).strip()

@@ -10,6 +10,18 @@ from flask import Flask, g, jsonify, request, session
 from app import account, storage
 
 
+def json_body() -> dict:
+    """The request JSON, but only when it is an object.
+
+    request.get_json(silent=True) returns whatever the body decodes to, so a
+    valid-but-non-object body (a JSON array or scalar) would slip through an
+    `or {}` guard and make the subsequent body.get(...) raise AttributeError -> 500.
+    Coerce anything that isn't a dict to {} so callers can always .get() safely.
+    """
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
 def ok(data=None, status: int = 200):
     return jsonify({"ok": True, "data": data}), status
 

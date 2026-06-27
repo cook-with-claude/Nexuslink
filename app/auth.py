@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, request, session
+from flask import Blueprint, current_app, session
 
-from app import account, audit, err, get_db, login_required, ok
+from app import account, audit, err, get_db, json_body, login_required, ok
 
 bp = Blueprint("auth", __name__, url_prefix="/api")
 
@@ -24,9 +24,9 @@ def _audit(username: str, event: str, detail=None) -> None:
 
 @bp.post("/setup")
 def setup():
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     username, password = body.get("username"), body.get("password")
-    if not username or not password:
+    if not isinstance(username, str) or not isinstance(password, str) or not username or not password:
         return err("BAD_REQUEST", "username and password required", 400)
     try:
         db_key = account.create_account(username, password)
@@ -41,9 +41,9 @@ def setup():
 
 @bp.post("/login")
 def login():
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     username, password = body.get("username"), body.get("password")
-    if not username or not password:
+    if not isinstance(username, str) or not isinstance(password, str) or not username or not password:
         return err("BAD_REQUEST", "username and password required", 400)
     try:
         db_key = account.authenticate(username, password)
@@ -74,9 +74,9 @@ def logout():
 @bp.post("/change-password")
 @login_required
 def change_password():
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     old, new = body.get("old_password"), body.get("new_password")
-    if not old or not new:
+    if not isinstance(old, str) or not isinstance(new, str) or not old or not new:
         return err("BAD_REQUEST", "old_password and new_password required", 400)
     try:
         account.change_password(old, new)

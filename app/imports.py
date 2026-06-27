@@ -28,6 +28,10 @@ def import_xlsx():
         df = pd.read_excel(upload, dtype=str, engine="openpyxl")
     except Exception:
         return err("BAD_FILE", "file could not be read as .xlsx", 400)
+    finally:
+        # Release the spooled-temp-file handle; on Windows it otherwise lingers
+        # until GC and can't be deleted while open.
+        upload.close()
 
     missing = validation.missing_columns(list(df.columns))
     if missing:
@@ -96,7 +100,11 @@ def dataset_phone_numbers(dataset_id: int):
 def delete_dataset(dataset_id: int):
     db = get_db()
     cur = db.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
-    db.commit()
     if cur.rowcount == 0:
         return err("NOT_FOUND", "dataset not found", 404)
+    # Cascades to cdr_records/targets/analysis_results -- a destructive action
+    # that must leave an audit trail like every other state-changing endpoint.
+    audit.write_audit(db, current_app.config["USERNAME"], audit.DATASET_DELETE,
+                      {"dataset_id": dataset_id})
+    db.commit()
     return ok({})

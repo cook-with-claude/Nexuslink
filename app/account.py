@@ -96,6 +96,22 @@ def create_account(username: str, password: str) -> bytes:
     db_key = os.urandom(config.DB_KEY_BYTES)
     kek = crypto.derive_kek(password, salt)
     nonce, wrapped = crypto.wrap_key(kek, db_key)
+    # Build + initialize the encrypted DB FIRST, then persist auth.json. If this
+    # fails (disk error, or a stale cdr.db left from a prior account that the new
+    # random key can't open), auth.json is never written -- so account_exists()
+    # stays False and /setup can be retried -- rather than leaving an "openable"
+    # account stranded over a schema-less or unreadable database.
+    conn = storage.connect(db_key)
+    try:
+        storage.init_schema(conn)
+    except Exception:
+        conn.close()
+        try:
+            config.db_path().unlink()
+        except OSError:
+            pass
+        raise
+    conn.close()
     _save({
         "username": username,
         "bcrypt_hash": crypto.hash_password(password),
@@ -104,9 +120,6 @@ def create_account(username: str, password: str) -> bytes:
         "wrapped_db_key": _b64e(wrapped),
         "created_at": _now(),
     })
-    conn = storage.connect(db_key)
-    storage.init_schema(conn)
-    conn.close()
     return db_key
 
 

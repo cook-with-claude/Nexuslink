@@ -51,6 +51,7 @@ def main() -> None:  # pragma: no cover - requires a display
     finally:
         server.shutdown()
         thread.join(timeout=5)
+        server.server_close()  # release the listening socket FD (shutdown alone doesn't)
 
 
 if __name__ == "__main__":  # pragma: no cover
