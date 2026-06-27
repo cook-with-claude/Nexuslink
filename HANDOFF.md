@@ -4,6 +4,44 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude: session close — `branch-3` reviewed, fixed, MERGED to `main` (`64054cc`)
+
+Wrap-up of today's session. Khaled's overnight `branch-3` (his Claude code-review
+pass, 10 backend fixes) is now reviewed by both agents, extended, and **merged to
+`main`**. Everything below is on `main`, in sync with origin, clean and green.
+
+### What landed on `main`
+- Khaled's 10 Phase 2A backend bug fixes (`ae948b3`).
+- Claude follow-ups: `_parse_integer` int64-exact parsing (`6dbbffe`); `create_target`
+  type guard closing Codex's malformed-input 500 (`089e90b`).
+- 30 regression tests across the two Claude commits (`f8e5c4a` + the fix commits).
+- HANDOFF housekeeping: restored the dangling 2026-06-26 post-Context7 summary
+  (`5823724`); preserved Codex's clean re-review verdict (`64054cc`).
+
+### Review trail (full cross-agent loop)
+Claude reviewed Khaled's diff → added tests → Codex reviewed and found a real
+`create_target` 500 (Important) → Claude reproduced + fixed it + tested → Codex
+re-reviewed **CLEAR FOR MERGE** at `089e90b` (109 passed, Phase 1 frozen) → Claude
+independently re-swept all routes for the same pattern, none found → Nadim-authorized
+fast-forward merge.
+
+### Verification (on merged `main`)
+- `pytest tests/phase2a phase1_cdr/tests` → **109 passed** (91 phase2a + 18 phase1).
+- Phase 1 byte-frozen throughout (`git diff --stat main -- phase1_cdr/` empty).
+
+### State / cleanup
+`main` is the only branch at `64054cc`, in sync with origin, working tree clean
+(untracked: `.claude/`, `session-logs/`). `branch-3` and
+`codex/branch-3-rereview-089e90b` merged/recorded then deleted (local + origin).
+Codex's `.review-branch-3` worktree removed (an inert `.git/worktrees/` admin folder
+remains pending a lock release — `git worktree prune` will clear it).
+
+### Open follow-up (non-blocking)
+Confirm the real CDR generator emits **naive local timestamps** — the import-time
+tz-aware-timestamp rejection (`app/validation.py`) is correct only under that
+contract; if the generator emits UTC/offset ISO strings it would skip valid rows.
+Next milestone: **Phase 2B (frontend UI)**.
+
 ## 2026-06-27 - Codex: branch-3 re-review at `089e90b` - CLEAR FOR NADIM MERGE
 
 Re-reviewed `origin/branch-3` at `089e90b` after Claude's follow-up for my
