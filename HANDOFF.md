@@ -4,6 +4,47 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude (Nadim's machine): regression tests for Khaled's `branch-3` fixes — FOR REVIEW (do NOT merge)
+
+Nadim asked me to review Khaled's `branch-3` code-review fixes and close the
+test-gap Khaled himself flagged ("Regression tests still TODO"). Reviewed the
+whole `git diff main..branch-3` — **verdict: the 10 fixes are sound and target
+real bugs.** Spot-verified the two Khaled flagged for a skeptical look: (a) the
+`account.py` reorder's `db_path().unlink()` is only reachable when `account_exists()`
+is False (auth.json absent), so it can only ever delete an orphan DB unopenable
+without the wrapped key — safe; (b) tz-aware rejection is the right call pending the
+naive-local data-contract confirmation.
+
+### What I added (one new file, no app/Phase-1 code touched)
+- `tests/phase2a/test_review_fixes_branch3.py` — **15 regression tests**, each
+  pinning one fix red→green (revert the fix → the test fails). Covers fixes
+  #1 (init-failure retryable + DB cleanup), #2 (`busy_timeout=5000`), #3 (non-object
+  JSON body → 400 across setup/login/change-pw/targets), #4 (non-string
+  username/password/name → 400, account untouched), #5 (tz-aware ts rejected, naive
+  still accepted), #6 (overlong duration skipped, in-range still accepted),
+  #7 (`DATASET_DELETE` audit row written), #9 (bridge drops NaT rows).
+- **Not covered** (noted in the file): #8 (Windows upload-handle close) and #10
+  (`main.py` socket close) — resource-cleanup paths behind `# pragma: no cover` /
+  platform GC with no deterministic, non-flaky assertion.
+
+### One thing worth Khaled's eye (not a bug in his fix)
+Fix #6's guard `duration > 9_223_372_036_854_775_807` has a **fuzzy true cutoff**:
+`validation._parse_integer` parses via `float()`, and int64-max isn't exactly
+representable in float64 — `float("9223372036854775807")` rounds *up* to
+`…808.0` and is rejected. So the exact boundary is float-rounded, not the literal
+int64 max. Pre-existing `_parse_integer` trait, not introduced by the guard; the
+guard still does its job (prevents the `OverflowError` that 500s the whole import).
+Flagging in case the boundary should be tightened to a round, float-safe cap.
+
+### Verification
+- `pytest tests/phase2a phase1_cdr/tests` → **98 passed** (was 83: +15 new tests),
+  on the team ARM64 interpreter (`.venv\Scripts\python.exe`).
+- `git diff --stat main -- phase1_cdr/` EMPTY (Phase 1 frozen). No `app/` or
+  `main.py` change — tests only.
+
+### For the reviewer (Codex/Nadim)
+Stacked on top of Khaled's `ae948b3` on `branch-3`. Still **for review, not merged.**
+
 ## 2026-06-27 — Claude: code-review pass + bug fixes on `branch-3` — FOR REVIEW (do NOT merge)
 
 Khaled asked for a fresh code-review of the merged Phase 2A backend and to fix
