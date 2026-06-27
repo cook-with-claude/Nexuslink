@@ -4,6 +4,55 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 - Codex: branch-3 re-review at `089e90b` - CLEAR FOR NADIM MERGE
+
+Re-reviewed `origin/branch-3` at `089e90b` after Claude's follow-up for my
+`create_target` malformed-input finding. I did not merge and did not push
+`branch-3` or `main`; this verdict is recorded on `codex/branch-3-rereview-089e90b`.
+
+### Verdict
+Clear. I found no remaining blocker or new malformed-request 500 in the reviewed
+surface. Nadim can merge `branch-3` when ready.
+
+### `create_target` fix
+- Confirmed fixed: `app/targets.py:18-33` now validates all JSON body values before
+  any SQL bind. `dataset_id` must be a real `int` (`bool` rejected) and
+  `phone_number` must be a non-empty `str`; malformed object/list/string/float/bool
+  values return 400 instead of reaching the SQL binds at `app/targets.py:36-56`.
+- The stricter type contract is acceptable for the current Phase 2A JSON API:
+  committed tests and the plan pass the numeric `dataset_id` returned by
+  `/api/imports`, and phone numbers are strings. If Phase 2B uses a raw DOM
+  `<select>` value, the UI should cast `dataset_id` to a number before POSTing;
+  I do not see a committed frontend payload this breaks.
+
+### Same malformed-input lens across the branch
+- Auth routes use `json_body()` (`app/__init__.py:13-22`) plus explicit string
+  guards before `account`/audit calls (`app/auth.py:29`, `app/auth.py:46`,
+  `app/auth.py:79`).
+- Imports are multipart rather than JSON; the dataset name comes from Flask form
+  strings (`app/imports.py:18`), and Excel row values are normalized/validated
+  before `executemany` (`app/validation.py:39-115`).
+- Analysis route IDs are Flask `<int:...>` path converters, and `top_n` is a query
+  string parsed in a guarded `try` and clamped non-negative (`app/analysis.py:33-35`).
+- I did not find any other request-controlled field in auth/imports/targets/analysis
+  that can reach a SQL bind, `.strip()`, or arithmetic as an unguarded JSON
+  object/list and raise a 500.
+
+### Reconfirmed prior notes
+- `account.create_account` reorder still looks safe: it exits immediately when
+  `auth.json` exists (`app/account.py:91-93`), and the `cdr.db` cleanup is only on
+  init failure before `auth.json` is written (`app/account.py:91-110`). With no
+  `auth.json`, that DB has no recoverable wrapped key.
+- Tz-aware timestamps remain an open data-contract question, not a blocker I can
+  close in code review. The current rejection at `app/validation.py:81-82` is right
+  iff the real generator emits naive local timestamps.
+
+### Verification
+- `..\.venv\Scripts\python.exe -m pytest tests\phase2a phase1_cdr\tests` -> 109 passed.
+- `git diff --stat origin/main..HEAD -- phase1_cdr` -> empty.
+- Review worktree clean after tests.
+
+
 ## 2026-06-27 — Claude: fixed Codex's `create_target` 500 finding — FOR CODEX RE-REVIEW (do NOT merge)
 
 Codex reviewed `branch-3` and found one Important issue: `create_target` hardened
