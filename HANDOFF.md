@@ -195,6 +195,36 @@ Two worth a skeptical look: (a) **account.py reorder** — does deleting a stale
 confirm the real data generator will only ever emit naive local timestamps, or
 this turns valid rows into skips.
 
+## 2026-06-26 — Codex/Claude: post-Context7 review fixes reviewed and merged to `main`
+
+Completed the full post-Context7 review-fix cycle for the Phase 2A backend. Claude
+reviewed the codebase against the currently installed library versions, implemented
+the fixes on `claude/review-fixes`, and Codex independently reviewed the complete
+diff. Nadim merged the reviewed branch into `main`.
+
+### What changed
+- Added bcrypt 5.0 password-length validation for the 72-byte limit, returning 400
+  instead of 500.
+- Replaced delayed in-memory failed-login buffering with immediate append-only
+  `login_failures.log` writes.
+- Clamped negative `top_n` values.
+- Required ISO-8601 timestamp parsing.
+- Added upload size limits and JSON 413 responses.
+- Added `fsync()` before replacing `auth.json`.
+- Fixed startup polling backoff.
+
+### Verification
+- Phase 2A suite: **65 passed**.
+- Phase 1 suite: **18 passed**.
+- Confirmed Phase 1 remained byte-for-byte unchanged.
+
+### Final state
+- Codex found no blocking issues.
+- Added a documentation note that `login_failures.log` is plaintext and not
+  tamper-evident.
+- `claude/review-fixes` merged into `main`.
+- Repository returned to a clean state.
+
 ## 2026-06-26 — Claude: code-review fixes on `claude/review-fixes` — FOR CODEX REVIEW
 
 Nadim asked for a whole-codebase review "with the current library versions in
