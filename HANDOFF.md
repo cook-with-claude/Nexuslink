@@ -4,6 +4,70 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude: Phase 2B (frontend) PLAN complete — ready to EXECUTE next session
+
+Planned Phase 2B with Nadim: the desktop UI + PyWebView shell on top of the
+merged Phase 2A backend. **No code written yet** — this is the agreed plan to
+execute next session. Backend was read route-by-route, so the API shapes below
+are confirmed, not assumed. **Full plan file (authoritative, more detailed):**
+`C:\Users\nadim\.claude\plans\smooth-plotting-reef.md`.
+
+### Decisions locked with Nadim (do NOT re-litigate)
+1. **Vanilla, no-build SPA** (hand-written HTML/CSS/JS, hash router), served
+   same-origin by Flask. No Node/bundler — repo is Python-only, runs offline in
+   PyWebView. (Rejected React/Vite and HTMX/Jinja.)
+2. **Add-Target phone = picker** populated from `GET /api/datasets/<id>/phone-numbers`
+   (not free text) — backend 404s a phone not in the dataset.
+3. **Results include `frequent_contacts` + `frequent_areas_confidence`** (both
+   returned by analyze; brief omitted them).
+
+### Confirmed API (session-cookie auth, NOT tokens; envelope `{ok,data}` / `{ok,error:{code,message}}`)
+`GET /api/status`→`{account_exists,authenticated}` (first-run + boot signal) ·
+`POST /api/setup|login|logout|change-password` · `POST /api/imports` (multipart
+`name`+`file`)→`{dataset_id,imported,skipped,skipped_reasons[]}` ·
+`GET /api/datasets` · `DELETE /api/datasets/<id>` ·
+`GET /api/datasets/<id>/phone-numbers`→`[{phone_number,count}]` ·
+`GET /api/targets` (ALL datasets, each has `dataset_id`) ·
+`POST /api/targets {name,dataset_id(int),phone_number}` · `DELETE /api/targets/<id>` ·
+`POST /api/targets/<id>/analyze?top_n=5` · `GET /api/targets/<id>/result`.
+Analysis `DetectionResult.confidence` ∈ **{High,Medium,Low,Insufficient data}**
+(4 states); `gates`={N,share,closeness,density}, each High/Medium/Low; plus numeric
+`share/closeness/density`, `supporting_records/total_window_records`,
+`near_tie`, `alternatives[]`.
+
+### Gaps/mismatches found in the brief (resolved in plan; each gets a `// API-MISMATCH:` comment + entry-point summary line)
+- No HTML served today → add **`app/ui.py` blueprint**, register it from the
+  **entry point** (`app=create_app(); app.register_blueprint(ui_bp)`) so
+  `app/__init__.py` + all Phase 2A code stay byte-untouched.
+- No stats endpoint → Dashboard derives from datasets+targets. Targets global →
+  filter by `dataset_id` client-side. Analyze payload omits dataset name → join
+  client-side. Confidence 4th state "Insufficient data" missing from brief →
+  4-state pill. **401 is overloaded**: global "401→login" rule applies to the
+  authenticated area but NOT to login/change-password (there 401 = bad creds /
+  wrong current pw → inline). Content-Type guard returns **415** on non-JSON state
+  changes → fetch wrapper sets JSON header; import uses FormData (no manual
+  Content-Type). bcrypt 72-byte limit → inline 400.
+
+### Build surface (all additive)
+`app/ui.py` (new blueprint) · `app/web/{index.html,css/app.css,js/...}`
+(api wrapper, hash router, store, shared components incl. confidence pill +
+gate-trace renderer, 7 screen modules) · `main.py` MODIFIED only to register
+`ui_bp`, set title **"La Passion — CDR Analysis"**, and point the window at `/`
+(not `/api/health`). Aesthetic: dark data-terminal — near-black layered surfaces,
+single cool accent, monospace for all data, dense tabular layout, confidence as a
+4-state visual signal, gate trace collapsed `<details>` rendered as labeled rows
+(never raw JSON).
+
+### EXACT resume instructions (next session)
+1. New session → "Read `C:\Users\nadim\.claude\plans\smooth-plotting-reef.md` and
+   execute it." (Plan has the full per-screen wiring + verification.)
+2. Build on a `claude/` branch off `main` (`64054cc`); per COLLAB.md Codex
+   reviews, **only Nadim merges**. Keep Phase 2A + `phase1_cdr/` byte-frozen.
+3. Verify: `git diff --stat main -- app/__init__.py app/*.py phase1_cdr/` stays
+   empty for Phase 2A files (only `app/ui.py`, `app/web/`, `main.py` change);
+   `pytest tests/phase2a phase1_cdr/tests` → still 109 passed; then end-to-end
+   through the window (`python main.py`).
+
 ## 2026-06-27 — Claude: session close — `branch-3` reviewed, fixed, MERGED to `main` (`64054cc`)
 
 Wrap-up of today's session. Khaled's overnight `branch-3` (his Claude code-review
