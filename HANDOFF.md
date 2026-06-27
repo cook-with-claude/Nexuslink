@@ -4,6 +4,49 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-27 — Claude: Phase 2B (frontend) BUILT on `claude/phase2b-frontend` (`12bb029`) — ready for Codex review
+
+Executed the Phase 2B plan (`~/.claude/plans/smooth-plotting-reef.md`). The full
+desktop UI is built, additive, and verified. **Not merged** — branched off `main`
+(`64054cc`); per COLLAB.md, Codex reviews and only Nadim merges.
+
+### What landed (all additive)
+- **`app/ui.py`** — new Flask blueprint: serves `index.html` at `/` + `/css/*`,
+  `/js/*` static assets via `send_from_directory`. Imports nothing from Phase 2A.
+- **`app/web/`** — vanilla no-build SPA: `index.html`, `css/app.css` (dark
+  data-terminal design system), `js/{api,router,store,components,layout,main}.js`
+  + `js/screens/{login,dashboard,datasets,import,targets,results,password}.js`.
+  Hash router, one fetch wrapper (envelope unwrap + 401 policy), 4-state
+  confidence pill + labeled gate-trace renderer (never raw JSON).
+- **`main.py`** — MODIFIED only: `app.register_blueprint(ui_bp)` after
+  `create_app()`; window title → "La Passion — CDR Analysis"; window points at
+  `/` (was `/api/health`). Full Phase 2B summary + all 12 API-mismatches block
+  added at the top of the file.
+
+### Verification (all green)
+- **Backend frozen:** `git diff --stat main -- app/__init__.py app/auth.py
+  app/imports.py app/targets.py app/analysis.py app/account.py app/crypto.py
+  app/storage.py app/validation.py app/detection_bridge.py app/audit.py
+  app/config.py phase1_cdr/` → **empty**.
+- **Existing suite:** `pytest tests/phase2a phase1_cdr/tests` → **109 passed**.
+- **Static-serving smoke:** `/`, `/css/app.css`, `/js/**` all 200 with correct
+  Content-Type; `/api/health` unchanged.
+- **Headless E2E** through the EXACT API calls each screen makes (isolated temp
+  `APP_DATA_DIR`): setup → import (.xlsx, 84 imported / 1 skipped w/ reason) →
+  phone-numbers picker → create target → dup→409 → analyze (home/work pills,
+  freq areas+confidence, contacts) → result reload → change-password (wrong
+  old→401 inline, correct→200) → logout → post-logout 401. All assertions pass.
+- **JS syntax:** `node --check` clean on all 13 modules.
+
+### What's left / open
+- **Codex review** of the branch (then Nadim merge).
+- The one verification step I can't run headlessly: live render in the PyWebView
+  window (`python main.py`) — needs a display. Code is wired and the API contract
+  is fully validated, but a human should click through once before merge.
+- Pre-existing inert `.git/worktrees/-review-branch-3` admin folder still throws a
+  "Permission denied" on git housekeeping (lock not released); commits succeed
+  regardless. `git worktree prune` once the lock clears.
+
 ## 2026-06-27 — Claude: Phase 2B (frontend) PLAN complete — ready to EXECUTE next session
 
 Planned Phase 2B with Nadim: the desktop UI + PyWebView shell on top of the
