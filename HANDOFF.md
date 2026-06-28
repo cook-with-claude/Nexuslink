@@ -4,6 +4,67 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-28 — Claude: UI/UX redesign (analyst workstation) on `claude/ui-ux-redesign` — FOR REVIEW (do NOT merge)
+
+Nadim asked for the CDR frontend to be rebuilt to mission-critical/government-analyst
+standard (Bloomberg/Palantir/ArcGIS bar). Full enterprise restructure of the `app/web/`
+SPA on a new branch off `main` (`811e140`). **Backend (Phase 2A) + Phase 1 byte-frozen.**
+Built + verified live; **not merged** — per COLLAB.md Codex reviews, only Nadim merges.
+
+### Design decisions (locked with Nadim — do not re-litigate)
+1. **Shell:** left icon+label rail · top breadcrumb/context bar · bottom status bar · full-bleed content.
+2. **Scope:** full restructure incl. command palette (Ctrl+K) + keyboard-navigable tables.
+3. **Color:** restrained steel-cyan (`--accent #4a9ec4`) on deeper blue-black; green/amber/red used ONLY as state signal, never decoration.
+4. **Density:** compact (~28px rows, 12px card padding, 13px body / 12px data, 4px radius).
+
+### What changed (all under `app/web/`)
+- **css/app.css** — rewritten design system: new token set + explicit type scale
+  (removed the off-scale 11px/18px magic numbers), state tints derived via `color-mix`
+  from the state vars (removed all hardcoded `#ff9b94`/`#6fd778`/`#14301a`/rgba hex),
+  `:focus-visible` rings everywhere, `prefers-reduced-motion`, and the full shell /
+  rail / context / status-bar / command-palette CSS.
+- **js/layout.js** — `shell()` rebuilt into rail + context bar + content + status bar;
+  now returns `{ page, setCrumb, setActions }` so screens drive the breadcrumb/actions
+  instead of rendering their own `<h1>`/`result-head`. Active nav by **route-segment
+  exact match** — fixes the old `location.hash.startsWith` bug that falsely highlighted
+  on nested routes. Collapsible rail, state persisted in `localStorage`.
+- **js/statusbar.js** (NEW) — connection dot, active dataset, live counts (pushed by
+  screens via `setStatusCounts`, no polling loop), `HH:MM` clock (single tracked timer).
+- **js/command-palette.js** (NEW) — Ctrl/Cmd+K focus-trapped overlay; static nav/action
+  commands + one per dataset (lazy-loaded); substring filter, Up/Down + Enter, Esc.
+- **js/components.js** — added inline-SVG `icon()` set (Lucide-style, no emoji),
+  `navigableRows()` keyboard-table helper (tabindex/role + Enter/Space/Arrow), and
+  `role="alert"`/`"status"` on `toast()`/`msg()`. `el()`/`clear()`/`confidencePill`/
+  `gateTrace` unchanged (XSS-safe core preserved).
+- **js/screens/*.js** (all 7) — ported to the shell (`setCrumb`/`setActions`), compact +
+  keyboard-navigable tables, thousands separators on counts; results uses `card-head`
+  (kept the `confidencePill` import — test needle).
+- **js/main.js / store.js / index.html** — init the palette (kept `startRouter`); add a
+  display-only `counts` cache; `<main>` landmark + `color-scheme`/`theme-color` meta.
+
+### Verification (all green)
+- **Frozen backend:** `git diff --stat main -- app/__init__.py app/auth.py app/imports.py
+  app/targets.py app/analysis.py app/account.py app/crypto.py app/storage.py
+  app/validation.py app/detection_bridge.py app/audit.py app/config.py app/ui.py
+  phase1_cdr/` → **empty**. Only `app/web/**` changed. `app/ui.py` untouched — its
+  `<path:filename>` routes already serve the two new JS files.
+- `node --check` on every `app/web/js/**/*.js` (incl. new modules) → clean.
+- `pytest tests/phase2a phase1_cdr/tests` → **117 passed** (test_ui needles preserved:
+  `--accent`, `startRouter`, `ApiError`, `authenticated`, `confidencePill`).
+- **Live click-through** (headless Flask + Chrome MCP, isolated `APP_DATA_DIR`, seeded a
+  real **3700 imported / 0 skipped** import via curl into the shared DB): setup →
+  dashboard (stat tiles + live status counts) → datasets (compact table, thousands sep)
+  → **keyboard row Enter navigates** → targets (status bar active-dataset updates) → add
+  target → **analyze → results** (Home=Hamra / Work=Downtown, 3 High pills, gate traces,
+  frequent-areas table) → **command palette** (open/filter/arrow-Enter-nav/reopen/Esc +
+  dynamic dataset command + input focus-trap) → **reload mid-session stays logged in** →
+  change-password (Password active in rail foot) → **rail collapse toggles + persists**.
+  **Zero console errors** the whole session. Nested-route active state confirmed fixed.
+
+### What's left
+- **Codex review** of `origin/claude/ui-ux-redesign`, then **Nadim merge**. Review prompt
+  is in session log 2026-06-28 (Session 3). Phase 2A backend + Phase 1 frozen.
+
 ## 2026-06-28 — Claude: ARM64 desktop-launch branch CLOSED OUT — Codex all-green, merged, branch pruned
 
 Session-close housekeeping for the ARM64 fix below. Codex reviewed

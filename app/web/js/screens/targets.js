@@ -6,14 +6,16 @@
 import { api, ApiError } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, fmtDate, confirmInline, toast, msg } from "../components.js";
+import { el, loading, clear, fmtDate, confirmInline, toast, msg, icon } from "../components.js";
+import { setStatusCounts, setActiveDatasetLabel } from "../statusbar.js";
 
 export async function targetsScreen(app, params) {
   const datasetId = Number(params.id);
-  const page = shell(app);
+  const { page, setCrumb, setActions } = shell(app);
+  setActions([el("a", { href: "#/datasets", class: "btn" }, [icon("back"), "Datasets"])]);
+
   const body = el("div");
   body.appendChild(loading());
-  page.insertBefore(el("div", { id: "thead" }), page.firstChild);
   page.appendChild(body);
 
   // Recover the dataset name (active store may be empty after a reload).
@@ -32,16 +34,12 @@ export async function targetsScreen(app, params) {
   }
 
   const targets = allTargets.filter((t) => t.dataset_id === datasetId);
+  setActiveDatasetLabel(dsName);
+  if (datasets) setStatusCounts(datasets.length, allTargets.length);
+  else if (store.counts) setStatusCounts(store.counts.datasets, allTargets.length);
   clear(body);
 
-  const head = document.getElementById("thead");
-  head.appendChild(el("div", { class: "result-head" }, [
-    el("div", {}, [
-      el("h1", {}, "Targets"),
-      el("p", { class: "subhead" }, [el("span", { class: "mono" }, dsName), ` · ${phones.length} numbers in dataset`]),
-    ]),
-    el("a", { href: "#/datasets", class: "btn" }, "← Datasets"),
-  ]));
+  setCrumb(["Datasets", { text: dsName, sub: `${phones.length} numbers` }]);
 
   // --- add target form ---
   body.appendChild(addCard(app, datasetId, phones, targets));
@@ -86,7 +84,7 @@ export async function targetsScreen(app, params) {
     }
     listCard.appendChild(el("table", {}, [
       el("thead", {}, el("tr", {}, [
-        el("th", {}, "Name"), el("th", {}, "Phone"), el("th", {}, "Created"), el("th", { class: "right" }, ""),
+        el("th", {}, "Name"), el("th", {}, "Phone"), el("th", {}, "Created"), el("th", { class: "right" }, "Actions"),
       ])),
       tbody,
     ]));

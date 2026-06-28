@@ -8,8 +8,8 @@ import { shell } from "../layout.js";
 import { el, clear, msg } from "../components.js";
 
 export async function passwordScreen(app) {
-  const page = shell(app);
-  page.appendChild(el("h1", {}, "Change password"));
+  const { page, setCrumb } = shell(app);
+  setCrumb("Change password");
 
   const card = el("div", { class: "card auth-card" });
   page.appendChild(card);

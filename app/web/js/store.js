@@ -14,6 +14,8 @@ export const store = {
   // Cache of the last analyze() payload, so RESULTS can render immediately after
   // an analyze without a second round-trip (falls back to GET result on reload).
   lastResult: null,
+  // {datasets, targets} — display-only totals pushed by screens to the status bar.
+  counts: null,
 };
 
 export function reset() {
@@ -21,4 +23,5 @@ export function reset() {
   store.username = null;
   store.activeDataset = null;
   store.lastResult = null;
+  store.counts = null;
 }

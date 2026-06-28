@@ -4,21 +4,20 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, fmtDate, confirmInline, toast } from "../components.js";
+import { el, loading, clear, fmtDate, confirmInline, toast, navigableRows, icon } from "../components.js";
+import { setStatusCounts } from "../statusbar.js";
 
 export async function datasetsScreen(app) {
-  const page = shell(app);
-  const head = el("div", { class: "result-head" }, [
-    el("h1", {}, "Datasets"),
-    el("a", { href: "#/import", class: "btn btn-primary" }, "Import new"),
-  ]);
-  page.appendChild(head);
+  const { page, setCrumb, setActions } = shell(app);
+  setCrumb("Datasets");
+  setActions([el("a", { href: "#/import", class: "btn btn-primary" }, [icon("upload"), "Import new"])]);
 
   const body = el("div");
   body.appendChild(loading());
   page.appendChild(body);
 
-  const datasets = await api.datasets();
+  const [datasets, targets] = await Promise.all([api.datasets(), api.targets()]);
+  setStatusCounts(datasets.length, targets.length);
   clear(body);
 
   if (datasets.length === 0) {
@@ -47,23 +46,24 @@ export async function datasetsScreen(app) {
       }, "Delete dataset?");
     } }, "Delete");
 
-    const actions = el("td", { onclick: (e) => e.stopPropagation() }, [delBtn]);
+    const actions = el("td", { class: "right", onclick: (e) => e.stopPropagation() }, [delBtn]);
 
     tbody.appendChild(el("tr", { class: "clickable", onclick: open }, [
       el("td", { class: "data" }, d.name),
       el("td", { class: "data dim" }, d.filename),
-      el("td", { class: "num" }, String(d.row_count)),
+      el("td", { class: "num" }, Number(d.row_count).toLocaleString()),
       el("td", { class: "num dim" }, String(d.skipped_count)),
       el("td", { class: "data dim" }, fmtDate(d.imported_at)),
       actions,
     ]));
   }
+  navigableRows(tbody);
 
   body.appendChild(el("div", { class: "card" }, el("table", {}, [
     el("thead", {}, el("tr", {}, [
       el("th", {}, "Name"), el("th", {}, "File"),
       el("th", { class: "num" }, "Rows"), el("th", { class: "num" }, "Skipped"),
-      el("th", {}, "Imported"), el("th", {}, ""),
+      el("th", {}, "Imported"), el("th", { class: "right" }, ""),
     ])),
     tbody,
   ])));

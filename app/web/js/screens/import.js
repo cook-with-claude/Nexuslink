@@ -5,12 +5,14 @@
 import { api, ApiError } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, clear, msg } from "../components.js";
+import { el, clear, msg, icon } from "../components.js";
 
 export async function importScreen(app) {
-  const page = shell(app);
-  page.appendChild(el("h1", {}, "Import dataset"));
-  page.appendChild(el("p", { class: "subhead" }, "Upload a .xlsx CDR export. Rows that fail validation are skipped and reported below."));
+  const { page, setCrumb, setActions } = shell(app);
+  setCrumb(["Datasets", "Import"]);
+  setActions([el("a", { href: "#/datasets", class: "btn" }, [icon("back"), "Datasets"])]);
+
+  page.appendChild(el("p", { class: "hint" }, "Upload a .xlsx CDR export. Rows that fail validation are skipped and reported below."));
 
   const card = el("div", { class: "card" });
   page.appendChild(card);
@@ -70,8 +72,8 @@ function renderSummary(data, dsName) {
   const card = el("div", { class: "card" });
   card.appendChild(el("h3", {}, "Import complete"));
   card.appendChild(el("div", { class: "grid-stats" }, [
-    statline(data.imported, "Imported"),
-    statline(data.skipped, "Skipped"),
+    statline(Number(data.imported).toLocaleString(), "Imported"),
+    statline(Number(data.skipped).toLocaleString(), "Skipped"),
   ]));
 
   if (data.skipped_reasons && data.skipped_reasons.length) {

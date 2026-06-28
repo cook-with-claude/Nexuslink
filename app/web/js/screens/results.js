@@ -7,11 +7,12 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, confidencePill, gateTrace, fmtDate } from "../components.js";
+import { el, loading, clear, confidencePill, gateTrace, fmtDate, icon } from "../components.js";
+import { setActiveDatasetLabel } from "../statusbar.js";
 
 export async function resultsScreen(app, params) {
   const targetId = Number(params.id);
-  const page = shell(app);
+  const { page, setCrumb, setActions } = shell(app);
   const body = el("div");
   body.appendChild(loading("Loading analysis…"));
   page.appendChild(body);
@@ -34,18 +35,19 @@ export async function resultsScreen(app, params) {
   clear(body);
 
   const dsBackId = store.activeDataset ? store.activeDataset.id : null;
-  page.insertBefore(el("div", { class: "result-head" }, [
-    el("div", {}, [
-      el("h1", {}, payload.target.name),
-      el("p", { class: "subhead" }, [
-        el("span", { class: "mono" }, payload.target.phone_number),
-        datasetName ? " · " : "",
-        datasetName ? el("span", { class: "mono" }, datasetName) : "",
-        " · analyzed ", fmtDate(payload.analyzed_at),
-      ]),
-    ]),
-    dsBackId ? el("a", { href: `#/datasets/${dsBackId}/targets`, class: "btn" }, "← Targets") : el("a", { href: "#/datasets", class: "btn" }, "← Datasets"),
-  ]), body);
+  setActiveDatasetLabel(datasetName);
+  setCrumb([
+    "Datasets",
+    datasetName || null,
+    { text: payload.target.name, sub: payload.target.phone_number },
+  ]);
+  setActions([
+    dsBackId
+      ? el("a", { href: `#/datasets/${dsBackId}/targets`, class: "btn" }, [icon("back"), "Targets"])
+      : el("a", { href: "#/datasets", class: "btn" }, [icon("back"), "Datasets"]),
+  ]);
+
+  body.appendChild(el("p", { class: "hint" }, `Analyzed ${fmtDate(payload.analyzed_at)}.`));
 
   // Home / Work side by side
   body.appendChild(el("div", { class: "result-grid" }, [
@@ -62,7 +64,7 @@ export async function resultsScreen(app, params) {
 
 function detectionCard(title, r) {
   const card = el("div", { class: "card" });
-  card.appendChild(el("div", { class: "result-head" }, [
+  card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, title),
     confidencePill(r),
   ]));
@@ -81,7 +83,7 @@ function detectionCard(title, r) {
 
 function frequentAreasCard(areas, conf) {
   const card = el("div", { class: "card" });
-  card.appendChild(el("div", { class: "result-head" }, [
+  card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Frequent areas"),
     confidencePill(conf),
   ]));
