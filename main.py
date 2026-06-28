@@ -35,6 +35,11 @@ Phase 2B summary (the desktop UI layer; backend Phase 2A is byte-untouched):
 
 from __future__ import annotations
 
+import json
+import os
+import platform
+import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -43,6 +48,136 @@ from werkzeug.serving import make_server
 
 from app import create_app
 from app.ui import bp as ui_bp
+
+
+_DOTNET_MISSING_MSG = (
+    "La Passion's desktop window needs the .NET Desktop Runtime, which was not "
+    "found on this machine.\n"
+    "Install it once and relaunch:\n"
+    "  winget install --id Microsoft.DotNet.DesktopRuntime.8.arm64 "
+    "--accept-package-agreements --accept-source-agreements\n"
+    "(The app's data and analysis are unaffected; this only provides the WebView "
+    "host.)"
+)
+
+
+def _ensure_arm64_dotnet_runtime() -> None:
+    """Make pywebview's WinForms/WebView2 backend load on Windows ARM64.
+
+    pywebview tries the default pythonnet runtime (.NET Framework) first, but
+    clr_loader ships no ARM64 build of its netfx shim, so that path dies with a
+    bad-image error. pywebview then falls back to CoreCLR, which loads natively
+    on ARM64 — but CoreCLR defaults to the Microsoft.NETCore.App framework, which
+    does not contain WinForms, so `clr.AddReference('System.Windows.Forms')`
+    raises FileNotFoundException. Here we pre-initialise pythonnet against the
+    Microsoft.WindowsDesktop.App shared framework so WinForms resolves; pywebview
+    then reuses this already-loaded runtime.
+
+    No-op everywhere else by design — x64 Windows keeps its working .NET Framework
+    path, and macOS/Linux don't use .NET at all (pywebview talks to WebKit there).
+    """
+    if sys.platform != "win32" or platform.machine().lower() != "arm64":
+        return
+
+    from clr_loader import get_coreclr
+    from clr_loader.util.find import find_dotnet_root
+
+    try:
+        dotnet_root = find_dotnet_root()
+    except RuntimeError:
+        raise SystemExit(_DOTNET_MISSING_MSG)
+
+    desktop_dir = dotnet_root / "shared" / "Microsoft.WindowsDesktop.App"
+    versions = [p.name for p in desktop_dir.glob("*") if p.is_dir()] if desktop_dir.is_dir() else []
+    if not versions:
+        raise SystemExit(_DOTNET_MISSING_MSG)
+
+    def _key(v: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in v.split(".") if part.isdigit())
+
+    version = max(versions, key=_key)
+    major = _key(version)[0]
+
+    config = {
+        "runtimeOptions": {
+            "tfm": f"net{major}.0",
+            "rollForward": "LatestMinor",
+            "framework": {"name": "Microsoft.WindowsDesktop.App", "version": version},
+        }
+    }
+    fd, config_path = tempfile.mkstemp(suffix=".runtimeconfig.json", prefix="lapassion-")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(config, f)
+
+    import pythonnet
+
+    # Set the runtime before pywebview imports `clr`, so its `try: import clr`
+    # succeeds against CoreCLR + WindowsDesktop instead of the dead netfx path.
+    pythonnet.set_runtime(get_coreclr(runtime_config=config_path))
+
+    # pywebview's winforms/edgechromium backends do `from <namespace> import ...`
+    # for several assemblies they never AddReference (Microsoft.Win32.SystemEvents,
+    # System.Drawing, System.Diagnostics.Process). Under .NET Framework those
+    # namespaces auto-resolved from the GAC; under CoreCLR each assembly must be
+    # loaded explicitly or the import raises. Pre-reference them here (best-effort)
+    # so the backend imports cleanly. References by simple name resolve from the
+    # WindowsDesktop framework the runtime was started with.
+    import clr
+
+    for assembly in (
+        "System.Windows.Forms",
+        "System.Drawing",
+        "System.Drawing.Common",
+        "Microsoft.Win32.SystemEvents",
+        "System.Diagnostics.Process",
+    ):
+        try:
+            clr.AddReference(assembly)
+        except Exception:  # noqa: BLE001 - a missing optional assembly must not abort startup
+            pass
+
+    _redirect_webview2_interop_to_netcore()
+    _install_winforms_coreclr_shim()
+
+
+def _redirect_webview2_interop_to_netcore() -> None:
+    """Point pywebview at the .NET Core build of the WebView2 managed interop.
+
+    pywebview bundles only the .NET Framework (net462) build of
+    Microsoft.Web.WebView2.WinForms.dll, which derives from a WinForms Control
+    that still exposes the legacy `System.Windows.Forms.ContextMenu` member. That
+    type was removed in .NET Core/5+, so loading the control under CoreCLR throws
+    `TypeLoadException`. We vendor the matching netcoreapp3.0 build of the two
+    managed assemblies and redirect pywebview's `interop_dll_path` lookup to them.
+    Only the two managed DLLs are redirected; the native WebView2Loader.dll (which
+    pywebview already ships for win-arm64) and every other path fall through.
+    """
+    vendor_dir = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "vendor", "webview2", "netcoreapp3.0"
+    )
+    overrides = {
+        name: os.path.join(vendor_dir, name)
+        for name in ("Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll")
+    }
+    if not all(os.path.exists(p) for p in overrides.values()):
+        raise SystemExit(
+            "La Passion's desktop window needs the vendored .NET Core WebView2 "
+            f"interop DLLs, which are missing from:\n  {vendor_dir}\n"
+            "Restore them from the repository (vendor/webview2/netcoreapp3.0/)."
+        )
+
+    import webview.util as _wv_util
+
+    _original = _wv_util.interop_dll_path
+
+    def _interop_dll_path(dll_name: str) -> str:
+        override = overrides.get(dll_name)
+        return override if override else _original(dll_name)
+
+    # edgechromium does `from webview.util import interop_dll_path` only when the
+    # backend loads (inside webview.start()), so patching the module attribute now
+    # is picked up there.
+    _wv_util.interop_dll_path = _interop_dll_path
 
 
 def start_server(app, host: str = "127.0.0.1", port: int = 0):
@@ -69,7 +204,82 @@ def wait_until_ready(port: int, timeout: float = 10.0) -> None:
     raise RuntimeError("server did not become ready in time")
 
 
+def _patch_winforms_source(source: str) -> str:
+    """Make pywebview's OpenFolderDialog class importable under CoreCLR.
+
+    The class reflects, at class-definition time, over .NET Framework-internal
+    WinForms types (`FileDialogNative+IFileDialog`, `+FOS`) that were removed in
+    .NET Core/5+, so `Assembly.GetType(...)` returns None and the class body
+    raises before the module finishes importing — taking the whole backend down
+    even though the app never opens a native folder dialog. We substitute a
+    null-object for those two now-absent types so the class body completes; its
+    `show()` method is dead code here. No-op if a future pywebview stops using
+    those internal types (the patterns simply won't match).
+    """
+    import re
+
+    if "class OpenFolderDialog:" not in source or "_CORECLR_FOLDER_DIALOG_SHIM" in source:
+        return source
+
+    shim = (
+        "class _CoreClrFolderDialogShim:\n"
+        "    def __call__(self, *args, **kwargs):\n"
+        "        return self\n"
+        "    def __getattr__(self, name):\n"
+        "        return self\n"
+        "_CORECLR_FOLDER_DIALOG_SHIM = _CoreClrFolderDialogShim()\n\n\n"
+    )
+    source = source.replace("class OpenFolderDialog:", shim + "class OpenFolderDialog:", 1)
+    for internal_type in ("IFileDialog", "FOS"):
+        source = re.sub(
+            r"windowsFormsAssembly\.GetType\(\s*'System\.Windows\.Forms\.FileDialogNative\+"
+            + internal_type
+            + r"'\s*\)",
+            "(windowsFormsAssembly.GetType('System.Windows.Forms.FileDialogNative+"
+            + internal_type
+            + "') or _CORECLR_FOLDER_DIALOG_SHIM)",
+            source,
+        )
+    return source
+
+
+def _install_winforms_coreclr_shim() -> None:
+    """Install a meta-path finder that source-patches pywebview's winforms module.
+
+    Keeps the fix in-repo (no edits to the installed pywebview), so it is
+    version-controlled and survives venv rebuilds.
+    """
+    import importlib.abc
+    import importlib.machinery
+    import importlib.util
+
+    target_module = "webview.platforms.winforms"
+
+    class _Finder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+        def find_spec(self, fullname, path, target=None):
+            if fullname != target_module:
+                return None
+            real = importlib.machinery.PathFinder.find_spec(fullname, path)
+            if real is None or real.origin is None:
+                return None
+            self._origin = real.origin
+            return importlib.util.spec_from_loader(fullname, self, origin=real.origin)
+
+        def create_module(self, spec):
+            return None
+
+        def exec_module(self, module):
+            with open(self._origin, "r", encoding="utf-8") as f:
+                source = f.read()
+            module.__file__ = self._origin
+            exec(compile(_patch_winforms_source(source), self._origin, "exec"), module.__dict__)
+
+    if not any(isinstance(f, _Finder) for f in sys.meta_path):
+        sys.meta_path.insert(0, _Finder())
+
+
 def main() -> None:  # pragma: no cover - requires a display
+    _ensure_arm64_dotnet_runtime()  # must run before pywebview imports `clr`
     import webview
 
     app = create_app()

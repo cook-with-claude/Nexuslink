@@ -39,6 +39,14 @@ unchanged via a thin bridge — Phase 1 stays frozen. Run the API tests with
 `pytest tests/phase2a`; launch the desktop app with `python main.py`.
 See [`docs/superpowers/specs/2026-06-24-phase2a-backend-design.md`](docs/superpowers/specs/2026-06-24-phase2a-backend-design.md).
 
+> **Desktop window prerequisite (Windows).** The PyWebView shell hosts Edge
+> WebView2 through .NET, so it needs the **.NET Desktop Runtime** installed
+> (`winget install Microsoft.DotNet.DesktopRuntime.8`; on Windows ARM64 use the
+> `…DesktopRuntime.8.arm64` package). `main.py` auto-configures pythonnet for
+> ARM64 (CoreCLR + the vendored .NET Core WebView2 interop in `vendor/webview2/`);
+> on x64 Windows the default path is used. macOS/Linux render via WebKit and need
+> no .NET. The Flask API and SPA themselves run in any browser regardless.
+
 ### The four-gate confidence model (Phase 1 in one table)
 
 The winner is always the area with the most calls; confidence only says how much to

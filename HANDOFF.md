@@ -4,6 +4,64 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-28 — Claude: ARM64 desktop launch FIXED on `claude/arm64-desktop-launch` — FOR REVIEW (do NOT merge)
+
+Closed the open ARM64 PyWebView launch follow-up. The desktop window now opens and
+renders the live SPA on this Windows ARM64 machine (Nadim confirmed visually).
+**Not merged** — branched off `main` (`811e140`); per COLLAB.md only Nadim merges.
+The diagnosis in the prior entry (amd64 `ClrLoader.dll`) was a red herring; the real
+chain was four distinct ARM64/CoreCLR gaps, each fixed and **gated so it is a no-op
+on x64 Windows and on macOS/Linux** (pywebview uses WebKit there, no .NET at all).
+
+### Root cause chain + fixes (all in `main.py`, additive; backend/Phase 1 frozen)
+1. **No .NET runtime installed.** Installed **.NET 8 Desktop Runtime (ARM64)** via
+   `winget install Microsoft.DotNet.DesktopRuntime.8.arm64`. pywebview already opts
+   into CoreCLR (`edgechromium.py:12`); the netfx amd64 shim is irrelevant once we
+   stay on CoreCLR.
+2. **CoreCLR defaults to `Microsoft.NETCore.App`, which lacks WinForms.**
+   `_ensure_arm64_dotnet_runtime()` writes a runtimeconfig targeting
+   **`Microsoft.WindowsDesktop.App`** (version auto-detected from the install) and
+   calls `pythonnet.set_runtime(get_coreclr(runtime_config=…))` *before* webview
+   imports `clr`. Also pre-`AddReference`s the assemblies pywebview imports lazily
+   (Microsoft.Win32.SystemEvents, System.Drawing[.Common], System.Diagnostics.Process)
+   since CoreCLR doesn't auto-probe the GAC the way netfx did.
+3. **pywebview bundles only the net462 WebView2 interop** (`Microsoft.Web.WebView2.
+   WinForms.dll` derives from a Control exposing the removed
+   `System.Windows.Forms.ContextMenu` → `TypeLoadException` under CoreCLR). Vendored
+   the matching **netcoreapp3.0** build (v1.0.3856.49) into
+   **`vendor/webview2/netcoreapp3.0/`** and redirect pywebview's `interop_dll_path`
+   to it (`_redirect_webview2_interop_to_netcore()`). Native `WebView2Loader.dll` for
+   win-arm64 was already bundled by pywebview; WebView2 runtime v149 already present.
+4. **pywebview's `OpenFolderDialog` reflects over removed netfx-internal WinForms
+   types** (`FileDialogNative+IFileDialog`/`+FOS`) at *class-definition time*, so the
+   whole `winforms` backend import dies even though we never open a native folder
+   dialog. `_install_winforms_coreclr_shim()` installs a `sys.meta_path` finder that
+   source-patches that one class to null-object the absent types. Kept **in-repo** (no
+   site-packages edits) so it's version-controlled and survives venv rebuilds; no-op
+   if a future pywebview stops using those internals.
+
+### Verification
+- `python main.py` → window opens, full SPA loads (`GET /` + all js/css 200 →
+  `/api/status` 200), 18 `msedgewebview2` renderer procs live, no errors post-load.
+  Nadim confirmed the window is visible/interactive.
+- Full suite green: `pytest tests/phase2a phase1_cdr/tests` → **117 passed** (the
+  shim is `main()`-only + ARM64-gated, so tests are unaffected). `test_main.py` passes.
+- `git diff --stat main -- app/*.py phase1_cdr/` → empty (backend + Phase 1 frozen);
+  only `main.py`, `README.md`, and new `vendor/webview2/` change.
+
+### Maintainability flag for Phase 3 (packaging)
+pywebview 6.2.1's WinForms backend needed three separate CoreCLR-compat shims — it
+predates clean .NET-Core/ARM64 support, so this path is fragile to pywebview upgrades.
+When packaging (Phase 3): the installer must ship/declare the .NET Desktop Runtime,
+and it's worth weighing whether to keep this patched WinForms path or move Windows to
+a backend that doesn't go through .NET. Not blocking; flagged while fresh.
+
+### What's left
+- **Codex review** of this branch, then **Nadim merge**.
+- This makes the desktop *shell* work; turning it into an installed/searchable app
+  with an icon (Start-menu entry, `.exe`/installer) is the deferred **Phase 3**
+  packaging work — unchanged by this.
+
 ## 2026-06-28 — Claude: Phase 2B live click-through PASSED + MERGED to `main`
 
 Nadim-authorized merge of `codex/phase2b-frontend-review` (`804cc24`) into `main`
