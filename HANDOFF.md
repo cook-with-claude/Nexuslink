@@ -4,6 +4,27 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-28 — Claude: ARM64 desktop-launch branch CLOSED OUT — Codex all-green, merged, branch pruned
+
+Session-close housekeeping for the ARM64 fix below. Codex reviewed
+`claude/arm64-desktop-launch` and returned **all-green with no changes** (nothing to
+fix), so the branch == the merged state. Nadim had already fast-forwarded it into
+`main` (**tip `059a74e`**, `main` == `origin/main`). Cleanup done this session:
+
+- **Deleted `claude/arm64-desktop-launch`** local + `origin` (was fully merged,
+  `git branch -d` clean, no unmerged commits). `git fetch --prune` synced refs.
+- **Remaining branches:** `main` + `claude/ui-ux-redesign` (Nadim's active in-progress
+  UI work — **intentionally kept**, currently even with `main` but being changed; do
+  NOT delete). Untracked `app/web/css/app.css` edit is Nadim's live UI work in progress.
+- Repo state: `main` clean + in sync with origin; untracked `.claude/` + `session-logs/`
+  as always (local-only).
+- Known-inert leftover unchanged: `.git/worktrees/-review-branch-3` still throws
+  "Permission denied" on `fetch --prune` housekeeping (stale lock, documented below
+  across several entries) — harmless, commits/branch ops unaffected.
+
+ARM64 desktop launch is DONE + merged; next milestone remains **Phase 3 packaging**
+(installed/searchable app + icon + shipping the .NET Desktop Runtime).
+
 ## 2026-06-28 — Claude: ARM64 desktop launch FIXED on `claude/arm64-desktop-launch` — FOR REVIEW (do NOT merge)
 
 Closed the open ARM64 PyWebView launch follow-up. The desktop window now opens and
