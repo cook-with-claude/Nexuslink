@@ -4,6 +4,45 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-28 — Claude: Phase 2B live click-through PASSED + MERGED to `main`
+
+Nadim-authorized merge of `codex/phase2b-frontend-review` (`804cc24`) into `main`
+after verifying Codex's fix and running the previously-unrun live click-through.
+
+### Live click-through (the last open verification item) — all green
+Booted the **real Flask app + `app/ui.py` blueprint headless** (scratchpad
+`serve_headless.py`: `create_app()` + `register_blueprint(ui_bp)` on a fixed port,
+isolated `APP_DATA_DIR`, PyWebView swapped out) and drove the actual SPA via
+Playwright MCP. Verified end-to-end: first-run setup→201, login, dashboard
+(client-derived stats), import `sample.xlsx` (**3700 imported / 0 skipped**),
+wrong-password→inline 401 (stays on page). **All three behavioural fixes confirmed
+in the live UI:**
+- **#1 delete dataset → no duplicate nav** — post-delete DOM has exactly 1 `<nav>`,
+  1 `<h1>`, 1 page container (the `shell()` `clear()` fix holds).
+- **#2 reload mid-session → stays logged in** — hard reload → `/api/status` 200 →
+  stays on dashboard, no login bounce.
+- **Codex #804cc24 stale-session change-password** — opened the form, killed the
+  session underneath (logout), submitted with the *correct* current password →
+  **redirected to `#/login`**, NOT the misleading "current password incorrect".
+Only console noise = harmless `favicon.ico` 404. Codex's diff reviewed at source
+level: correct, incl. the non-JSON-401 edge case and the switch to shared `reset()`.
+
+### NEW FOLLOW-UP (real, non-blocking for this merge): ARM64 PyWebView launch fails
+`python main.py` cannot open the native desktop window on this machine (Win ARM64).
+pywebview's winforms backend → pythonnet/clr_loader tries to load an **amd64**
+`ClrLoader.dll` (`OSError error 0xc1`, bad image) and finds no .NET root → "Failed
+to create a .NET runtime". So the packaged desktop shell needs a deps fix (ARM64
+.NET runtime / matching pythonnet, or an alternative webview backend) **before any
+release**. Does NOT affect the Phase 2B frontend code — the SPA + Flask layer is
+fully functional; it's reachable in any browser at the server URL. Flagged for a
+dedicated follow-up; Phase 2A backend + Phase 1 remain byte-frozen.
+
+### Merge
+- Verified `main` is a direct ancestor → **fast-forward** `git merge --ff-only`.
+- Re-ran full suite green before merge: phase2a 99 + phase1 18 = **117 passed**.
+- Pushed `main`; deleted the merged `claude/phase2b-frontend` +
+  `codex/phase2b-frontend-review` branches (local + origin) per the usual cleanup.
+
 ## 2026-06-27 — Codex: Phase 2B frontend review fix on `codex/phase2b-frontend-review`
 
 Reviewed `origin/claude/phase2b-frontend` at `44b5a30` (Claude's branch has 6
