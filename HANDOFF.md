@@ -4,6 +4,33 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-29 — Codex: UI/UX redesign review + keyboard-row fix on `codex/ui-ux-redesign-review-fixes`
+
+Reviewed `origin/claude/ui-ux-redesign` at `d5e4617` (the redesign + Khaled's login
+copy fix) against `main` (`039a0ef`). Found one real bug and fixed it; stacked on a
+review branch off the redesign tip. **Backend (Phase 2A) + Phase 1 byte-frozen.**
+
+### Finding fixed (`app/web/js/components.js:68`)
+- `navigableRows()` made each `tr.clickable` keyboard-operable (Enter/Space → row
+  click → navigate). But `keydown` bubbles, so pressing Enter/Space on a **nested
+  action button** (e.g. dataset Delete) fired the button's native activation *and*
+  bubbled to the row handler → `tr.click()` → navigation. Both fired at once.
+- Fix: guard the row handler with `if (e.target !== tr) return;` — row-level
+  Enter/Space/Arrow handling now runs only when the row itself has focus; nested
+  buttons/links keep their own keyboard behavior. Minimal, exactly scoped (the only
+  focusable row descendants are buttons/links; `<td>`s are never keydown targets).
+
+### Verification
+- `pytest tests/phase2a/test_ui.py` → 8 passed; `pytest tests/phase2a` → 99 passed.
+- `node --check app/web/js/components.js` → clean (Claude re-ran; review-side checks
+  were Python-only).
+- `git diff --stat 039a0ef -- 'app/*.py' phase1_cdr/` → empty (backend + Phase 1 frozen).
+- Branch is a clean linear superset of the redesign: redesign → login copy fix →
+  this fix, all off `main`.
+
+### What's left
+- **Nadim merge** of `codex/ui-ux-redesign-review-fixes` (carries the whole stack).
+
 ## 2026-06-29 — Claude: login error copy fix on `claude/ui-ux-redesign` — FOR REVIEW (do NOT merge)
 
 Khaled tested the redesigned desktop app live and flagged that a failed login
