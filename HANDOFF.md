@@ -54,11 +54,16 @@ minus one class or with a repeat/sequence → 86.
   meter; all 19 modules incl. `strength.js` served 200, zero console errors (only favicon
   404). Nadim confirmed look/feel and the 100-requires-all-criteria fix.
 
-### Known minor (deliberate, not a bug)
-`strengthMeter()` adds two `document`-level listeners (Esc / outside-click) per instance that
-aren't torn down on screen re-render. They're **harmless no-ops once detached** (both guard on
-the closure's `open`, which is false for a closed/detached popover). Left simple; flagging for
-Codex in case a teardown is preferred.
+### Self-review cleanups (post-build, `2bf...`)
+Ran the `code-review` skill over the diff — no correctness bugs; fixed the two low-severity
+cleanups it surfaced:
+- **Listener teardown:** `strengthMeter()`'s Esc / outside-click `document` listeners are now
+  **bound only while the popover is open and removed on close** (was: two per instance, never
+  torn down). Residual edge: navigating away with the popover *open* leaves them until the next
+  document click resolves it — negligible (the SPA has no unmount hook; popover is shut for
+  virtually all navigation).
+- **`repeatPenalty(pw)` computed once** (was twice — score deduction + `noRepeats`); folded
+  into a single `rep` local. Scores byte-identical before/after (verified across the sanity set).
 
 ### What's left
 - **Codex review** of `origin/passwords` (`git diff main..origin/passwords`), then **Nadim

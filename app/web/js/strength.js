@@ -110,7 +110,8 @@ export function analyzePassword(pw) {
   const onlyNumbers = nNum === len;
   if (onlyLetters) score -= len;
   if (onlyNumbers) score -= len;
-  score -= repeatPenalty(pw);
+  const rep = repeatPenalty(pw);
+  score -= rep;
 
   const consec = (cls) => {
     let n = 0;
@@ -134,7 +135,7 @@ export function analyzePassword(pw) {
     lower: nLower > 0,
     number: nNum > 0,
     symbol: nSym > 0,
-    noRepeats: repeatPenalty(pw) === 0,
+    noRepeats: rep === 0,
     noSequences: seqAlpha + seqNum + seqSym === 0,
   };
 
@@ -192,16 +193,28 @@ export function strengthMeter(inputEl) {
   const wrap = el("div", { class: "pw-meter" }, [head, track, popover]);
 
   // --- open/close the popover ---
+  // The Esc / outside-click listeners are bound only while open and removed on
+  // close, so nothing leaks when the screen re-renders with the popover shut.
+  // (The click that opens it bubbles to the just-added document listener, but
+  // wrap.contains() keeps it open since the info button is inside wrap.)
   let open = false;
+  const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+  const onClick = (e) => { if (!wrap.contains(e.target)) setOpen(false); };
   const setOpen = (v) => {
+    if (v === open) return;
     open = v;
     infoBtn.setAttribute("aria-expanded", String(v));
-    if (v) popover.removeAttribute("hidden");
-    else popover.setAttribute("hidden", "");
+    if (v) {
+      popover.removeAttribute("hidden");
+      document.addEventListener("keydown", onKey);
+      document.addEventListener("click", onClick);
+    } else {
+      popover.setAttribute("hidden", "");
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("click", onClick);
+    }
   };
   infoBtn.addEventListener("click", () => setOpen(!open));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) setOpen(false); });
-  document.addEventListener("click", (e) => { if (open && !wrap.contains(e.target)) setOpen(false); });
 
   // --- live update ---
   const update = () => {
