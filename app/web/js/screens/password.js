@@ -6,6 +6,7 @@
 import { api, ApiError } from "../api.js";
 import { shell } from "../layout.js";
 import { el, clear, msg } from "../components.js";
+import { strengthMeter } from "../strength.js";
 
 export async function passwordScreen(app) {
   const { page, setCrumb } = shell(app);
@@ -20,9 +21,12 @@ export async function passwordScreen(app) {
   const slot = el("div");
   const btn = el("button", { class: "btn btn-primary", type: "submit" }, "Update password");
 
+  // Strength meter under the new-password field. Informational only — never
+  // blocks the submit below (a weak password can still be set).
   const form = el("form", {}, [
     el("label", { for: "cur" }, "Current password"), cur,
     el("label", { for: "nw" }, "New password"), nw,
+    strengthMeter(nw),
     el("label", { for: "cf" }, "Confirm new password"), cf,
     slot,
     el("div", { class: "form-actions" }, [btn]),

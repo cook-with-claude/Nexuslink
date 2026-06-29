@@ -4,6 +4,67 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-29 — Claude: password strength meter on `passwords` — FOR REVIEW (do NOT merge)
+
+Nadim asked for a **password strength indicator** on the password-creation flows, scored
+on the passwordmeter.com additions/deductions model (the two screenshots he sent). It is
+**informational only — it never blocks submit** (a weak password can still be created).
+Built on `passwords` off `main` (`3ff1d9e`); **frontend-only, fully additive — Phase 2A
+backend + `app/ui.py` + Phase 1 byte-frozen** (`git diff --stat main -- 'app/*.py' main.py
+phase1_cdr/` → empty). Built + verified live (PyWebView window), **not merged**.
+
+### What landed (all under `app/web/`)
+- **`app/web/js/strength.js`** (NEW, only new module). Two exports:
+  - `analyzePassword(pw)` — **pure, no DOM** → `{ score 0–100, band 0–4, label, checks }`.
+    Faithful passwordmeter scoring: additions (length `*4`, upper/lower `(len−n)*2`, numbers
+    `*4`, symbols `*6`, middle num/sym `*2`, requirements `*2`) minus deductions (letters-/
+    numbers-only `−len`, weighted case-insensitive repeats, consecutive upper/lower/number
+    `−n*2`, sequential letters/numbers/symbols 3+ `−n*3`). Clamp 0–100. Bands: <20 Very Weak,
+    <40 Weak, <60 Fair, <80 Strong, ≥80 Very Strong.
+  - `strengthMeter(inputEl)` — DOM widget (built with `el()`/`icon()`): the red→green fill
+    bar, live label + `score/100`, and a small **info button** that toggles a **checklist
+    popover** of 7 best-practice criteria, each ticking **green when met** (filled check) vs
+    **muted outline when not**. Re-runs on every `input`.
+- **`components.js`** — added `info`/`check`/`circle` SVG paths to the `ICONS` map (no emoji).
+- **`screens/login.js`** — mounts `strengthMeter(p)` **only in setup mode** (`isSetup`); the
+  sign-in form is untouched (don't grade an existing password at login). Safe in the children
+  array because `el()` skips `null`.
+- **`screens/password.js`** — mounts `strengthMeter(nw)` under the New-password field; the
+  match check + inline messages are unchanged.
+- **`css/app.css`** — one new "password strength meter" section using **existing tokens only**
+  (`--bad`/`--warn`/`--good`/`color-mix`); band-stepped red→green fill, `ease-out` transitions,
+  popover fade via `@starting-style`; the existing reduced-motion block neutralizes it.
+
+### Scoring fix Nadim caught during live review
+The raw passwordmeter score clamps to 100 from length/variety **alone**, so a long password
+hit **100/100 "Very Strong" with checklist boxes still unticked** — contradictory. Fixed: the
+achievable ceiling is now tied to criteria met — `score = min(score, round(met/7 * 100))`.
+So **100 is only reachable when all 7 criteria are met**; each unmet box lowers the ceiling
+proportionally (e.g. 6/7 caps at 86). Verified: an all-criteria 16-char mix → 100; the same
+minus one class or with a repeat/sequence → 86.
+
+### Verification
+- `node --check` clean on `strength.js` + the 3 edited modules.
+- Pure-logic sanity (throwaway node script, not committed): `aaaaaa`→0, `abc123`→Weak
+  (sequence flagged), long-lowercase→Very Weak, all-criteria mix→100, one-box-missing→86;
+  `checks` flags all correct.
+- `pytest tests/phase2a phase1_cdr/tests` → **117 passed** (frontend-only; `test_ui.py`
+  needles unaffected). Backend-frozen diff empty.
+- **Live**: launched `python main.py` on an isolated `APP_DATA_DIR` → setup screen renders the
+  meter; all 19 modules incl. `strength.js` served 200, zero console errors (only favicon
+  404). Nadim confirmed look/feel and the 100-requires-all-criteria fix.
+
+### Known minor (deliberate, not a bug)
+`strengthMeter()` adds two `document`-level listeners (Esc / outside-click) per instance that
+aren't torn down on screen re-render. They're **harmless no-ops once detached** (both guard on
+the closure's `open`, which is false for a closed/detached popover). Left simple; flagging for
+Codex in case a teardown is preferred.
+
+### What's left
+- **Codex review** of `origin/passwords` (`git diff main..origin/passwords`), then **Nadim
+  merge** (only Nadim merges). Frontend auto-covered by the existing CI `frontend` job
+  (`node --check` over `app/web/js/**/*.js`).
+
 ## 2026-06-29 — Codex: UI/UX redesign review + keyboard-row fix on `codex/ui-ux-redesign-review-fixes`
 
 Reviewed `origin/claude/ui-ux-redesign` at `d5e4617` (the redesign + Khaled's login

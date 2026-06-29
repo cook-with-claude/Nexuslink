@@ -6,6 +6,7 @@
 import { api, ApiError } from "../api.js";
 import { store } from "../store.js";
 import { el, clear, msg } from "../components.js";
+import { strengthMeter } from "../strength.js";
 
 export async function loginScreen(app) {
   const isSetup = store.accountExists === false;
@@ -30,9 +31,12 @@ export async function loginScreen(app) {
     const errSlot = el("div");
     const btn = el("button", { class: "btn btn-primary", type: "submit" }, isSetup ? "Create account" : "Sign in");
 
+    // Strength meter only when creating the account (don't grade an existing
+    // password at sign-in). Informational only — never blocks the submit below.
     const form = el("form", {}, [
       el("label", { for: "u" }, "Username"), u,
       el("label", { for: "p" }, "Password"), p,
+      isSetup ? strengthMeter(p) : null,
       errSlot,
       el("div", { class: "form-actions" }, [btn]),
     ]);

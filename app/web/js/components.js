@@ -35,6 +35,9 @@ const ICONS = {
   panel: "M3 4h18v16H3z M9 4v16",
   back: "M19 12H5 M12 19l-7-7 7-7",
   upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12",
+  info: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 16v-4 M12 8h.01",
+  check: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M8 12l2.5 2.5L16 9",
+  circle: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z",
 };
 
 export function icon(name, size = 16) {

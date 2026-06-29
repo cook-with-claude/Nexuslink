@@ -502,6 +502,53 @@ details.gate[open] > summary { border-bottom: 1px solid var(--border); }
 .inline-confirm { display: inline-flex; gap: var(--s2); align-items: center; }
 .inline-confirm .q { color: var(--warn); font-size: var(--fs-sm); }
 
+/* ---- password strength meter ---- */
+/* Informational only; lives under a new-password field. State colors here ARE
+   the signal (red→green), the one place that's intentional. */
+.pw-meter { margin: var(--s2) 0 0; display: grid; gap: var(--s2); }
+.pw-meter-head { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-sm); }
+.pw-meter-title { color: var(--fg-muted); }
+.pw-meter-readout { margin-left: auto; display: inline-flex; gap: var(--s2); align-items: baseline; }
+.pw-meter-label { color: var(--fg); font-weight: 600; }
+.pw-meter-score { color: var(--fg-dim); font-size: var(--fs-data); }
+
+.pw-meter-track { height: 6px; background: var(--bg-2); border-radius: var(--radius-pill); overflow: hidden; }
+.pw-meter-fill {
+  height: 100%; width: 0; border-radius: var(--radius-pill); background: var(--bad);
+  transition: width 220ms ease-out, background-color 220ms ease-out;
+}
+.pw-meter-fill.band-0 { background: var(--bad); }
+.pw-meter-fill.band-1 { background: color-mix(in srgb, var(--bad) 55%, var(--warn)); }
+.pw-meter-fill.band-2 { background: var(--warn); }
+.pw-meter-fill.band-3 { background: color-mix(in srgb, var(--warn) 45%, var(--good)); }
+.pw-meter-fill.band-4 { background: var(--good); }
+
+.pw-info-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-2); color: var(--fg-muted); cursor: pointer;
+  transition: color 150ms ease-out, border-color 150ms ease-out;
+}
+.pw-info-btn:hover { color: var(--accent); border-color: var(--border-strong); }
+.pw-info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* checklist popover — in-flow panel; subtle fade/slide on open (allow-discrete
+   so display can animate; reduced-motion block below neutralizes it) */
+.pw-criteria {
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: var(--s3);
+  transition: opacity 150ms ease-out, transform 150ms ease-out, display 150ms allow-discrete;
+}
+.pw-criteria[hidden] { display: none; opacity: 0; transform: translateY(-4px); }
+@starting-style { .pw-criteria:not([hidden]) { opacity: 0; transform: translateY(-4px); } }
+.pw-criteria-tip { margin: 0 0 var(--s2); color: var(--fg-muted); font-size: var(--fs-sm); }
+.pw-criteria-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s1); }
+.pw-crit { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-sm); color: var(--fg-dim); transition: color 150ms ease-out; }
+.pw-crit-mark { display: inline-flex; color: var(--fg-dim); transition: color 150ms ease-out; }
+.pw-crit.met { color: var(--fg); }
+.pw-crit.met .pw-crit-mark { color: var(--good); }
+
 /* respect reduced-motion: kill non-essential animation */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
