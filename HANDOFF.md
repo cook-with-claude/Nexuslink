@@ -4,6 +4,38 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-29 — Claude: login error copy fix on `claude/ui-ux-redesign` — FOR REVIEW (do NOT merge)
+
+Khaled tested the redesigned desktop app live and flagged that a failed login
+renders the raw backend string **"bad credentials"**, which reads unprofessionally.
+Frontend-only copy fix stacked on the existing redesign branch; **backend (Phase 2A)
++ Phase 1 byte-frozen.** (Launch note: on this Windows ARM64 machine the venv is x64,
+so `platform.machine()` is `AMD64` → the ARM64 path in `main.py` is correctly a
+no-op and the default launch path opens the window fine.)
+
+### What changed (one file, `app/web/js/screens/login.js`)
+- The submit handler rendered `err.message` verbatim for any `ApiError`; on a 401
+  that message is the internal envelope string "bad credentials". Now a **401**
+  renders **"Incorrect username or password."** — polished and non-disclosing (does
+  not reveal which field was wrong). Genuine validation messages (e.g. the bcrypt
+  72-byte **400**) still pass through unchanged; a non-`ApiError` still falls back to
+  "Could not sign in." Mirrors the existing pattern in `password.js` (its 401 →
+  "Current password is incorrect.").
+- Backend left untouched: "bad credentials" is the API error code at `app/auth.py:57`
+  and stays frozen — the user-facing wording belongs in the UI layer.
+
+### Verification
+- `node --check app/web/js/screens/login.js` → clean.
+- `git diff --stat origin/main -- 'app/*.py' phase1_cdr/` → **empty** (backend +
+  Phase 1 frozen).
+- `pytest tests/phase2a phase1_cdr/tests` → **117 passed** (test_ui needles unaffected).
+- Live: relaunched `python main.py`, entered a wrong password → now shows
+  "Incorrect username or password." Khaled confirmed.
+
+### What's left
+- **Codex review** of `origin/claude/ui-ux-redesign` (now includes this copy fix on
+  top of the redesign), then **Nadim merge**.
+
 ## 2026-06-28 — Claude: UI/UX redesign (analyst workstation) on `claude/ui-ux-redesign` — FOR REVIEW (do NOT merge)
 
 Nadim asked for the CDR frontend to be rebuilt to mission-critical/government-analyst

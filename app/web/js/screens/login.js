@@ -56,7 +56,14 @@ export async function loginScreen(app) {
       } catch (err) {
         btn.disabled = false;
         // bcrypt 72-byte limit (#12) and bad creds (401, #7) both land here inline.
-        const text = err instanceof ApiError ? err.message : "Could not sign in.";
+        // A 401 is a wrong username/password — show polished, non-disclosing copy
+        // (never the raw "bad credentials" envelope); keep real validation messages
+        // (e.g. the 400 password-too-long) as-is.
+        const text = !(err instanceof ApiError)
+          ? "Could not sign in."
+          : err.status === 401
+            ? "Incorrect username or password."
+            : err.message;
         errSlot.appendChild(msg(text));
         p.value = "";
         p.focus();
