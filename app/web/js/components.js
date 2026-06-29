@@ -65,6 +65,8 @@ export function navigableRows(tbody) {
     tr.setAttribute("tabindex", "0");
     tr.setAttribute("role", "button");
     tr.addEventListener("keydown", (e) => {
+      // Nested buttons/links keep their own keyboard behavior.
+      if (e.target !== tr) return;
       const rows = all();
       const i = rows.indexOf(tr);
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tr.click(); }
