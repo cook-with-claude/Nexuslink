@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 from cryptography.exceptions import InvalidTag
 
-from app import config, crypto, storage
+from app.infra import config, crypto, storage
 
 
 class AccountExistsError(Exception):

@@ -12,7 +12,8 @@ platform-specific GC behavior with no deterministic, non-flaky assertion.
 
 import pytest
 
-from app import account, config, create_app, storage, validation, detection_bridge
+from app import account, create_app, validation, detection_bridge
+from app.infra import config, storage
 
 
 @pytest.fixture()

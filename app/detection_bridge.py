@@ -7,16 +7,9 @@ Phase 1 is imported read-only; nothing under phase1_cdr/ is modified.
 
 from __future__ import annotations
 
-import os
-import sys
-
 import pandas as pd
 
-_PHASE1 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "phase1_cdr")
-if _PHASE1 not in sys.path:
-    sys.path.insert(0, _PHASE1)
-
-import detection  # noqa: E402
+from app.infra.phase1 import detection
 
 _COLUMNS = [
     "phone_number", "imei", "area", "timestamp", "call_type",

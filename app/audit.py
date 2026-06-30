@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from app import config
+from app.infra import config
 
 SETUP = "SETUP"
 LOGIN_SUCCESS = "LOGIN_SUCCESS"

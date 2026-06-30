@@ -1,4 +1,4 @@
-from app import config
+from app.infra import config
 
 
 def test_app_data_dir_uses_env_and_is_created(app_data_dir):

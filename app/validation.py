@@ -7,17 +7,10 @@ drift from the algorithm. Phase 1 is imported read-only; nothing there is edited
 from __future__ import annotations
 
 import math
-import os
-import sys
 
 import pandas as pd
 
-# Make the frozen phase1_cdr package importable without modifying it.
-_PHASE1 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "phase1_cdr")
-if _PHASE1 not in sys.path:
-    sys.path.insert(0, _PHASE1)
-
-from loader import REQUIRED_COLUMNS, VALID_CALL_TYPES  # noqa: E402
+from app.infra.phase1 import REQUIRED_COLUMNS, VALID_CALL_TYPES
 
 # Values that may be empty (Phase 1 treats these as optional).
 _REQUIRED_NONEMPTY = ("phone_number", "area")

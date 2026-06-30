@@ -1,5 +1,6 @@
 import os
-from app import storage, audit
+from app import audit
+from app.infra import storage
 
 
 def test_write_audit_inserts_row_with_timestamp(app_data_dir):

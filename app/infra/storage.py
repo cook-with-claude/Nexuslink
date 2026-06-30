@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
-from app import config
+from app.infra import config
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS datasets (

@@ -1,7 +1,7 @@
 import os
 import pytest
 from cryptography.exceptions import InvalidTag
-from app import crypto
+from app.infra import crypto
 
 
 def test_bcrypt_roundtrip():

@@ -3,7 +3,8 @@ import os
 
 import pytest
 
-from app import account, config, storage
+from app import account
+from app.infra import config, storage
 
 
 def test_setup_creates_account_and_encrypted_db(app_data_dir):

@@ -2,7 +2,7 @@ import os
 import sqlite3
 import pytest
 from sqlcipher3 import dbapi2 as sqlcipher
-from app import storage, config
+from app.infra import storage, config
 
 
 def test_schema_creates_all_tables(app_data_dir):

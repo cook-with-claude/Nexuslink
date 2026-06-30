@@ -7,7 +7,8 @@ import os
 
 from flask import Flask, g, jsonify, request, session
 
-from app import account, storage
+from app import account
+from app.infra import storage
 
 
 def json_body() -> dict:

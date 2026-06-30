@@ -15,7 +15,7 @@ import bcrypt
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
-from app import config
+from app.infra import config
 
 
 def hash_password(password: str) -> str:

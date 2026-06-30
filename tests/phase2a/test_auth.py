@@ -36,7 +36,7 @@ def test_login_good_and_bad(client):
 def test_login_malformed_auth_sidecar_is_401(client):
     _setup(client)
     client.post("/api/logout")
-    from app import config
+    from app.infra import config
 
     config.auth_path().write_text("{not json", encoding="utf-8")
     r = client.post("/api/login", json={"username": "nadim", "password": "hunter2"})
@@ -61,7 +61,8 @@ def test_login_failure_recorded_without_any_success(client):
     import json
     from datetime import datetime
 
-    from app import audit, config
+    from app import audit
+    from app.infra import config
 
     _setup(client)
     client.post("/api/logout")
@@ -80,7 +81,8 @@ def test_login_failure_recorded_without_any_success(client):
 def test_successful_login_does_not_write_login_fail_to_db(client):
     """The encrypted audit_log no longer carries LOGIN_FAIL rows (they live in the
     sidecar); a clean login records only SETUP + LOGIN_SUCCESS."""
-    from app import account, storage
+    from app import account
+    from app.infra import storage
 
     _setup(client)
     client.post("/api/logout")
