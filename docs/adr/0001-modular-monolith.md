@@ -93,9 +93,10 @@ so the routes-above-repo rule did not need a separate `containers` contract.
   data decision lands in `infra/storage.py` + an ADR and does **not** ripple through domains because
   `repo.py` is the single data-access seam; boundaries are CI-enforced.
 - **Cost:** broad (but mechanical) import churn; ~10 small PRs; updates to test import paths.
-- **Defers:** multi-user auth/session and multi-account → first Phase 3 increment; DB migrations →
-  first real install (`infra/migrations.py`, the seam is ready); rate-limiting → only if login becomes
-  network-reachable (and even then, synthetic/portfolio only).
+- **Defers:** multi-user auth/session and multi-account → first Phase 3 increment; rate-limiting →
+  only if login becomes network-reachable (and even then, synthetic/portfolio only).
+  (DB migrations: the `infra/migrations.py` seam is now **built** — see ADR 0002. Authoring the
+  first real schema change and wiring migrate-on-login remain Phase 3 work.)
 
 ## Alternatives considered
 

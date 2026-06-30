@@ -9,59 +9,11 @@ from __future__ import annotations
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
-from app.infra import config
+from app.infra import config, migrations
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS datasets (
-  id            INTEGER PRIMARY KEY,
-  name          TEXT NOT NULL,
-  filename      TEXT NOT NULL,
-  imported_at   TEXT NOT NULL,
-  row_count     INTEGER NOT NULL,
-  skipped_count INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS cdr_records (
-  id               INTEGER PRIMARY KEY,
-  dataset_id       INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-  phone_number     TEXT NOT NULL,
-  imei             TEXT,
-  area             TEXT NOT NULL,
-  timestamp        TEXT NOT NULL,
-  call_type        INTEGER NOT NULL,
-  duration_seconds INTEGER NOT NULL,
-  other_party      TEXT,
-  other_imei       TEXT,
-  other_area       TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_records_dataset_phone
-  ON cdr_records(dataset_id, phone_number);
-
-CREATE TABLE IF NOT EXISTS targets (
-  id           INTEGER PRIMARY KEY,
-  name         TEXT NOT NULL,
-  dataset_id   INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-  phone_number TEXT NOT NULL,
-  created_at   TEXT NOT NULL,
-  UNIQUE(dataset_id, phone_number)
-);
-
-CREATE TABLE IF NOT EXISTS analysis_results (
-  id          INTEGER PRIMARY KEY,
-  target_id   INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
-  created_at  TEXT NOT NULL,
-  result_json TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS audit_log (
-  id         INTEGER PRIMARY KEY,
-  ts         TEXT NOT NULL,
-  username   TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  detail     TEXT
-);
-"""
+# Back-compat re-export: the baseline DDL now lives in migrations.py as migration 1.
+# Kept here because older docs/tests referenced storage.SCHEMA_SQL.
+SCHEMA_SQL = migrations._BASELINE
 
 
 def connect(db_key: bytes) -> sqlcipher.Connection:
@@ -79,5 +31,7 @@ def connect(db_key: bytes) -> sqlcipher.Connection:
 
 
 def init_schema(conn) -> None:
-    conn.executescript(SCHEMA_SQL)
-    conn.commit()
+    # Delegates to the versioned migration runner (ADR 0002). On a fresh DB this
+    # applies the baseline and stamps user_version = 1; the runner commits per
+    # migration, so the connection is left committed exactly as before.
+    migrations.migrate(conn)

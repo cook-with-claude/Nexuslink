@@ -74,6 +74,7 @@ source_modules = [
     "app.infra.config",
     "app.infra.crypto",
     "app.infra.storage",
+    "app.infra.migrations",
 ]
 forbidden_modules = [
     "detection",

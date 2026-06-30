@@ -4,6 +4,49 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Claude: DB migration seam on `claude/migration-seam` - FOR REVIEW (do NOT merge)
+
+Pre-Phase-3 runway, behavior-frozen like the modular reorg. Builds the one missing structural
+seam: ADR 0001 claimed `infra/migrations.py` "the seam is ready" but it never existed — schema
+was inline `CREATE TABLE IF NOT EXISTS` with no version tracking, so the first Phase 3 schema
+change would have no upgrade path for an installed encrypted DB.
+
+### What changed
+- **New `app/infra/migrations.py`** — versioned runner keyed on `PRAGMA user_version` (encrypted
+  DB header, no extra table). `_BASELINE` = the old `storage.SCHEMA_SQL` moved verbatim;
+  `MIGRATIONS = [(1, _BASELINE)]`. `migrate(conn, migrations=MIGRATIONS)` applies pending
+  migrations, each with DDL + version bump in one `BEGIN IMMEDIATE … COMMIT` (ROLLBACK on
+  exception — atomicity fix per Codex review). Two guards: `SchemaTooNewError` (user_version >
+  latest), `SchemaMismatchError` (a v0 DB adopted only if it matches the baseline fingerprint;
+  drifted/partial DB fails loudly instead of being stamped v1).
+- **`app/infra/storage.py`** — removed inline `SCHEMA_SQL` (kept as a `= migrations._BASELINE`
+  re-export for back-compat); `init_schema(conn)` now delegates to `migrations.migrate(conn)`.
+  `connect()` untouched. Only new observable on fresh install: `user_version == 1`.
+- **`pyproject.toml`** — added `app.infra.migrations` to the Phase-1 `forbidden` import-linter
+  contract (parity with config/crypto/storage).
+- **`tests/phase2a/test_migrations.py`** (new, 8 tests) — fresh / idempotent / v0-adoption /
+  drift-guard / schema-too-new / atomic-rollback / forward-migration / contiguity.
+- **Docs** — ADR 0002 (this seam); ADR 0001 "Defers" line updated (seam built, not "ready").
+
+### Verification
+- `pytest tests/phase2a tests/architecture phase1_cdr/tests` → **133 passed** (was 125; +8).
+- `ruff check app tests main.py` → clean.
+- `git diff --stat main -- phase1_cdr/` → empty (Phase 1 frozen).
+- `lint-imports` NOT run locally (grimp has no win_arm64 wheel — runs in CI `boundaries`). The
+  contract change only adds a forbidden-source module that imports no Phase-1 module and adds no
+  cross-layer import, so it is expected green.
+
+### What's left / notes
+- Nadim reviews + merges; Codex review welcome (its plan-stage review is already folded in:
+  atomicity, schema-too-new guard, v0 fingerprint guard, exact migrate-on-login flip location).
+- **Migrate-on-login is intentionally NOT wired** (keeps this behavior-frozen). Phase-3 one-line
+  flip: `migrations.migrate(g.db)` in `app/api/guards.py:get_db()` after `storage.connect(key)`,
+  before storing `g.db`. Documented in ADR 0002. Consequence today: fresh DBs are stamped at
+  account creation; an existing pre-versioning DB is adopted only on the next explicit
+  `init_schema`/`migrate` call, not automatically on login.
+- Orthogonal to Codex's `codex/github-security-foundation` (PR #11) — no shared files; either can
+  merge first.
+
 ## 2026-06-30 - Codex: dependency lock review on `codex/dep-lock-review` - CLEAR WITH NOTE
 
 Reviewed `origin/claude/dep-lock` at `11e9b4e` against `main`/`origin/main`

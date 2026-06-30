@@ -1,0 +1,112 @@
+"""Tests for the versioned schema-migration seam (app/infra/migrations.py, ADR 0002)."""
+
+import os
+
+import pytest
+
+from app.infra import migrations, storage
+
+_BASELINE_TABLES = {"datasets", "cdr_records", "targets", "analysis_results", "audit_log"}
+_LATEST = migrations.MIGRATIONS[-1][0]
+
+
+def _key():
+    return os.urandom(32)
+
+
+def _tables(conn):
+    return {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+
+
+def test_fresh_install_creates_tables_and_stamps_version(app_data_dir):
+    conn = storage.connect(_key())
+    result = migrations.migrate(conn)
+    assert _BASELINE_TABLES <= _tables(conn)
+    assert result == _LATEST
+    assert migrations.current_version(conn) == _LATEST
+    conn.close()
+
+
+def test_migrate_is_idempotent(app_data_dir):
+    conn = storage.connect(_key())
+    migrations.migrate(conn)
+    # Second run is a no-op: version unchanged, no error.
+    assert migrations.migrate(conn) == _LATEST
+    assert migrations.current_version(conn) == _LATEST
+    conn.close()
+
+
+def test_adopts_matching_v0_database(app_data_dir):
+    # Simulate a pre-versioning install: baseline tables present, user_version still 0.
+    conn = storage.connect(_key())
+    conn.executescript(migrations._BASELINE)
+    conn.commit()
+    assert migrations.current_version(conn) == 0
+    assert _BASELINE_TABLES <= _tables(conn)
+
+    # Adoption stamps it to v1 without error or data loss.
+    assert migrations.migrate(conn) == 1
+    assert migrations.current_version(conn) == 1
+    assert _BASELINE_TABLES <= _tables(conn)
+    conn.close()
+
+
+def test_rejects_drifted_v0_database(app_data_dir):
+    # A v0 DB whose schema does not match the baseline fingerprint must not be stamped.
+    conn = storage.connect(_key())
+    conn.executescript("CREATE TABLE datasets (id INTEGER PRIMARY KEY, name TEXT);")
+    conn.commit()
+    assert migrations.current_version(conn) == 0
+
+    with pytest.raises(migrations.SchemaMismatchError):
+        migrations.migrate(conn)
+    # Left untouched — not stamped.
+    assert migrations.current_version(conn) == 0
+    conn.close()
+
+
+def test_rejects_schema_too_new(app_data_dir):
+    conn = storage.connect(_key())
+    conn.execute(f"PRAGMA user_version = {_LATEST + 5}")
+    with pytest.raises(migrations.SchemaTooNewError):
+        migrations.migrate(conn)
+    conn.close()
+
+
+def test_failed_migration_rolls_back_atomically(app_data_dir):
+    conn = storage.connect(_key())
+    # v2 fails partway (creates _probe, then re-creates it -> error). The DDL and the
+    # version bump share one transaction, so both must roll back together.
+    bad_v2 = "CREATE TABLE _probe (id INTEGER PRIMARY KEY);\nCREATE TABLE _probe (id INTEGER);"
+    with pytest.raises(Exception):
+        migrations.migrate(conn, migrations=[(1, migrations._BASELINE), (2, bad_v2)])
+
+    # Migration 1 committed; migration 2 rolled back entirely.
+    assert migrations.current_version(conn) == 1
+    assert "_probe" not in _tables(conn)
+    assert _BASELINE_TABLES <= _tables(conn)
+    conn.close()
+
+
+def test_forward_migration_applies_and_bumps(app_data_dir):
+    conn = storage.connect(_key())
+    good_v2 = "CREATE TABLE _probe (id INTEGER PRIMARY KEY);"
+    chain = [(1, migrations._BASELINE), (2, good_v2)]
+
+    assert migrations.migrate(conn, migrations=chain) == 2
+    assert migrations.current_version(conn) == 2
+    assert "_probe" in _tables(conn)
+
+    # Re-running the same chain is a no-op.
+    assert migrations.migrate(conn, migrations=chain) == 2
+    conn.close()
+
+
+def test_migration_versions_are_contiguous_from_one():
+    versions = [v for v, _ in migrations.MIGRATIONS]
+    assert versions == list(range(1, len(versions) + 1))
