@@ -99,6 +99,38 @@ def test_rejects_v0_with_same_columns_but_weaker_constraints(app_data_dir):
     conn.close()
 
 
+def test_rejects_v0_with_extra_trigger(app_data_dir):
+    # Exact baseline tables/index PLUS an extra trigger. A trigger can change future
+    # writes, so adoption must reject it rather than stamp v1 (Codex re-review blocker).
+    conn = storage.connect(_key())
+    conn.executescript(migrations._BASELINE)
+    conn.executescript(
+        "CREATE TRIGGER t_extra AFTER INSERT ON datasets "
+        "BEGIN UPDATE datasets SET name = name; END;"
+    )
+    conn.commit()
+    assert migrations.current_version(conn) == 0
+    assert _BASELINE_TABLES <= _tables(conn)  # tables/index identical to baseline
+
+    with pytest.raises(migrations.SchemaMismatchError):
+        migrations.migrate(conn)
+    assert migrations.current_version(conn) == 0
+    conn.close()
+
+
+def test_rejects_v0_with_extra_view(app_data_dir):
+    conn = storage.connect(_key())
+    conn.executescript(migrations._BASELINE)
+    conn.executescript("CREATE VIEW v_extra AS SELECT id FROM datasets;")
+    conn.commit()
+    assert migrations.current_version(conn) == 0
+
+    with pytest.raises(migrations.SchemaMismatchError):
+        migrations.migrate(conn)
+    assert migrations.current_version(conn) == 0
+    conn.close()
+
+
 def test_rejects_schema_too_new(app_data_dir):
     conn = storage.connect(_key())
     conn.execute(f"PRAGMA user_version = {_LATEST + 5}")

@@ -38,10 +38,12 @@ Add `app/infra/migrations.py`, a minimal versioned-migration runner. Rules for a
   (2) A non-empty database still at `user_version == 0` (a pre-versioning install) is *adopted*
   only after its schema matches the baseline fingerprint; a drifted/partial DB raises
   `SchemaMismatchError` instead of being silently stamped v1. The fingerprint compares the **full
-  normalized CREATE DDL** of every table and index (columns, types, NOT NULL / FK / UNIQUE,
-  indexes) — not just column names — because migration 1's `IF NOT EXISTS` cannot repair a
-  same-columns-but-weaker-constraints table once stamped. The expected fingerprint is computed from
-  a throwaway in-memory DB so SQLite canonicalizes both sides (no hand-maintained constants).
+  normalized CREATE DDL** of every user-defined object — tables, indexes, triggers, and views
+  (columns, types, NOT NULL / FK / UNIQUE) — not just column names, because migration 1's
+  `IF NOT EXISTS` cannot repair a same-columns-but-weaker-constraints table once stamped, and an
+  extra trigger/view could change future writes. Comparison is exact equality (rejects missing,
+  drifted, and extra objects). The expected fingerprint is computed from a throwaway in-memory DB so
+  SQLite canonicalizes both sides (no hand-maintained constants).
 - **`storage.init_schema` delegates to `migrations.migrate`.** Behavior is frozen: the
   fresh-install path produces the identical schema; the only new observable is
   `user_version == 1`.

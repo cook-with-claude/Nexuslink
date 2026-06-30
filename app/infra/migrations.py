@@ -113,12 +113,19 @@ def _normalize_ddl(sql: str) -> str:
 
 
 def _schema_fingerprint(conn) -> dict[str, str]:
-    """Object name -> normalized CREATE DDL for every user table and index in `conn`."""
+    """Object name -> normalized CREATE DDL for every user-defined schema object.
+
+    Covers all sqlite_master object types — tables, indexes, triggers, AND views — so an
+    adopted v0 DB cannot carry an extra trigger/view (a trigger can alter future writes).
+    `sql IS NOT NULL` drops auto-created indexes (sqlite_autoindex_*, whose UNIQUE clause
+    is already captured in the owning table's DDL); `name NOT LIKE 'sqlite_%'` drops
+    internal objects.
+    """
     rows = conn.execute(
         "SELECT name, sql FROM sqlite_master "
-        "WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'"
+        "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'"
     ).fetchall()
-    return {r[0]: _normalize_ddl(r[1]) for r in rows if r[1] is not None}
+    return {r[0]: _normalize_ddl(r[1]) for r in rows}
 
 
 def _baseline_fingerprint() -> dict[str, str]:
