@@ -70,6 +70,35 @@ def test_rejects_drifted_v0_database(app_data_dir):
     conn.close()
 
 
+def test_rejects_v0_with_same_columns_but_weaker_constraints(app_data_dir):
+    # Codex's blocker: same table + column names as the baseline, but no NOT NULL /
+    # FK / UNIQUE and no index. Migration 1's IF NOT EXISTS could not repair these
+    # tables, so adoption must be rejected, not silently stamped v1.
+    weakened = """
+    CREATE TABLE datasets (id INTEGER PRIMARY KEY, name TEXT, filename TEXT,
+        imported_at TEXT, row_count INTEGER, skipped_count INTEGER);
+    CREATE TABLE cdr_records (id INTEGER PRIMARY KEY, dataset_id INTEGER,
+        phone_number TEXT, imei TEXT, area TEXT, timestamp TEXT, call_type INTEGER,
+        duration_seconds INTEGER, other_party TEXT, other_imei TEXT, other_area TEXT);
+    CREATE TABLE targets (id INTEGER PRIMARY KEY, name TEXT, dataset_id INTEGER,
+        phone_number TEXT, created_at TEXT);
+    CREATE TABLE analysis_results (id INTEGER PRIMARY KEY, target_id INTEGER,
+        created_at TEXT, result_json TEXT);
+    CREATE TABLE audit_log (id INTEGER PRIMARY KEY, ts TEXT, username TEXT,
+        event_type TEXT, detail TEXT);
+    """
+    conn = storage.connect(_key())
+    conn.executescript(weakened)
+    conn.commit()
+    assert migrations.current_version(conn) == 0
+    assert _BASELINE_TABLES <= _tables(conn)  # all tables present with matching column names
+
+    with pytest.raises(migrations.SchemaMismatchError):
+        migrations.migrate(conn)
+    assert migrations.current_version(conn) == 0
+    conn.close()
+
+
 def test_rejects_schema_too_new(app_data_dir):
     conn = storage.connect(_key())
     conn.execute(f"PRAGMA user_version = {_LATEST + 5}")

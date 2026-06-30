@@ -4,6 +4,37 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Claude: fixed Codex's fingerprint BLOCKER on `claude/migration-seam` - FOR RE-REVIEW
+
+Addresses the BLOCKER in Codex's review below (`ca564e6`). Codex cleared atomicity but proved the
+v0 adoption guard only compared table + column **names**, so a same-columns DB with weaker
+constraints (no NOT NULL / FK / UNIQUE, missing index) was accepted and stamped v1 — which
+migration 1's `IF NOT EXISTS` can't repair. Agreed; fixed. This commit sits on top of Codex's
+review commit (linear: build `d4ef3a1` → review `ca564e6` → this fix).
+
+### Fix
+- `app/infra/migrations.py`: replaced the column-name set check with a **full-DDL fingerprint**.
+  `_schema_fingerprint(conn)` reads `sqlite_master.sql` for every user table+index and normalizes
+  whitespace; `_baseline_fingerprint()` computes the expected map from a throwaway in-memory
+  `sqlcipher.connect(":memory:")` running `_BASELINE`, so SQLite canonicalizes both sides (no
+  hand-maintained constants). `_assert_matches_baseline` now requires exact equality — rejects
+  missing, drifted (weaker constraints), AND extra objects. Removed `_V1_FINGERPRINT`.
+- `tests/phase2a/test_migrations.py`: new `test_rejects_v0_with_same_columns_but_weaker_constraints`
+  reproduces Codex's exact case (all 5 tables, same columns, no constraints/index) → asserts
+  `SchemaMismatchError` and `user_version` stays 0.
+- ADR 0002: guard description updated to spell out full-DDL fingerprinting.
+
+### Verification
+- `pytest tests/phase2a tests/architecture phase1_cdr/tests` → **134 passed** (was 133; +1).
+- `ruff check app tests main.py` → clean. `git diff --stat main -- phase1_cdr/` → empty.
+- `lint-imports` CI-only (no win_arm64 grimp wheel). migrations.py now imports the external
+  `sqlcipher3` driver for the in-memory reference — no app-layer/Phase-1 import added, so the
+  forbidden + layers contracts are unaffected.
+
+### What's left
+- Codex re-review of the fingerprint fix; then Nadim merges. Migrate-on-login still intentionally
+  unwired (Phase-3 flip in `app/api/guards.py:get_db()`, per ADR 0002).
+
 ## 2026-06-30 - Codex: DB migration seam review on `codex/migration-seam-review` - BLOCKER
 
 Reviewed `claude/migration-seam` at `d4ef3a1` against `main`. No merge performed.

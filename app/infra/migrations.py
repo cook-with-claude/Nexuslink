@@ -20,6 +20,8 @@ connection as an argument.
 
 from __future__ import annotations
 
+from sqlcipher3 import dbapi2 as sqlcipher
+
 # --- Migration 1: the Phase 2A baseline (was storage.SCHEMA_SQL, kept byte-identical) ---
 _BASELINE = """
 CREATE TABLE IF NOT EXISTS datasets (
@@ -79,20 +81,6 @@ MIGRATIONS: list[tuple[int, str]] = [
     (1, _BASELINE),
 ]
 
-# Expected tables -> column-name set, used to fingerprint a pre-versioning (v0) DB
-# before adopting it. Mirrors the baseline DDL above.
-_V1_FINGERPRINT: dict[str, set[str]] = {
-    "datasets": {"id", "name", "filename", "imported_at", "row_count", "skipped_count"},
-    "cdr_records": {
-        "id", "dataset_id", "phone_number", "imei", "area", "timestamp",
-        "call_type", "duration_seconds", "other_party", "other_imei", "other_area",
-    },
-    "targets": {"id", "name", "dataset_id", "phone_number", "created_at"},
-    "analysis_results": {"id", "target_id", "created_at", "result_json"},
-    "audit_log": {"id", "ts", "username", "event_type", "detail"},
-}
-
-
 class MigrationError(RuntimeError):
     """Base class for migration-seam failures."""
 
@@ -118,26 +106,50 @@ def _table_names(conn) -> set[str]:
     }
 
 
-def _assert_matches_baseline(conn) -> None:
-    """Raise SchemaMismatchError unless every baseline table exists with its columns.
+def _normalize_ddl(sql: str) -> str:
+    # Collapse every run of whitespace so formatting differences don't matter; the
+    # comparison still reflects each column, type, and constraint in the DDL text.
+    return " ".join(sql.split())
 
-    Guards adoption of a v0 (pre-versioning) database: `IF NOT EXISTS` in migration 1
-    would otherwise silently accept a drifted table and stamp it v1.
+
+def _schema_fingerprint(conn) -> dict[str, str]:
+    """Object name -> normalized CREATE DDL for every user table and index in `conn`."""
+    rows = conn.execute(
+        "SELECT name, sql FROM sqlite_master "
+        "WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()
+    return {r[0]: _normalize_ddl(r[1]) for r in rows if r[1] is not None}
+
+
+def _baseline_fingerprint() -> dict[str, str]:
+    """The fingerprint migration 1 produces, computed via a throwaway in-memory DB so
+    SQLite itself canonicalizes the DDL — no brittle hand-maintained constants."""
+    ref = sqlcipher.connect(":memory:")
+    try:
+        ref.executescript(_BASELINE)
+        return _schema_fingerprint(ref)
+    finally:
+        ref.close()
+
+
+def _assert_matches_baseline(conn) -> None:
+    """Raise SchemaMismatchError unless `conn`'s schema is exactly the v1 baseline.
+
+    Guards adoption of a v0 (pre-versioning) database. Compares the full CREATE DDL —
+    columns, types, NOT NULL / FK / UNIQUE, and indexes — not just column names, because
+    migration 1's `IF NOT EXISTS` cannot repair a same-columns-but-weaker-constraints
+    table once it is stamped v1.
     """
-    present = _table_names(conn)
-    for table, expected_cols in _V1_FINGERPRINT.items():
-        if table not in present:
-            raise SchemaMismatchError(
-                f"cannot adopt v0 database: expected table {table!r} is missing"
-            )
-        actual_cols = {
-            r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
-        }
-        if actual_cols != expected_cols:
-            raise SchemaMismatchError(
-                f"cannot adopt v0 database: table {table!r} columns {sorted(actual_cols)} "
-                f"!= expected {sorted(expected_cols)}"
-            )
+    actual = _schema_fingerprint(conn)
+    expected = _baseline_fingerprint()
+    if actual != expected:
+        unexpected = sorted(set(actual) - set(expected))
+        missing = sorted(set(expected) - set(actual))
+        differing = sorted(n for n in set(actual) & set(expected) if actual[n] != expected[n])
+        raise SchemaMismatchError(
+            "cannot adopt v0 database: schema does not match the v1 baseline "
+            f"(unexpected={unexpected}, missing={missing}, differing={differing})"
+        )
 
 
 def migrate(conn, migrations: list[tuple[int, str]] = MIGRATIONS) -> int:
