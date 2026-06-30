@@ -41,7 +41,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     from app.datasets.routes import bp as imports_bp
     app.register_blueprint(imports_bp)
-    from app.targets import bp as targets_bp
+    from app.targets.routes import bp as targets_bp
     app.register_blueprint(targets_bp)
     from app.analysis import bp as analysis_bp
     app.register_blueprint(analysis_bp)

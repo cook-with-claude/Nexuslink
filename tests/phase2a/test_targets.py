@@ -41,7 +41,7 @@ def test_duplicate_pair_conflicts_even_with_new_name(client, dataset_id):
 
 
 def test_duplicate_insert_race_returns_conflict(client, dataset_id, monkeypatch):
-    from app import targets
+    from app.targets import routes as targets
 
     real_get_db = targets.get_db
 
