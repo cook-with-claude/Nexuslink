@@ -33,7 +33,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # Shared lock at the repo root (one level up from this job's working dir).
+          pip install -r requirements.txt -c ../constraints.txt
 
       - name: Run unit tests
         run: pytest tests/
@@ -64,7 +65,7 @@ jobs:
           # have prebuilt wheels, so no SQLCipher/OpenSSL/Rust toolchain is needed.
           # pywebview's base install pulls no GTK/Qt and the tests never import it
           # (the window lives behind `if __name__`/pragma-no-cover in main.py).
-          pip install -r requirements.txt
+          pip install -r requirements.txt -c constraints.txt
 
       - name: Run Phase 2A + architecture tests
         run: pytest tests/phase2a tests/architecture
@@ -108,8 +109,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Runtime deps are needed so import-linter/grimp can resolve the app
-          # package graph (it locates modules via the installed package).
-          pip install -r requirements.txt -r requirements-dev.txt
+          # package graph (it locates modules via the installed package). The
+          # shared lock pins the runtime stack; dev tools (ruff/import-linter)
+          # are intentionally unpinned.
+          pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
 
       - name: Lint (ruff)
         run: ruff check app tests main.py

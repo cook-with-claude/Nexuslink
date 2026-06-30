@@ -1,3 +1,6 @@
+# Phase 2A backend runtime deps (direct only). For a reproducible install, pin
+# transitive versions with the shared lock:  pip install -r requirements.txt -c constraints.txt
+# (CI applies that lock on every job; see constraints.txt + .github/workflows/ci.yml).
 pandas
 openpyxl
 pytest
