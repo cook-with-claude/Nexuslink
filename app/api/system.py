@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, session
 
-from app import account
+from app.auth import account
 from app.api.responses import ok
 
 bp = Blueprint("system", __name__, url_prefix="/api")

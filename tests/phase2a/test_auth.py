@@ -81,7 +81,7 @@ def test_login_failure_recorded_without_any_success(client):
 def test_successful_login_does_not_write_login_fail_to_db(client):
     """The encrypted audit_log no longer carries LOGIN_FAIL rows (they live in the
     sidecar); a clean login records only SETUP + LOGIN_SUCCESS."""
-    from app import account
+    from app.auth import account
     from app.infra import storage
 
     _setup(client)

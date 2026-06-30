@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, session
 
-from app import account, audit
+from app import audit
+from app.auth import account
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, json_body, ok
 

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from app import account
+from app.auth import account
 from app.infra import config, storage
 
 
