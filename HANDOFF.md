@@ -4,6 +4,28 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Claude: DB migration seam MERGED to main; session close
+
+Nadim authorized the merge. `main` fast-forwarded `fa54bce → 9fc4c6a` and pushed to origin; both
+`claude/migration-seam` and `codex/migration-seam-review` pruned (neither was on origin). Post-merge
+on `main`: **136 passed** (`tests/phase2a tests/architecture phase1_cdr/tests`), `phase1_cdr/`
+byte-frozen. The two-agent review trail for this seam is the entries below (build → review → fix#1 →
+re-review → fix#2 → CLEAR).
+
+**Pre-Phase-3 runway is complete.** The migration seam was the last genuinely-missing structural
+piece; every seam Phase 3 needs is now in place and CI-guarded.
+
+### Open items for next session (none blocking)
+- **Phase 3 first move:** wire migrate-on-login — one line `migrations.migrate(g.db)` in
+  `app/api/guards.py:get_db()`, right after `storage.connect(key)` and before storing `g.db`
+  (ADR 0002). Then the larger Phase 3 work: auth de-globalization (`DB_KEY`/`USERNAME` →
+  per-session), multi-account, RBAC/sessions.
+- **Non-blocking nit (Codex):** `_normalize_ddl` (`" ".join(sql.split())`) is not quote-aware.
+  Harmless now (baseline has no triggers/views/quoted DEFAULT/CHECK bodies); make it quote-aware
+  when migration 2+ adds such an object whose body has significant whitespace.
+- **Orthogonal, still open:** Codex's `codex/github-security-foundation` PR #11
+  (CODEOWNERS/SECURITY.md/dependabot/CI perms) — independent of this work; merge at will.
+
 ## 2026-06-30 - Codex: re-review of trigger/view fingerprint fix on `codex/migration-seam-review` - CLEAR WITH NIT
 
 Reviewed `claude/migration-seam` at `a2d4191` (linear on top of Codex re-review
