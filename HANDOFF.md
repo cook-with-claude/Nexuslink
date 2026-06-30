@@ -4,6 +4,54 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Codex: dependency lock review on `codex/dep-lock-review` - CLEAR WITH NOTE
+
+Reviewed `origin/claude/dep-lock` at `11e9b4e` against `main`/`origin/main`
+(`02d9eab`). No merge performed. Verdict: **CLEAR** for Nadim to fast-forward
+merge the Claude branch; no blocking dependency-lock findings.
+
+### Review checks
+- **Shared lock / wheels:** PyPI metadata check over all 27 `constraints.txt` pins for
+  Linux x64 CPython 3.11 and 3.12. All native/heavy pins have compatible wheels on both
+  versions, including `numpy==2.4.6` (`cp311` and `cp312` manylinux_2_27/_2_28),
+  `pandas==3.0.3`, `cffi==2.0.0`, `cryptography==49.0.0`, `bcrypt==5.0.0`,
+  `MarkupSafe==3.0.3`, and `sqlcipher3-wheels==0.5.7`.
+- **Wheel note:** `proxy_tools==0.1.0` is the only pin without a wheel on either Python
+  version; PyPI publishes only `proxy_tools-0.1.0.tar.gz`. It is an unconditional
+  `pywebview==6.2.1` dependency, but the sdist is tiny pure Python (`proxy_tools`
+  package only, no native extension or install requirements), and CI installed it
+  successfully. I do not consider this a blocker; it just means the lock is not strictly
+  wheel-only.
+- **Phase 1 constraints path:** the `test` job's `defaults.run.working-directory` is
+  `phase1_cdr`, so `pip install -r requirements.txt -c ../constraints.txt` reaches the
+  root lock without editing the frozen Phase 1 tree. `git diff --stat
+  main...origin/claude/dep-lock -- phase1_cdr/` is empty.
+- **Unpinned dev tools:** leaving `ruff` and `import-linter` unpinned is acceptable for
+  this runtime lock. The risk is future CI-gate drift, not runtime drift; if we later want
+  fully reproducible tooling too, add a separate dev/tool lock.
+- **Phase 1 numpy floor:** Phase 1 does not import numpy directly; pandas pulls it for
+  typed loading, timestamp parsing, grouping, and deterministic sorted tallies. The 3.12
+  CI `test` job installs Phase 1 with the root constraints file, so its green unit tests
+  and ground-truth harness are the right evidence that forcing numpy 2.5.0 -> 2.4.6 is
+  inert for current outputs.
+
+### Verification
+- `git fetch --all`
+- `git diff main...origin/claude/dep-lock -- constraints.txt .github/workflows/ci.yml requirements.txt`
+- `gh run view 28455501879 --repo cook-with-claude/La-Passion --json ...` -> success
+  at `00dda941fab87e644f6ea1588a3ec9b5191ea908`; `test`, `phase2a`, `boundaries`, and
+  `frontend` all succeeded.
+- PyPI wheel-tag metadata script for every pin on CPython 3.11 and 3.12/Linux x64 -> only
+  `proxy_tools==0.1.0` reported `sdist-only`; all other pins matched wheels.
+- `.venv\Scripts\python.exe -m pytest tests/phase2a tests/architecture phase1_cdr/tests`
+  -> **125 passed** locally on Python 3.11.9 with `numpy==2.4.6`, `pandas==3.0.3`.
+- From `phase1_cdr/`: `..\.venv\Scripts\python.exe main.py sample_data.csv
+  ground_truth.json` equivalent run -> **34/34 passed (100%)**.
+
+### What's left
+- Nadim ff-merge `claude/dep-lock` into `main` if he accepts the non-blocking
+  `proxy_tools` sdist note; then prune the Claude/Codex review branches.
+
 ## 2026-06-30 — Claude: dependency lock on `claude/dep-lock` — FOR REVIEW (do NOT merge)
 
 Closes the last open Step-0 follow-up (ADR 0001): the runtime dependency stack was
