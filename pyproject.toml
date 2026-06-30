@@ -25,6 +25,10 @@ select = ["E", "F", "I", "W"]
 # on ubuntu x64, not on the ARM64 dev machine).
 [tool.importlinter]
 root_package = "app"
+# Required at top level because the Phase-1 forbidden contract names external
+# modules (detection, loader) — import-linter builds the graph with external
+# packages so it can see those imports.
+include_external_packages = true
 
 # 1) Layered architecture (module-level, highest first). API helpers are low-level
 #    SUPPORT, routes are the top APPLICATION layer, so app.api deliberately spans
@@ -75,7 +79,6 @@ forbidden_modules = [
     "detection",
     "loader",
 ]
-include_external_packages = true
 allow_indirect_imports = true
 
 # 4) Repos are pure data access: they must not import audit or the api/web layer
