@@ -1,7 +1,8 @@
-import urllib.request
-import json
 import importlib.util
+import json
 import pathlib
+import urllib.request
+
 from app import create_app
 
 # Load root main.py explicitly to avoid picking up phase1_cdr/main.py when

@@ -49,7 +49,6 @@ from werkzeug.serving import make_server
 from app import create_app
 from app.ui import bp as ui_bp
 
-
 _DOTNET_MISSING_MSG = (
     "La Passion's desktop window needs the .NET Desktop Runtime, which was not "
     "found on this machine.\n"

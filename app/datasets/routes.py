@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 import pandas as pd
 from flask import Blueprint, request
 
-from app.audit import log as audit
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
+from app.audit import log as audit
 from app.datasets import repo, validation
 
 bp = Blueprint("imports", __name__, url_prefix="/api")

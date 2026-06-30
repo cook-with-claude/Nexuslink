@@ -14,10 +14,9 @@ extend-exclude = ["phase1_cdr", "vendor", ".venv", "app/web"]
 force-exclude = true
 
 [tool.ruff.lint]
-# Core rule set now: pycodestyle errors/warnings + pyflakes.
-# Import sorting ("I") and broader families are enabled in Step 9, AFTER the reorg
-# finalizes every import block — enforcing isort now would just be re-done churn.
-select = ["E", "F", "W"]
+# pycodestyle errors/warnings + pyflakes + import sorting (isort). "I" was enabled
+# in Step 9, once the reorg finalized every import block.
+select = ["E", "F", "I", "W"]
 
 # import-linter (boundary enforcement). Authored to the target structure in
 # docs/adr/0001-modular-monolith.md and activated now (Step 9) — every package it

@@ -7,9 +7,9 @@ Phase 2A work has somehow disturbed the frozen Phase 1 algorithm.
 
 from __future__ import annotations
 
+import pathlib
 import subprocess
 import sys
-import pathlib
 
 HERE = pathlib.Path(__file__).resolve().parents[2]
 PHASE1 = HERE / "phase1_cdr"

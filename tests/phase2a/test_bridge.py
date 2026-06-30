@@ -1,13 +1,15 @@
-import sys
 import pathlib
+import sys
+
 import pandas as pd
 import pytest
 
 HERE = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE / "phase1_cdr"))
 
-from app.analysis import bridge as detection_bridge  # noqa: E402
 import detection  # noqa: E402  (Phase 1, read-only)
+
+from app.analysis import bridge as detection_bridge  # noqa: E402
 
 
 @pytest.fixture()

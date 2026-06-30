@@ -1,4 +1,5 @@
 import io
+
 import pytest
 from sqlcipher3 import dbapi2 as sqlcipher
 

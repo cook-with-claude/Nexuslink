@@ -1,6 +1,8 @@
 import os
+
 import pytest
 from cryptography.exceptions import InvalidTag
+
 from app.infra import crypto
 
 

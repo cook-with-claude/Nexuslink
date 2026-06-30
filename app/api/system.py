@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from flask import Blueprint, session
 
-from app.auth import account
 from app.api.responses import ok
+from app.auth import account
 
 bp = Blueprint("system", __name__, url_prefix="/api")
 

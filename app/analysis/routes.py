@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request
 
-from app.audit import log as audit
+from app.analysis import bridge, repo
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
-from app.analysis import bridge, repo
+from app.audit import log as audit
 
 bp = Blueprint("analysis", __name__, url_prefix="/api")
 

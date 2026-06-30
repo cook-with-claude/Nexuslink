@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 from flask import Blueprint
 from sqlcipher3 import dbapi2 as sqlcipher
 
-from app.audit import log as audit
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, json_body, ok
+from app.audit import log as audit
 from app.targets import repo
 
 bp = Blueprint("targets", __name__, url_prefix="/api")
