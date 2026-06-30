@@ -1,0 +1,8 @@
+# Developer/CI tooling — NOT runtime dependencies (those are in requirements.txt).
+# Install with:  pip install -r requirements-dev.txt
+#
+# ruff          — linter + formatter (config in pyproject.toml; excludes phase1_cdr/)
+# import-linter — enforces the modular-monolith layer boundaries (ADR 0001); the CI
+#                 gate and the contract are wired in the final reorg step (Step 9).
+ruff
+import-linter

@@ -4,6 +4,48 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 — Claude: modular-monolith reorg **Step 0** (conventions + tooling) on `claude/modular-reorg-step0` — FOR REVIEW (do NOT merge)
+
+Kicks off the Nadim-approved pre-Phase-3 reorganization of the backend into a **layered modular
+monolith** (full plan + rationale in ADR `docs/adr/0001-modular-monolith.md`; Phase 3 =
+multi-user/admin/LAN, so the current process-global auth state + single-account model must go).
+This is **Step 0 of 10: conventions + tooling scaffold ONLY — no code moved, behavior-frozen.**
+Branched off `main` (`3ff1d9e`); per COLLAB only Nadim merges. The plan was already Codex-reviewed
+once (SOUND-WITH-CHANGES) and revised before approval.
+
+### What landed (purely additive + one dead-import removal)
+- **`docs/adr/0000-template.md`** + **`docs/adr/0001-modular-monolith.md`** — ADR template + the
+  decision record: the layer model, the 6 invariants, the mechanical-enforcement plan, the target
+  import-linter contract (as a spec), and alternatives rejected.
+- **`CLAUDE.md`** (new) — project guidance: hard rules (Phase 1 frozen, synthetic-only, branch
+  model), target architecture + layer rule + invariants + a "where does X go?" table, how to run tests.
+- **`COLLAB.md`** — new agent-neutral **"Architecture (layered modular monolith)"** rules section so
+  Codex gets the same boundaries as Claude (layers, invariants, adding-work checklist).
+- **`pyproject.toml`** (new) — `ruff` config scoped to `app/`+`tests/`+`main.py`; **excludes frozen
+  `phase1_cdr/`** + `vendor/` + `.venv` + the JS SPA. `select=["E","F","W"]`, line-length 120 (fits
+  the existing code). Import-sorting (`I`) and the ruff/import-linter **CI gates** are deferred to
+  **Step 9** (after imports settle) per the plan.
+- **`requirements-dev.txt`** (new) — `ruff`, `import-linter` (dev/CI tooling, not runtime).
+- **`tests/phase2a/test_bridge.py`** — removed one unused `import os` (the only real ruff finding).
+
+### Verification
+- `ruff check app tests main.py` → **All checks passed**.
+- `pytest tests/phase2a phase1_cdr/tests` → **117 passed**.
+- `git diff --stat -- phase1_cdr/` → **empty** (Phase 1 frozen). No `app/*.py` or `main.py` logic
+  changed — the only code edit is the dead-import removal in a test.
+
+### Flags for review
+- **import-linter local install:** this dev venv is **win_arm64**; import-linter's `grimp` dep has no
+  win_arm64 wheel and tries a Rust source build (fails locally). CI runs on **ubuntu x64** (wheels
+  exist), so the Step 9 import-linter CI gate is unaffected — flagging the ARM64-local limitation.
+- **Dependency pinning NOT done yet** (a Step 0 sub-item): the plan's constraints/lock must be verified
+  in **both** CI jobs (3.11 + 3.12), which only CI can confirm — proposed as a focused follow-up with
+  Khaled/CI before Step 9, rather than a possibly-wrong local hand-pin.
+
+### What's left
+- **Codex review** of `claude/modular-reorg-step0` (`git diff main...`), then **Nadim merge**.
+- Then **Step 1** — `app/infra/` package + the single `infra/phase1.py` seam.
+
 ## 2026-06-29 — Claude: password strength meter on `passwords` — FOR REVIEW (do NOT merge)
 
 Nadim asked for a **password strength indicator** on the password-creation flows, scored

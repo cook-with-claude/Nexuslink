@@ -1,4 +1,3 @@
-import os
 import sys
 import pathlib
 import pandas as pd

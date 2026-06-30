@@ -1,0 +1,25 @@
+# Tooling config for the Phase 2A backend + the modular-monolith reorg (ADR 0001).
+# NOTE: Phase 1 (phase1_cdr/) is FROZEN and independently validated — it is excluded
+# from every tool here. The .venv and vendored DLLs are excluded too.
+#
+# The ruff and import-linter CI *gates* are wired in the final reorg step (Step 9),
+# after the package structure exists; until then these configs are for local use.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120              # fits the existing code; no reflow churn pre-reorg
+extend-exclude = ["phase1_cdr", "vendor", ".venv", "app/web"]
+
+[tool.ruff.lint]
+# Core rule set now: pycodestyle errors/warnings + pyflakes.
+# Import sorting ("I") and broader families are enabled in Step 9, AFTER the reorg
+# finalizes every import block — enforcing isort now would just be re-done churn.
+select = ["E", "F", "W"]
+
+# import-linter (boundary enforcement) is authored to the target structure in
+# docs/adr/0001-modular-monolith.md and activated here in Step 9, once the
+# app.api / app.<domain> packages exist and each contract has been validated with a
+# deliberate bad import. Intentionally not present yet — the modules it references
+# do not exist until the reorg lands.
+# [tool.importlinter]
+# root_package = "app"

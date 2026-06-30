@@ -56,3 +56,45 @@ Prefix every commit so authorship is obvious in `git log --oneline`:
    find status text in `COLLAB.md`, move it to `HANDOFF.md`. This keeps the
    protocol doc (pasted first when onboarding an agent) from ever going stale and
    contradicting the running log.
+
+## Architecture (layered modular monolith)
+
+The backend `app/` is a **layered, package-per-domain modular monolith** (full
+rationale + the migration plan: `docs/adr/0001-modular-monolith.md`). Both agents
+must keep new work inside these boundaries; they are enforced in CI by
+**import-linter** + AST tests in `tests/architecture/`.
+
+**Layers** — a higher layer may import a lower one, **never the reverse**:
+```
+APPLICATION : api.system, <domain>.routes
+DOMAIN/DATA : <domain>.account / .repo / .validation / .bridge
+AUDIT       : audit.log
+SUPPORT     : api.guards, api.errors  (use api.responses + infra)
+              api.responses           (flask only)
+INFRA       : infra.config, infra.crypto, infra.storage, infra.phase1
+```
+(The `api` package spans layers on purpose: its `system.py` route is APPLICATION;
+its `responses/guards/errors` helpers are SUPPORT.)
+
+**Invariants:**
+1. **Routes never write SQL** — call the domain's `repo`.
+2. **Repos never commit** — the route owns the unit-of-work (`repo` calls →
+   `audit.write_audit(conn, …)` → `conn.commit()` / `conn.rollback()`).
+3. **Repos take a `conn`, return plain dicts, import `infra` only** — never `audit`,
+   `api`, or `flask`.
+4. **No domain imports another domain's internals** — cross-domain needs go through
+   a shared module/service.
+5. **Phase 1 (`phase1_cdr/`) is reached only via `app/infra/phase1.py`** — and is
+   never edited (frozen, CI-validated).
+6. **Auth identity is read via `api.guards.current_username()`** — never
+   `current_app.config["USERNAME"]` directly (Phase 3 swaps the accessor for a
+   per-session context; no process-global auth state).
+
+**Adding work:**
+- *New endpoint, existing domain:* extend `repo.py` (if data access) → thin
+  `routes.py` handler → tests in `tests/phase2a/<domain>/` → `pytest` +
+  `lint-imports` + architecture tests.
+- *New domain* (e.g. `users/`, `admin/`): create
+  `app/<domain>/{__init__,repo,routes}.py` (+ `service.py` if logic exists) →
+  register the blueprint → **add it to the import-linter layer/independence set** →
+  add a tests dir → write an ADR if the decision is notable.
