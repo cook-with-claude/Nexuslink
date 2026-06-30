@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request
 
-from app import audit, detection_bridge
+from app import detection_bridge
+from app.audit import log as audit
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
 

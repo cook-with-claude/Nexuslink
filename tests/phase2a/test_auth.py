@@ -61,7 +61,7 @@ def test_login_failure_recorded_without_any_success(client):
     import json
     from datetime import datetime
 
-    from app import audit
+    from app.audit import log as audit
     from app.infra import config
 
     _setup(client)

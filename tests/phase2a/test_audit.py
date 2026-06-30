@@ -1,5 +1,5 @@
 import os
-from app import audit
+from app.audit import log as audit
 from app.infra import storage
 
 

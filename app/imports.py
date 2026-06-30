@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 import pandas as pd
 from flask import Blueprint, request
 
-from app import audit, validation
+from app import validation
+from app.audit import log as audit
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
 
