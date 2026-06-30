@@ -60,9 +60,11 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a phase1_cdr/tests` (currently **117 passing**).
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **125 passing**;
+  `tests/architecture/` holds the AST boundary checks).
 - Lint: `ruff check app tests main.py` (config in `pyproject.toml`; excludes `phase1_cdr/`, `vendor/`).
-- Boundaries: `lint-imports` (import-linter) — enforcing from the final reorg step.
+- Boundaries: `lint-imports` (import-linter) — **enforcing** (CI `boundaries` job). grimp has no
+  win_arm64 wheel, so `lint-imports` runs in CI on ubuntu x64, not on the ARM64 dev machine.
 - Desktop app: `python main.py` (needs the .NET Desktop Runtime on Windows; see `README.md`).
 
 ## Key docs

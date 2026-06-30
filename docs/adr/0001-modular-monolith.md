@@ -66,24 +66,26 @@ Prose does not stop two blind agents from eroding boundaries; CI does.
   execution in `*/routes.py`; no `commit()`/`rollback()` in `*/repo.py`; no `flask` import in
   `*/repo.py`.
 
-### Target import-linter contract (spec — activated in the final reorg step)
+### import-linter contract (as-built — `[tool.importlinter]` in `pyproject.toml`, enforcing)
 
-```toml
-# [tool.importlinter]  (added to pyproject.toml when all packages exist; informational until then)
-# root_package = "app"
-#
-# layers (module-level, highest first): api.system + <domain>.routes ; <domain>.account/.repo/
-#   .validation/.bridge ; audit ; api.guards + api.errors ; api.responses ; infra
-# containers over app.auth/datasets/targets/analysis with inner layers: routes, repo
-# independence: app.auth, app.datasets, app.targets, app.analysis   (auth is a domain too)
-# forbidden (Phase 1): include_external_packages = true ; allow_indirect_imports = true ;
-#   source = every app module EXCEPT app.infra.phase1 ; forbidden_modules = detection, loader
-#   (allow_indirect_imports keeps the legitimate app.infra.phase1 -> detection|loader seam green)
-# forbidden (repos): app.*.repo must not import app.audit or app.api (both internal).
-#   The no-`flask`-in-repos rule is EXTERNAL, so it is enforced by the AST architecture test
-#   in tests/architecture/, NOT this import-linter contract (avoids needing
-#   include_external_packages here).
-```
+Activated in Step 9 once every package existed. Four contracts, run by the CI `boundaries`
+job (`lint-imports`) on ubuntu x64 — grimp has no win_arm64 wheel, so it does not run on the
+ARM64 dev machine:
+
+1. **`layers`** (module-level, highest first): `api.system | <domain>.routes` ; `<domain>.account/
+   .repo/.validation/.bridge` ; `audit` ; `api.guards | api.errors` ; `api.responses` ; `infra`.
+   (`audit` and `infra` are named as packages so intra-package imports are allowed; `api` spans
+   layers because `system` is APPLICATION while `responses/guards/errors` are SUPPORT.)
+2. **`independence`**: `app.auth`, `app.datasets`, `app.targets`, `app.analysis` (auth is a domain too).
+3. **`forbidden` (Phase 1)**: `include_external_packages = true`, `allow_indirect_imports = true`;
+   source = every app module except `app.infra.phase1`; `forbidden_modules = detection, loader`
+   (allow_indirect_imports keeps the legitimate `bridge -> infra.phase1 -> detection` seam green).
+4. **`forbidden` (repos)**: `app.*.repo` must not import `app.audit` or `app.api`. The
+   no-`flask`-in-repos rule is enforced by the AST architecture test in `tests/architecture/`
+   (`flask` is external, so keeping it out of this contract avoids `include_external_packages` here).
+
+The global `layers` contract already places every `<domain>.routes` above every `<domain>.repo`,
+so the routes-above-repo rule did not need a separate `containers` contract.
 
 ## Consequences
 
