@@ -1,5 +1,15 @@
 version: 2
 updates:
+  # Python deps for the main Phase 2A app (root requirements files).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
   # Python deps for the Phase 1 package (requirements.txt lives in phase1_cdr/).
   # Monthly + grouped so a 3-dependency project doesn't generate PR noise.
   - package-ecosystem: pip
