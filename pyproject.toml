@@ -9,6 +9,9 @@
 target-version = "py311"
 line-length = 120              # fits the existing code; no reflow churn pre-reorg
 extend-exclude = ["phase1_cdr", "vendor", ".venv", "app/web"]
+# force-exclude guarantees the frozen phase1_cdr/ is skipped even when a path is passed
+# explicitly (e.g. `ruff check .` or `ruff check phase1_cdr`), not just on auto-discovery.
+force-exclude = true
 
 [tool.ruff.lint]
 # Core rule set now: pycodestyle errors/warnings + pyflakes.

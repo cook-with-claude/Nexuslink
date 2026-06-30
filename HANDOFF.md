@@ -42,8 +42,21 @@ once (SOUND-WITH-CHANGES) and revised before approval.
   in **both** CI jobs (3.11 + 3.12), which only CI can confirm — proposed as a focused follow-up with
   Khaled/CI before Step 9, rather than a possibly-wrong local hand-pin.
 
+### Codex review round 1 — addressed (commit on same branch)
+Codex returned **SOUND-WITH-CHANGES** (no behavior change; confirmed 117 passed, `phase1_cdr/`
+empty). All four findings were doc/config refinements (the import-linter contract is still only a
+*spec* until Step 9) — applied:
+- **[Med] auth independence** — added `app.auth` to the ADR independence set (auth is a domain too,
+  so invariant 4 covers it).
+- **[Med] `flask` is external** — the repo-forbidden import-linter contract now covers only the
+  *internal* `app.audit`/`app.api`; the no-`flask`-in-repos rule is explicitly delegated to the AST
+  architecture test (avoids needing `include_external_packages` on that contract).
+- **[Low] Phase-1 indirect rule** — made explicit as `allow_indirect_imports = true` in the spec.
+- **[Low] ruff `force-exclude = true`** — added to `pyproject.toml` so frozen `phase1_cdr/` is
+  skipped even on `ruff check .` / explicit paths. Verified: `ruff check .` → all checks passed.
+
 ### What's left
-- **Codex review** of `claude/modular-reorg-step0` (`git diff main...`), then **Nadim merge**.
+- **Nadim merge** of `claude/modular-reorg-step0` (Codex round 1 addressed; re-glance optional).
 - Then **Step 1** — `app/infra/` package + the single `infra/phase1.py` seam.
 
 ## 2026-06-29 — Claude: password strength meter on `passwords` — FOR REVIEW (do NOT merge)

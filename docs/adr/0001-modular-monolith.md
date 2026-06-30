@@ -75,11 +75,14 @@ Prose does not stop two blind agents from eroding boundaries; CI does.
 # layers (module-level, highest first): api.system + <domain>.routes ; <domain>.account/.repo/
 #   .validation/.bridge ; audit ; api.guards + api.errors ; api.responses ; infra
 # containers over app.auth/datasets/targets/analysis with inner layers: routes, repo
-# independence: app.datasets, app.targets, app.analysis
-# forbidden (Phase 1): include_external_packages = true ; source = every app module EXCEPT
-#   app.infra.phase1 ; forbidden_modules = detection, loader ; allow the indirect path
-#   app.infra.phase1 -> detection|loader
-# forbidden (repos): app.*.repo must not import app.audit, app.api, flask
+# independence: app.auth, app.datasets, app.targets, app.analysis   (auth is a domain too)
+# forbidden (Phase 1): include_external_packages = true ; allow_indirect_imports = true ;
+#   source = every app module EXCEPT app.infra.phase1 ; forbidden_modules = detection, loader
+#   (allow_indirect_imports keeps the legitimate app.infra.phase1 -> detection|loader seam green)
+# forbidden (repos): app.*.repo must not import app.audit or app.api (both internal).
+#   The no-`flask`-in-repos rule is EXTERNAL, so it is enforced by the AST architecture test
+#   in tests/architecture/, NOT this import-linter contract (avoids needing
+#   include_external_packages here).
 ```
 
 ## Consequences
