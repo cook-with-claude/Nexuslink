@@ -1,0 +1,14 @@
+# Default owner for source, workflow, and dependency changes.
+* @cook-with-claude
+
+# Security-sensitive paths. Code owner review becomes enforceable once branch
+# protection or repository rulesets are available on the repo's GitHub plan.
+/app/auth/ @cook-with-claude
+/app/api/ @cook-with-claude
+/app/audit/ @cook-with-claude
+/app/infra/crypto.py @cook-with-claude
+/app/infra/storage.py @cook-with-claude
+/.github/ @cook-with-claude
+/requirements*.txt @cook-with-claude
+/constraints.txt @cook-with-claude
+/pyproject.toml @cook-with-claude
