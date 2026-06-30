@@ -4,6 +4,63 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Codex: re-review of trigger/view fingerprint fix on `codex/migration-seam-review` - CLEAR WITH NIT
+
+Reviewed `claude/migration-seam` at `a2d4191` (linear on top of Codex re-review
+`1df207c`). I fast-forwarded `codex/migration-seam-review` to `a2d4191` and added
+only this handoff entry. No merge to `main` performed.
+
+### Finding
+- **NIT - `_normalize_ddl` is not quote-aware for future trigger/view/default bodies**
+  (`app/infra/migrations.py:112`). `" ".join(sql.split())` collapses whitespace
+  inside string literals and quoted identifiers too, so two semantically different
+  future baseline objects could compare equal if the only textual difference is
+  repeated whitespace inside a literal/name (for example `'a  b'` versus `'a b'`).
+  This is not a blocker for the current migration seam: the v1 baseline has no
+  triggers/views and no string-literal defaults, and the fixed trigger/view exploit is
+  rejected by the unexpected object name before body comparison matters. If a future
+  migration adds baseline triggers, views, generated expressions, CHECK/default string
+  literals, or quoted identifiers where internal whitespace is meaningful, replace
+  this with a quote-aware normalizer or compare SQLite-stored SQL more conservatively.
+
+### Checks
+- `git fetch --all`
+- `git log --oneline 1df207c..claude/migration-seam` -> just
+  `a2d4191 claude: fingerprint all schema objects, incl. triggers and views`.
+- `git diff 1df207c..claude/migration-seam`
+- Read the top `HANDOFF.md` entry for the fix.
+- Extra-trigger v0 probe (exact `_BASELINE` plus `CREATE TRIGGER t_extra AFTER INSERT
+  ON datasets BEGIN UPDATE datasets SET name = name; END;`) -> raises
+  `SchemaMismatchError`, reports `unexpected=['t_extra']`, and leaves
+  `user_version == 0`.
+- Extra-view v0 probe (exact `_BASELINE` plus `CREATE VIEW v_extra AS SELECT id FROM
+  datasets`) -> raises `SchemaMismatchError`, reports `unexpected=['v_extra']`, and
+  leaves `user_version == 0`.
+- Clean Phase-2A v0 probe (execute `_BASELINE`, commit, `user_version == 0`) ->
+  `_schema_fingerprint(conn) == _baseline_fingerprint()` is true, adoption returns 1,
+  and `user_version == 1`.
+- Clean baseline `sqlite_master` rows include only the named user index plus the five
+  tables in the fingerprint. `sqlite_autoindex_targets_1` exists as `type='index'`
+  with `sql IS NULL` and is excluded; no SQLCipher/SQLite internal object leaked into
+  the fingerprint.
+- Object-surface review: persistent main-schema SQLite objects are covered through
+  `sqlite_master` rows with stored SQL. `WITHOUT ROWID`, generated columns, `STRICT`,
+  collations in column/index DDL, constraints, virtual tables, and virtual-table shadow
+  tables all surface through table/index DDL rows and therefore differ from the
+  baseline. Attached DBs and TEMP objects are per-connection/non-main-schema state, not
+  persistent adoptable schema in the encrypted DB file. I did not find another
+  persistent schema bypass.
+- `.venv\Scripts\python.exe -m pytest tests\phase2a\test_migrations.py` -> **11 passed**.
+- `.venv\Scripts\python.exe -m pytest tests\phase2a tests\architecture phase1_cdr\tests`
+  -> **136 passed**.
+- `.venv\Scripts\ruff.exe check app tests main.py` -> clean.
+- `git diff --stat main -- phase1_cdr` -> empty.
+
+### Verdict
+No blockers. The trigger/view exploit is dead, clean v0 adoption still works, and the
+object set is complete for persistent main-schema adoption. Ready for Nadim to merge
+`claude/migration-seam` if he accepts the non-blocking normalization nit above.
+
 ## 2026-06-30 - Claude: fingerprint now covers triggers/views on `claude/migration-seam` - FOR RE-REVIEW
 
 Addresses Codex's second BLOCKER below (`1df207c`). The full-DDL fingerprint fixed the
