@@ -4,6 +4,70 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 — Claude: modular-monolith reorg **Steps 1–9** on `claude/modular-reorg-impl` — FOR REVIEW (do NOT merge)
+
+Executed the full behavior-frozen backend reorganization (ADR 0001; plan
+`~/.claude/plans/discussion-only-ancient-whistle.md`). **Step 0 was first ff-merged to
+`main` (Nadim-authorized this session; tip `bb9d7b2`)** and the redundant `passwords`
+branch pruned. Then Steps 1–9 were built on a fresh branch off `main`, **one commit per
+step**, suite green + Phase 1 byte-frozen between every step. Per COLLAB this is for Codex
+review — **only Nadim merges.**
+
+### What landed (one commit per step; `git log --oneline main..claude/modular-reorg-impl`)
+- **Step 1 (`74e9726`)** `app/infra/` — moved `config`/`crypto`/`storage`; new `infra/phase1.py`,
+  the single owned seam to frozen `phase1_cdr` (deleted the duplicated `sys.path` blocks in
+  `validation.py` + `detection_bridge.py`).
+- **Step 2 (`86c104f`)** `app/api/` — `responses` (ok/err/json_body), `guards` (login_required,
+  get_db, **new `current_username()`** accessor), `errors` (register_error_handlers), `system`
+  (/api/health + /api/status as a blueprint — identical URLs). `app/__init__.py` shrank to the
+  factory; routes read identity via `current_username()` (one function for Phase 3 to swap).
+- **Step 3 (`01e4bdc`)** `app/auth/` — `account.py` + `routes.py` (atomic).
+- **Step 4 (`f1c3d54`)** `app/audit/` — `audit.py` → `audit/log.py` (atomic).
+- **Step 5 (`d73889a`)** characterization tests — pinned the route-owned txn contract
+  (audit-failure rolls back import/analysis/delete; dup-target 409 leaves the conn clean)
+  BEFORE extraction. 117 → 121.
+- **Steps 6–8 (`bcca51a`,`ee73289`,`858494c`)** `app/datasets/`, `app/targets/`, `app/analysis/`
+  + per-domain `repo.py` extraction. Routes own the unit-of-work and never write SQL; repos
+  take a `conn`, return dicts, never commit. `tests/architecture/test_boundaries.py` (generic
+  AST scanners) added in Step 6 → 121 → 125. `app/` now holds only `create_app()` + `ui.py`.
+- **Step 9 (`186e2ad`, `70c0d55`)** enforcement: 4 **import-linter** contracts (enforcing) in
+  `pyproject.toml` — layered architecture, domain independence, Phase-1-only-via-infra.phase1,
+  repos-import-neither-audit-nor-api; new CI **`boundaries`** job (ruff + lint-imports) on
+  ubuntu x64; `phase2a` job also runs `tests/architecture`. `3c25cc1` enabled ruff isort (`I`)
+  and sorted every import block. ADR/CLAUDE.md updated to as-built.
+
+### Verification
+- **Per step:** `pytest tests/phase2a tests/architecture phase1_cdr/tests` green (117 → **125**);
+  `git diff --stat main -- phase1_cdr/` **empty** at every step (Phase 1 byte-frozen).
+- **ruff** (incl. `I`) clean. **CI all green** on the branch tip `70c0d55` (run 28449298650:
+  test ✓ phase2a ✓ frontend ✓ boundaries ✓).
+- **import-linter validated with deliberate bad imports** (the plan's requirement). grimp has
+  no win_arm64 wheel so it can't run on the dev machine; validated in CI instead: a throwaway
+  branch with one violation per contract made **all 4 contracts report BROKEN** with the right
+  messages (e.g. `app.analysis.repo is not allowed to import app.audit`;
+  `app.datasets is not allowed to import detection`; `app.targets … import app.datasets`;
+  `app.audit … import app.datasets.repo`). Throwaway branch deleted (local + origin).
+
+### Notes / deviations from the plan
+- **No `containers` contract.** The global `layers` contract already places every
+  `<domain>.routes` above every `<domain>.repo`, so routes-above-repo is covered without a
+  separate per-domain `containers` contract. Documented in ADR 0001.
+- **CI caught a real contract bug** (the deliberate-validation value): import-linter needs
+  `include_external_packages=true` at the **top level** (not per-contract) when a forbidden
+  contract names external modules (detection/loader). Fixed in `70c0d55`.
+- **Dependency lock/pinning** (a Step-0 sub-item) is still **NOT done** — flagged in the Step 0
+  entry below as a focused CI follow-up; out of scope for this structural reorg.
+- Blueprint internal names kept (`imports`/`targets`/`analysis`/`auth`) so endpoint names and
+  all HTTP responses are byte-identical.
+
+### What's left
+- **Codex review** of `origin/claude/modular-reorg-impl` (`git diff main...origin/claude/modular-reorg-impl`;
+  the per-step commits make granular review easy), then **Nadim merge** (clean ff — `main` is an
+  ancestor). After merge, prune the branch.
+- **First Phase 3 increment** (per ADR 0001 Part C): de-globalize auth — multi-account
+  `auth/account.py` + `auth/session.py` per-session identity/key context; `current_username()`
+  (added now) swaps to read it. The structure is ready for it.
+
 ## 2026-06-30 — Claude: modular-monolith reorg **Step 0** (conventions + tooling) on `claude/modular-reorg-step0` — FOR REVIEW (do NOT merge)
 
 Kicks off the Nadim-approved pre-Phase-3 reorganization of the backend into a **layered modular
