@@ -12,8 +12,9 @@ platform-specific GC behavior with no deterministic, non-flaky assertion.
 
 import pytest
 
-from app import create_app, validation, detection_bridge
+from app import create_app, detection_bridge
 from app.auth import account
+from app.datasets import validation
 from app.infra import config, storage
 
 

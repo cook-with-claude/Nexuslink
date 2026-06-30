@@ -39,7 +39,7 @@ def create_app() -> Flask:
     app.register_blueprint(system_bp)
     from app.auth.routes import bp as auth_bp
     app.register_blueprint(auth_bp)
-    from app.imports import bp as imports_bp
+    from app.datasets.routes import bp as imports_bp
     app.register_blueprint(imports_bp)
     from app.targets import bp as targets_bp
     app.register_blueprint(targets_bp)

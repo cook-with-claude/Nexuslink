@@ -1,4 +1,8 @@
-"""Import pipeline (xlsx) + dataset listing/deletion."""
+"""Import pipeline (xlsx) + dataset listing/deletion (APPLICATION layer).
+
+The route owns the unit-of-work: it drives validation, calls the repo for data
+access, writes the audit row, and commits. All SQL lives in repo.py.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +11,10 @@ from datetime import datetime, timezone
 import pandas as pd
 from flask import Blueprint, request
 
-from app import validation
 from app.audit import log as audit
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
+from app.datasets import repo, validation
 
 bp = Blueprint("imports", __name__, url_prefix="/api")
 
@@ -49,20 +53,11 @@ def import_xlsx():
             clean_rows.append(clean)
 
     db = get_db()
-    cur = db.execute(
-        "INSERT INTO datasets (name, filename, imported_at, row_count, skipped_count) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (name, upload.filename, datetime.now(timezone.utc).isoformat(),
-         len(clean_rows), len(skipped_reasons)),
+    dataset_id = repo.insert_dataset(
+        db, name, upload.filename, datetime.now(timezone.utc).isoformat(),
+        len(clean_rows), len(skipped_reasons),
     )
-    dataset_id = cur.lastrowid
-    db.executemany(
-        "INSERT INTO cdr_records (dataset_id, phone_number, imei, area, timestamp, "
-        "call_type, duration_seconds, other_party, other_imei, other_area) "
-        "VALUES (:dataset_id, :phone_number, :imei, :area, :timestamp, :call_type, "
-        ":duration_seconds, :other_party, :other_imei, :other_area)",
-        [dict(r, dataset_id=dataset_id) for r in clean_rows],
-    )
+    repo.bulk_insert_records(db, dataset_id, clean_rows)
     audit.write_audit(db, current_username(), audit.IMPORT,
                       {"dataset_id": dataset_id, "imported": len(clean_rows),
                        "skipped": len(skipped_reasons)})
@@ -75,35 +70,23 @@ def import_xlsx():
 @bp.get("/datasets")
 @login_required
 def list_datasets():
-    db = get_db()
-    rows = db.execute(
-        "SELECT id, name, filename, imported_at, row_count, skipped_count "
-        "FROM datasets ORDER BY id"
-    ).fetchall()
-    return ok([dict(r) for r in rows])
+    return ok(repo.list_datasets(get_db()))
 
 
 @bp.get("/datasets/<int:dataset_id>/phone-numbers")
 @login_required
 def dataset_phone_numbers(dataset_id: int):
     db = get_db()
-    exists = db.execute("SELECT 1 FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
-    if exists is None:
+    if not repo.dataset_exists(db, dataset_id):
         return err("NOT_FOUND", "dataset not found", 404)
-    rows = db.execute(
-        "SELECT phone_number, COUNT(*) AS count FROM cdr_records "
-        "WHERE dataset_id = ? GROUP BY phone_number ORDER BY phone_number",
-        (dataset_id,),
-    ).fetchall()
-    return ok([dict(r) for r in rows])
+    return ok(repo.phone_numbers(db, dataset_id))
 
 
 @bp.delete("/datasets/<int:dataset_id>")
 @login_required
 def delete_dataset(dataset_id: int):
     db = get_db()
-    cur = db.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
-    if cur.rowcount == 0:
+    if repo.delete_dataset(db, dataset_id) == 0:
         return err("NOT_FOUND", "dataset not found", 404)
     # Cascades to cdr_records/targets/analysis_results -- a destructive action
     # that must leave an audit trail like every other state-changing endpoint.

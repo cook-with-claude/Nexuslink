@@ -1,4 +1,4 @@
-from app import validation
+from app.datasets import validation
 
 
 def test_missing_columns_detected():
