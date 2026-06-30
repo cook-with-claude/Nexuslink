@@ -4,6 +4,40 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 — Claude: dependency lock on `claude/dep-lock` — FOR REVIEW (do NOT merge)
+
+Closes the last open Step-0 follow-up (ADR 0001): the runtime dependency stack was
+**unpinned**, so CI/local installs picked up whatever was latest — the drift class that
+produced the bcrypt-5.0 silent-truncation→ValueError surprise earlier in the project.
+Branched off `main` (`02d9eab`, the merged reorg). **No app/test code changes** — only the
+lock + CI wiring, so the suite is unchanged from `main` (125).
+
+### What landed
+- **`constraints.txt`** (new) — full runtime lock (direct + transitive, 27 pins). **Generated
+  from `pip freeze` in CI** on ubuntu x64 / Python 3.11 (the Phase 2A job resolves a superset
+  of Phase 1's deps), not from the win_arm64 dev venv (wrong wheels). `numpy==2.4.6` is the
+  shared floor — 3.11 resolves 2.4.6, 3.12 would pick 2.5.0; 2.4.6 has wheels for both.
+- **`.github/workflows/ci.yml`** — all three Python jobs now install with `-c constraints.txt`
+  (Phase 1 via `-c ../constraints.txt` from its `phase1_cdr/` working dir — **the frozen
+  `phase1_cdr/` tree is untouched**; only the workflow command changed). The SAME locked set is
+  thus exercised on **both 3.11 (Phase 2A) and 3.12 (Phase 1)**. Dev tools (ruff/import-linter)
+  intentionally left unpinned.
+- **`requirements.txt`** — header pointing local installs at the lock; direct deps stay loose
+  (the plan wanted a constraints/lock, not a hand-pinned requirements.txt).
+
+### How the lock was produced + validated (the plan's "both CI jobs" requirement)
+A temp commit printed `pip freeze` in both the 3.11 and 3.12 jobs; the only cross-version
+conflict was numpy (2.4.6 vs 2.5.0), resolved to the shared 2.4.6 floor. Temp steps removed,
+lock wired in, then **CI re-run all green on the locked set** (run 28455501879 @ `00dda94`):
+`test` ✓ (Phase 1 3.12 — the **ground-truth validation harness passed**, so numpy 2.5.0→2.4.6
+is inert) · `phase2a` ✓ · `boundaries` ✓ · `frontend` ✓.
+
+### What's left
+- **Codex review** of `origin/claude/dep-lock` (`git diff main...origin/claude/dep-lock` — 3
+  files), then **Nadim ff-merge** (clean — `main` is an ancestor), then prune the branch.
+- Regeneration note (in `constraints.txt`): after an intentional dep bump, re-run the `pip
+  freeze` capture (it's in this branch's git history) and update the lock; CI re-validates both.
+
 ## 2026-06-30 - Codex: modular-monolith reorg Steps 1-9 review on `codex/modular-reorg-review` - CLEAR
 
 Reviewed `origin/claude/modular-reorg-impl` at `5037697` against `main` (`bb9d7b2`). No merge
