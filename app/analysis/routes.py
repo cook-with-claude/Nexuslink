@@ -1,4 +1,8 @@
-"""Analysis blueprint: run Phase 1 detection on a target and store the result."""
+"""Analysis blueprint: run Phase 1 detection on a target and store the result.
+
+The route owns the unit-of-work; all SQL lives in repo.py, and the Phase 1 detectors
+are reached only through bridge.py.
+"""
 
 from __future__ import annotations
 
@@ -7,26 +11,19 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request
 
-from app import detection_bridge
 from app.audit import log as audit
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
+from app.analysis import bridge, repo
 
 bp = Blueprint("analysis", __name__, url_prefix="/api")
-
-
-def _target(db, target_id: int):
-    return db.execute(
-        "SELECT id, name, dataset_id, phone_number FROM targets WHERE id = ?",
-        (target_id,),
-    ).fetchone()
 
 
 @bp.post("/targets/<int:target_id>/analyze")
 @login_required
 def analyze(target_id: int):
     db = get_db()
-    target = _target(db, target_id)
+    target = repo.get_target(db, target_id)
     if target is None:
         return err("NOT_FOUND", "target not found", 404)
 
@@ -37,15 +34,9 @@ def analyze(target_id: int):
     except (TypeError, ValueError):
         top_n = 5
 
-    rows = db.execute(
-        "SELECT phone_number, imei, area, timestamp, call_type, duration_seconds, "
-        "other_party, other_imei, other_area FROM cdr_records "
-        "WHERE dataset_id = ? AND phone_number = ?",
-        (target["dataset_id"], target["phone_number"]),
-    ).fetchall()
-
-    frame = detection_bridge.rows_to_frame([dict(r) for r in rows])
-    result = detection_bridge.analyze_frame(frame, top_n=top_n)
+    rows = repo.read_records(db, target["dataset_id"], target["phone_number"])
+    frame = bridge.rows_to_frame(rows)
+    result = bridge.analyze_frame(frame, top_n=top_n)
     analyzed_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "target": {"id": target["id"], "name": target["name"],
@@ -54,10 +45,7 @@ def analyze(target_id: int):
         **result,
     }
 
-    db.execute(
-        "INSERT INTO analysis_results (target_id, created_at, result_json) VALUES (?, ?, ?)",
-        (target_id, analyzed_at, json.dumps(payload)),
-    )
+    repo.insert_result(db, target_id, analyzed_at, json.dumps(payload))
     audit.write_audit(db, current_username(), audit.ANALYSIS,
                       {"target_id": target_id})
     db.commit()
@@ -68,13 +56,9 @@ def analyze(target_id: int):
 @login_required
 def latest_result(target_id: int):
     db = get_db()
-    if _target(db, target_id) is None:
+    if repo.get_target(db, target_id) is None:
         return err("NOT_FOUND", "target not found", 404)
-    row = db.execute(
-        "SELECT result_json FROM analysis_results WHERE target_id = ? "
-        "ORDER BY id DESC LIMIT 1",
-        (target_id,),
-    ).fetchone()
-    if row is None:
+    result_json = repo.latest_result(db, target_id)
+    if result_json is None:
         return err("NOT_FOUND", "no analysis yet", 404)
-    return ok(json.loads(row["result_json"]))
+    return ok(json.loads(result_json))
