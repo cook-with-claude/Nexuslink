@@ -55,9 +55,19 @@ empty). All four findings were doc/config refinements (the import-linter contrac
 - **[Low] ruff `force-exclude = true`** — added to `pyproject.toml` so frozen `phase1_cdr/` is
   skipped even on `ruff check .` / explicit paths. Verified: `ruff check .` → all checks passed.
 
+### Codex review round 2 — CLEARED
+Codex re-reviewed the fixes (commit `e4a14a5`) and returned **CLEAR FOR MERGE** — all four round-1
+findings resolved, no new issues, no behavior change confirmed (117 passed, `phase1_cdr/` empty).
+
 ### What's left
-- **Nadim merge** of `claude/modular-reorg-step0` (Codex round 1 addressed; re-glance optional).
-- Then **Step 1** — `app/infra/` package + the single `infra/phase1.py` seam.
+- **Nadim ff-merge** of `claude/modular-reorg-step0` into `main` (clean fast-forward — `main` is an
+  ancestor); then delete the merged branch and **prune the now-redundant `passwords` branch** (it is
+  identical to `main` after the password-meter merge).
+- Then **Step 1** — the `app/infra/` package: move `config`/`crypto`/`storage` into `app/infra/`, add
+  the single `app/infra/phase1.py` seam (delete the duplicated `sys.path` blocks in `validation.py`
+  and `detection_bridge.py`), update the import choreography + affected tests; verify 117 + frozen
+  Phase 1. Full per-step detail: plan file `~/.claude/plans/discussion-only-ancient-whistle.md` and
+  session log `session-logs/2026-06-30.md`.
 
 ## 2026-06-29 — Claude: password strength meter on `passwords` — FOR REVIEW (do NOT merge)
 

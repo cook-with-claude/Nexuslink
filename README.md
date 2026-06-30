@@ -24,8 +24,10 @@ any UI, server, or account work is layered on.
 | Phase | Scope | Status |
 |---|---|---|
 | **1 — Algorithm validation** | Home/work/frequent detection + a four-gate confidence model, validated against an independently-computed ground truth on synthetic data. | ✅ Complete — CI green |
-| **2A — Backend foundation** | A Flask + PyWebView desktop app over a SQLCipher-encrypted database: single-account auth, xlsx import, targets, and an analysis bridge that reuses the Phase 1 detectors unchanged. | 🚧 In progress |
-| 2B+ | Frontend UI, then further product layers. | Planned |
+| **2A — Backend foundation** | A Flask + PyWebView desktop app over a SQLCipher-encrypted database: single-account auth, xlsx import, targets, and an analysis bridge that reuses the Phase 1 detectors unchanged. | ✅ Complete — merged |
+| **2B — Frontend + desktop shell** | Vanilla no-build SPA (analyst-workstation UI), served by Flask; ARM64 PyWebView launch; informational password-strength meter. | ✅ Complete — merged |
+| **Pre-3 — Modular monolith** | Behavior-frozen reorganization of the backend into a layered, package-per-domain modular monolith ([ADR 0001](docs/adr/0001-modular-monolith.md)), ahead of the Phase 3 multi-user build. | 🚧 In progress |
+| **3 — Multi-user platform** | Multi-user + admin roles, connected over LAN. | Planned |
 
 **Phase 1 lives in [`phase1_cdr/`](phase1_cdr/) — see its
 [README](phase1_cdr/README.md) for the full algorithm, the four-gate confidence model,
