@@ -321,6 +321,59 @@ change would have no upgrade path for an installed encrypted DB.
 - Orthogonal to Codex's `codex/github-security-foundation` (PR #11) — no shared files; either can
   merge first.
 
+## 2026-06-30 - Codex: GitHub security foundation on `codex/github-security-foundation` - PR #11 OPEN
+
+Nadim asked whether GitHub security/governance should be enabled before scaling the
+project to an enterprise, multi-user platform. I checked the local repo and the
+authenticated GitHub access. `gh` is logged in as `cook-with-claude`, and that
+account has `ADMIN` permission on `cook-with-claude/La-Passion`. Repo is private,
+default branch is `main`.
+
+### What changed
+- Created branch `codex/github-security-foundation` from `main`.
+- Committed and pushed `894d698` (`Add GitHub security foundation`).
+- Opened draft PR #11:
+  `https://github.com/cook-with-claude/La-Passion/pull/11`.
+- Added `.github/CODEOWNERS` so security-sensitive paths have explicit ownership
+  once GitHub branch protection/rulesets can enforce code-owner review. Current
+  owner is `@cook-with-claude`; protected paths include `app/auth/`, `app/api/`,
+  `app/audit/`, `app/infra/crypto.py`, `app/infra/storage.py`, `.github/`,
+  dependency files, `constraints.txt`, and `pyproject.toml`.
+- Added `SECURITY.md` with a private vulnerability reporting policy, supported-version
+  note for the pre-release project, requested report contents, and a 3-business-day
+  acknowledgement target.
+- Updated `.github/dependabot.yml` to add root pip Dependabot coverage for the
+  Phase 2A/main app dependencies. Existing `/phase1_cdr` pip and GitHub Actions
+  Dependabot coverage remains unchanged.
+- Updated `.github/workflows/ci.yml` with default workflow token permissions:
+  `contents: read`.
+- Directly enabled the repository setting `delete_branch_on_merge=true` on GitHub.
+
+### GitHub security state observed
+- Dependabot alerts/security updates are enabled; current Dependabot alert count was `0`.
+- Branch protection/rulesets could not be enabled/read on this private repo: GitHub API
+  returned "Upgrade to GitHub Pro or make this repository public to enable this feature."
+- CodeQL/code scanning could not be enabled through the API because code scanning is
+  not enabled/available for this private repo yet. User-facing next step is repo
+  Settings -> Advanced Security -> CodeQL analysis -> Set up -> Default, but it may
+  require GitHub Code Security/GitHub Pro for this private repo.
+- Private vulnerability reporting was not available through the repo API in this session.
+
+### Verification
+- `git diff --check -- .github/dependabot.yml .github/workflows/ci.yml .github/CODEOWNERS SECURITY.md`
+  before commit -> clean.
+- Staged only `.github/dependabot.yml`, `.github/workflows/ci.yml`, `.github/CODEOWNERS`,
+  and `SECURITY.md`; left unrelated untracked `.claude/`, `sample_cdr_data.xlsx`, and
+  `session-logs/` untouched.
+- Verified PR #11 is open and draft, base `main`, head `codex/github-security-foundation`.
+
+### What's left
+- Nadim reviews/merges PR #11 if he wants these repo-governance files on `main`.
+- If/when the GitHub plan supports it, enable branch protection/rulesets on `main`:
+  require PRs, CI, code-owner review, conversation resolution, no force pushes/deletes.
+- If/when CodeQL is available, enable default setup first for Python, JavaScript, and
+  GitHub Actions; triage initial alerts before making CodeQL required.
+
 ## 2026-06-30 - Codex: dependency lock review on `codex/dep-lock-review` - CLEAR WITH NOTE
 
 Reviewed `origin/claude/dep-lock` at `11e9b4e` against `main`/`origin/main`
