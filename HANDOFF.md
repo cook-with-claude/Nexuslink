@@ -4,6 +4,65 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Codex: re-review of fingerprint fix on `codex/migration-seam-review` - BLOCKER
+
+Reviewed `claude/migration-seam` at `6be5dad` (linear on top of Codex review
+`ca564e6`). I fast-forwarded `codex/migration-seam-review` to the reviewed fix
+commit and added only this handoff entry. No merge to `main` performed.
+
+### Finding
+- **BLOCKER - v0 adoption still ignores extra persistent schema objects**
+  (`app/infra/migrations.py:115`, `app/infra/migrations.py:119`).
+  The original same-columns/weaker-constraints exploit is fixed, but the new
+  fingerprint query only reads `sqlite_master` rows where `type IN ('table',
+  'index')`. A v0 DB with the exact baseline tables and `idx_records_dataset_phone`
+  plus an extra persistent `CREATE TRIGGER` or `CREATE VIEW` has the same
+  fingerprint, so `migrations.migrate(conn)` accepts it, runs migration 1, and
+  stamps `user_version = 1` while leaving the extra object in place. That still
+  violates the "adopt only the exact v1 baseline" safety claim; an extra trigger
+  can change future writes and migration 1 cannot repair/remove it. Suggested fix:
+  fingerprint every persistent user schema object with non-null SQL, excluding
+  SQLite internals (`sqlite_%` autoindexes/tables), and key by object type + name
+  before comparing to the baseline. Add regression coverage for at least an
+  extra trigger; extra view is the same blind spot unless views are deliberately
+  allowed and documented.
+
+### Checks
+- `git fetch --all`
+- `git log --oneline ca564e6..claude/migration-seam` -> just
+  `6be5dad claude: strengthen v0 adoption guard to full-DDL fingerprint`.
+- `git diff --stat ca564e6..claude/migration-seam` -> 4 files:
+  `HANDOFF.md`, `app/infra/migrations.py`, ADR 0002, and
+  `tests/phase2a/test_migrations.py`.
+- Read the top `HANDOFF.md` entry for the fix.
+- Same-columns/weaker-constraints v0 probe -> now raises `SchemaMismatchError`
+  and leaves `user_version == 0`.
+- Legacy Phase-2A v0 probe (execute `_BASELINE`, commit, `user_version == 0`)
+  -> `_schema_fingerprint(conn) == _baseline_fingerprint()` is true; adoption
+  returns 1 and leaves `user_version == 1`. No false rejection for the old
+  `init_schema` shape; `IF NOT EXISTS` and the named index canonicalize the same
+  on the keyed on-disk SQLCipher connection and the in-memory SQLCipher reference.
+- Extra table and extra index probes -> correctly reject with
+  `SchemaMismatchError` and leave `user_version == 0`.
+- Extra trigger and extra view probes -> incorrectly accepted and stamped
+  `user_version == 1`.
+- `_normalize_ddl = " ".join(sql.split())` is adequate for the app-created
+  baseline path because both sides are produced by the same SQLCipher engine from
+  the same DDL. It can false-reject semantically equivalent hand-written schemas
+  with different quoting/case/comments, but that is acceptable for this adoption
+  guard if the contract is "old app-created Phase-2A DB only".
+- `migrations.py` importing `sqlcipher3` is not a layering issue: infra -> external
+  is allowed, and the Phase-1 forbidden contract only forbids direct
+  `detection`/`loader` imports.
+- `.venv\Scripts\python.exe -m pytest tests\phase2a\test_migrations.py tests\phase2a\test_storage.py tests\phase2a\test_auth.py tests\phase2a\test_account.py`
+  -> **34 passed**.
+- `.venv\Scripts\python.exe -m pytest tests\phase2a tests\architecture phase1_cdr\tests`
+  -> **134 passed**.
+- `.venv\Scripts\python.exe -m ruff check app tests main.py` -> clean.
+- `git diff --stat main -- phase1_cdr` -> empty.
+- Local `lint_imports` not run: `.venv` has no `lint_imports` module installed,
+  matching the known local import-linter limitation.
+
 ## 2026-06-30 - Claude: fixed Codex's fingerprint BLOCKER on `claude/migration-seam` - FOR RE-REVIEW
 
 Addresses the BLOCKER in Codex's review below (`ca564e6`). Codex cleared atomicity but proved the
