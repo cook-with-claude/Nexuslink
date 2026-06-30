@@ -4,6 +4,50 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-06-30 - Codex: modular-monolith reorg Steps 1-9 review on `codex/modular-reorg-review` - CLEAR
+
+Reviewed `origin/claude/modular-reorg-impl` at `5037697` against `main` (`bb9d7b2`). No merge
+performed. Verdict: **CLEAR** for Nadim to merge the Claude branch (or this Codex review branch if
+you want the review note carried with it). I found no behavior-freeze blockers.
+
+### Review checks
+- **Moved SQL / bind order:** mechanically extracted and spot-diffed the SQL calls from the original
+  `app/imports.py`, `app/targets.py`, and `app/analysis.py` against `app/datasets/repo.py`,
+  `app/targets/repo.py`, and `app/analysis/repo.py`. SQL strings, operation order, and bind order
+  match. The renamed repo parameters are still passed in the same tuple/dict order by the routes.
+- **Transaction ownership:** repos do not commit or roll back. Routes still own the unit-of-work:
+  repo calls -> `audit.write_audit(...)` -> `db.commit()`, with the target insert race still caught in
+  `app/targets/routes.py` via `sqlcipher.IntegrityError`, followed by route-level `db.rollback()` and
+  the same 409 response.
+- **Step 5 characterization tests:** the audit-failure tests genuinely pin rollback-on-failed-audit
+  for import, dataset delete, and analysis. The duplicate-target clean-connection test pins the
+  non-race 409 path; the existing race test patches `app.targets.routes.get_db`, and its synthetic
+  `IntegrityError` is raised by `repo.insert_target(...)`, so the repo extraction is exercised.
+- **Layering / import-linter:** the four contracts in `pyproject.toml` match ADR 0001's as-built
+  dependency model. I agree with dropping the separate containers contract: the global module-level
+  layers contract already places every `*.routes` module above every `*.repo` module. `app.api` is
+  correctly split at module level (`system` as APPLICATION; responses/guards/errors as SUPPORT).
+- **`current_username()`:** all production audit call sites in auth/imports/targets/analysis now go
+  through the accessor. Its body preserves the current process-global read (`current_app.config["USERNAME"]`);
+  auth logout/change-password call it only after `login_required`, and `USERNAME` is initialized by
+  `create_app()`, so this is equivalent to the current supported runtime state.
+- **Phase 1 seam:** production app code reaches Phase 1 only through `app/infra/phase1.py`; both
+  `app/datasets/validation.py` and `app/analysis/bridge.py` import through that seam. The remaining
+  direct `phase1_cdr` references are tests/regression oracles, not app code. Phase 1 diff stat is empty.
+- **AST boundary tests:** not vacuous: they assert at least one route and repo file exists, then scan
+  all `app/*/routes.py` and `app/*/repo.py`. They are intentionally narrow (SQL execution in routes,
+  commit/rollback in repos, Flask imports in repos), which is fine because import-linter covers the
+  import-direction contracts.
+
+### Verification
+- `.venv\Scripts\python.exe -m pytest tests/phase2a tests/architecture phase1_cdr/tests` -> **125 passed**.
+- `git diff --stat main -- phase1_cdr/` -> empty.
+- Note: plain global `pytest` used the wrong Python environment and failed collection on missing
+  `flask` / `sqlcipher3`; the repo `.venv` is the valid local verification environment.
+
+### What's left
+- Nadim merge only. No Codex code changes beyond this `HANDOFF.md` review entry.
+
 ## 2026-06-30 — Claude: modular-monolith reorg **Steps 1–9** on `claude/modular-reorg-impl` — FOR REVIEW (do NOT merge)
 
 Executed the full behavior-frozen backend reorganization (ADR 0001; plan
