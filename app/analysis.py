@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, request
+from flask import Blueprint, request
 
-from app import audit, detection_bridge, err, get_db, login_required, ok
+from app import audit, detection_bridge
+from app.api.guards import current_username, get_db, login_required
+from app.api.responses import err, ok
 
 bp = Blueprint("analysis", __name__, url_prefix="/api")
 
@@ -55,7 +57,7 @@ def analyze(target_id: int):
         "INSERT INTO analysis_results (target_id, created_at, result_json) VALUES (?, ?, ?)",
         (target_id, analyzed_at, json.dumps(payload)),
     )
-    audit.write_audit(db, current_app.config["USERNAME"], audit.ANALYSIS,
+    audit.write_audit(db, current_username(), audit.ANALYSIS,
                       {"target_id": target_id})
     db.commit()
     return ok(payload)

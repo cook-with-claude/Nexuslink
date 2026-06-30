@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, session
 
-from app import account, audit, err, get_db, json_body, login_required, ok
+from app import account, audit
+from app.api.guards import current_username, get_db, login_required
+from app.api.responses import err, json_body, ok
 
 bp = Blueprint("auth", __name__, url_prefix="/api")
 
@@ -63,7 +65,7 @@ def login():
 @bp.post("/logout")
 @login_required
 def logout():
-    username = current_app.config.get("USERNAME")
+    username = current_username()
     _audit(username, audit.LOGOUT)
     current_app.config["DB_KEY"] = None
     current_app.config["USERNAME"] = None
@@ -84,6 +86,6 @@ def change_password():
         return err("BAD_REQUEST", str(exc), 400)
     except account.AuthError:
         return err("UNAUTHENTICATED", "old password incorrect", 401)
-    username = current_app.config.get("USERNAME")
+    username = current_username()
     _audit(username, audit.CHANGE_PASSWORD)
     return ok({})

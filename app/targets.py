@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app
+from flask import Blueprint
 from sqlcipher3 import dbapi2 as sqlcipher
 
-from app import audit, err, get_db, json_body, login_required, ok
+from app import audit
+from app.api.guards import current_username, get_db, login_required
+from app.api.responses import err, json_body, ok
 
 bp = Blueprint("targets", __name__, url_prefix="/api")
 
@@ -65,7 +67,7 @@ def create_target():
             )
         raise
     tid = cur.lastrowid
-    audit.write_audit(db, current_app.config["USERNAME"], audit.TARGET_CREATE,
+    audit.write_audit(db, current_username(), audit.TARGET_CREATE,
                       {"target_id": tid, "dataset_id": dataset_id})
     db.commit()
     return ok({"id": tid, "name": name, "dataset_id": dataset_id,
@@ -89,7 +91,7 @@ def delete_target(target_id: int):
     cur = db.execute("DELETE FROM targets WHERE id = ?", (target_id,))
     if cur.rowcount == 0:
         return err("NOT_FOUND", "target not found", 404)
-    audit.write_audit(db, current_app.config["USERNAME"], audit.TARGET_DELETE,
+    audit.write_audit(db, current_username(), audit.TARGET_DELETE,
                       {"target_id": target_id})
     db.commit()
     return ok({})

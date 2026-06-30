@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pandas as pd
-from flask import Blueprint, current_app, request
+from flask import Blueprint, request
 
-from app import audit, err, get_db, login_required, ok, validation
+from app import audit, validation
+from app.api.guards import current_username, get_db, login_required
+from app.api.responses import err, ok
 
 bp = Blueprint("imports", __name__, url_prefix="/api")
 
@@ -60,7 +62,7 @@ def import_xlsx():
         ":duration_seconds, :other_party, :other_imei, :other_area)",
         [dict(r, dataset_id=dataset_id) for r in clean_rows],
     )
-    audit.write_audit(db, current_app.config["USERNAME"], audit.IMPORT,
+    audit.write_audit(db, current_username(), audit.IMPORT,
                       {"dataset_id": dataset_id, "imported": len(clean_rows),
                        "skipped": len(skipped_reasons)})
     db.commit()
@@ -104,7 +106,7 @@ def delete_dataset(dataset_id: int):
         return err("NOT_FOUND", "dataset not found", 404)
     # Cascades to cdr_records/targets/analysis_results -- a destructive action
     # that must leave an audit trail like every other state-changing endpoint.
-    audit.write_audit(db, current_app.config["USERNAME"], audit.DATASET_DELETE,
+    audit.write_audit(db, current_username(), audit.DATASET_DELETE,
                       {"dataset_id": dataset_id})
     db.commit()
     return ok({})
