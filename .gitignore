@@ -12,3 +12,8 @@ env/
 data/
 *.db
 auth.json
+
+# Local tooling & scratch — not part of the repo
+.claude/
+session-logs/
+sample_cdr_data.xlsx
