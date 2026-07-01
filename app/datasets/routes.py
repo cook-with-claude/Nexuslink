@@ -6,6 +6,7 @@ access, writes the audit row, and commits. All SQL lives in repo.py.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -15,6 +16,8 @@ from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
 from app.audit import log as audit
 from app.datasets import repo, validation
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("imports", __name__, url_prefix="/api")
 
@@ -34,6 +37,8 @@ def import_xlsx():
     try:
         df = pd.read_excel(upload, dtype=str, engine="openpyxl")
     except Exception:
+        # User sees a clean 400; the real parse error is kept server-side for debugging.
+        logger.info("rejected upload %r: not a readable .xlsx", upload.filename, exc_info=True)
         return err("BAD_FILE", "file could not be read as .xlsx", 400)
     finally:
         # Release the spooled-temp-file handle; on Windows it otherwise lingers

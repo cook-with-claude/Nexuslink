@@ -4,6 +4,47 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-01 - Claude: pre-Phase-3 prep (docs bundle + operational logging) on `claude/pre-phase3-prep` - FOR REVIEW
+
+Nadim asked to prep everything before Phase 3 (Phase 3 itself stays parked). After a full read-only
+architecture audit against a 22-point enterprise checklist, we agreed only two items are worth doing
+now; the rest are either cargo-cult for a local single-user app or better done *inside* Phase 3.
+
+### What changed (behavior-additive; no API/response/data changes)
+- **Docs bundle (zero code risk):**
+  - `docs/reference/api.md` — full endpoint reference (built by reading `app/*/routes.py`).
+  - `docs/reference/schema.md` — DB schema mirror of `migrations.py:_BASELINE` + sidecars + migration rules.
+  - `docs/phase3-surface.md` — exact inventory of the 3 global-auth slots + every call site Phase 3 must
+    touch (the de-globalization map, so Phase 3 is a mechanical swap not a re-discovery).
+- **Operational logging (small, additive):**
+  - New `app/infra/logging_config.py` — `configure_logging()`, idempotent, level from `LA_PASSION_LOG_LEVEL`
+    (default INFO), tags its handler so repeated `create_app()` in tests doesn't pile up handlers.
+    Pure INFRA (stdlib only). Distinct from the *audit* trail.
+  - `app/__init__.py` calls it first thing in `create_app()`.
+  - Logged the previously-silent swallow spots: two `except OSError: pass` in `account.py` (temp-file /
+    stale-db cleanup) → `logger.warning`; the `read_excel` parse failure in `datasets/routes.py` →
+    `logger.info(exc_info=True)` (user still gets the clean 400; the real error is kept server-side).
+
+### Deliberately NOT done (documented in the audit, agreed with Nadim)
+Interfaces/ABCs, DI container, rate limiting, config files, `develop` branch → cargo-cult here.
+Typed row models (TypedDict) → deferred to Phase 3, which churns the very row shapes (multi-account
+owner columns). `ruff format`/.editorconfig → skipped as low-value.
+
+### Verification (partial locally — see caveat)
+- `pytest tests/architecture` → **4 passed** (boundaries intact; new infra module + route logging don't
+  break layering).
+- `configure_logging()` idempotency probe → 1 tagged handler after two calls, INFO level.
+- `ruff check` on all changed files → clean.
+- `git diff --stat -- phase1_cdr/` → empty (Phase 1 frozen).
+- **CAVEAT:** the pandas-dependent suite (`tests/phase2a`) could NOT run on the dev machine — pandas'
+  compiled `tslib` DLL is blocked by a Windows Application Control / Smart App Control policy
+  (`ImportError: ... An Application Control policy has blocked this file`). This is a machine
+  environment issue, not a code issue. Pushed so **CI (Ubuntu) runs the full suite** as the real gate.
+
+### For Codex / next
+- Review the branch diff; the logging change is the only behavioural surface (additive).
+- Not merged — Nadim merges. Phase 3 remains parked.
+
 ## 2026-06-30 - Claude: DB migration seam MERGED to main; session close
 
 Nadim authorized the merge. `main` fast-forwarded `fa54bce → 9fc4c6a` and pushed to origin; both

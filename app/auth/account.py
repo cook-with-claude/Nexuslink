@@ -12,6 +12,7 @@ import base64
 import binascii
 import hmac
 import json
+import logging
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -19,6 +20,8 @@ from datetime import datetime, timezone
 from cryptography.exceptions import InvalidTag
 
 from app.infra import config, crypto, storage
+
+logger = logging.getLogger(__name__)
 
 
 class AccountExistsError(Exception):
@@ -80,7 +83,7 @@ def _save(record: dict) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.warning("could not remove temp auth file %s after a failed save", tmp_path)
         raise
 
 
@@ -109,7 +112,7 @@ def create_account(username: str, password: str) -> bytes:
         try:
             config.db_path().unlink()
         except OSError:
-            pass
+            logger.warning("could not remove stale cdr.db after failed schema init")
         raise
     conn.close()
     _save({

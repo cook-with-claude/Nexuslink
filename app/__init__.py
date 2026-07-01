@@ -12,9 +12,11 @@ import os
 from flask import Flask, g
 
 from app.api.errors import register_error_handlers
+from app.infra.logging_config import configure_logging
 
 
 def create_app() -> Flask:
+    configure_logging()
     app = Flask(__name__)
     app.config.update(
         SECRET_KEY=os.urandom(32),          # per-launch; no hardcoded secret
