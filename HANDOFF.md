@@ -4,6 +4,44 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-01 - Claude: session close — prep MERGED, Dependabot triaged, local WSL testing established
+
+Session wrap-up. Everything below in the pre-Phase-3 prep thread is now **landed on `main`**; Phase 3
+remains parked until Nadim starts it.
+
+### What's on `main` now (tip after this entry's commit)
+- **Pre-Phase-3 prep MERGED** (`5f736ec`, was `claude/pre-phase3-prep` + Codex's review commit): the docs
+  bundle (`docs/reference/api.md`, `docs/reference/schema.md`, `docs/phase3-surface.md`) + operational
+  logging (`app/infra/logging_config.py`, wired in `create_app`, silent-swallow spots now logged) +
+  Codex's 3 fixes (login 400 in api.md, corrected line refs in phase3-surface.md, `app.infra.logging_config`
+  added to the Phase-1 forbidden import-linter list). CI was green on all jobs before merge. Both branches pruned.
+- **Dependabot triaged** (from PR #11's config, now active): **#12** (`actions/setup-node` v4→v6) MERGED
+  (`ff5c8a7`) — clears the Node-20 deprecation warning. **#13** (numpy 2.4.6→2.5.0) CLOSED — no py3.11
+  wheel exists, so `-c constraints.txt` install fails (`ResolutionImpossible`); the lock correctly blocked
+  a bad bump. Dependabot re-proposes only when a 3.11-compatible numpy exists (or if the backend's Python
+  floor is deliberately raised to 3.12 — a separate decision).
+- **Earlier this session** (already recorded below / prior sessions): stale `claude/session-close` branch
+  pruned; PR #11 (GitHub security foundation) rebased onto current main and MERGED; `.gitignore` now covers
+  `.claude/`, `session-logs/`, `sample_cdr_data.xlsx`; CLAUDE.md reorg banner de-staled + `AGENTS.md` added.
+
+### Local testing restored (NEW capability — see `local-testing-wsl` auto-memory)
+Native Windows on this ARM64 box **cannot import pandas** — Smart App Control (enforced, one-way) blocks
+unsigned compiled `.pyd`s, so `pytest tests/phase2a` fails there. We did NOT disable SAC (irreversible).
+Instead set up **WSL2 Ubuntu 26.04** with a uv-managed **Python 3.11** venv at `/root/lp-venv`
+(requirements + requirements-dev under constraints). Full local run there: **136 passed**, ruff clean,
+4 import-linter contracts kept — full CI parity, first time locally. Command is in the auto-memory.
+`lint-imports` now runs locally in WSL too (grimp has aarch64 wheels; win_arm64 still can't).
+
+### Housekeeping / caveats
+- Phase 1 stays **frozen**: a WSL run via `/mnt/c` flipped line endings on `ground_truth.json` /
+  `sample_data.csv` (content-identical); restored with `git checkout` — tree clean. Note WSL edits under
+  `/mnt/c` can re-trigger this eol churn; restore rather than commit it.
+- CLAUDE.md refreshed: test count 125→136, local-testing/WSL note, `docs/reference/` + `AGENTS.md` in Key docs.
+
+### Next session (Phase 3, when Nadim says go)
+First move unchanged: wire `migrations.migrate(g.db)` into `app/api/guards.py:get_db()` (ADR 0002), then
+auth de-globalization — the exact call-site inventory is now in `docs/phase3-surface.md`.
+
 ## 2026-07-01 - Codex: review of `claude/pre-phase3-prep` on `codex/pre-phase3-prep-review` - CLEAR WITH SMALL FIXES
 
 Reviewed Claude's pushed branch (`0d71b02 claude: pre-Phase-3 prep - reference docs + operational logging`)

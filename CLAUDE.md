@@ -61,15 +61,22 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **125 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **136 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Lint: `ruff check app tests main.py` (config in `pyproject.toml`; excludes `phase1_cdr/`, `vendor/`).
 - Boundaries: `lint-imports` (import-linter) — **enforcing** (CI `boundaries` job). grimp has no
-  win_arm64 wheel, so `lint-imports` runs in CI on ubuntu x64, not on the ARM64 dev machine.
+  win_arm64 wheel, so it can't run on native Windows; it runs in CI on ubuntu x64 (and locally in WSL).
 - Desktop app: `python main.py` (needs the .NET Desktop Runtime on Windows; see `README.md`).
+- **Local testing note:** native Windows on the ARM64 dev machine **cannot import pandas** — Smart App
+  Control (enforced) blocks unsigned compiled `.pyd`s, so `pytest tests/phase2a` fails there. Run the
+  suite in **WSL2** instead (Ubuntu, uv-managed Python 3.11 venv at `/root/lp-venv`); CI (Ubuntu) is the
+  canonical gate. See the `local-testing-wsl` auto-memory for the exact command.
 
 ## Key docs
 - `COLLAB.md` — two-agent protocol + the architecture rules (agent-neutral).
+- `AGENTS.md` — onboarding pointer auto-read by Codex (mirrors the rules; points here + COLLAB/HANDOFF).
 - `HANDOFF.md` — running intent log (newest on top); read the top entry first.
+- `docs/reference/` — `api.md` (endpoint reference) + `schema.md` (DB schema mirror).
+- `docs/phase3-surface.md` — the global-auth de-globalization inventory for the Phase 3 first move.
 - `docs/adr/` — Architecture Decision Records (start at `0001-modular-monolith.md`).
 - `EXPERT_BRIEF.md` — the domain/method brief (the algorithm and its assumptions).
