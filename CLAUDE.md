@@ -18,10 +18,11 @@ vanilla no-build SPA frontend.
 
 ## Architecture — layered modular monolith
 
-> **Migration in progress (ADR 0001).** The backend is being reorganized from flat `app/*.py` into the
-> layered package structure below, behavior-frozen, in steps. During the migration the on-disk tree is
-> converging toward this target — check git / `HANDOFF.md` for the current step. New work must target
-> this structure.
+> **This is the live structure (ADR 0001 — done, merged).** The backend reorg from flat `app/*.py`
+> into the layered package-per-domain layout below is **complete** and behavior-frozen; the on-disk
+> tree already matches this target. All new work targets this structure, and the boundaries are
+> **CI-enforced** (import-linter contracts + `tests/architecture/` — see Invariants below), so a
+> violation fails CI regardless of intent.
 
 ```
 app/
