@@ -47,7 +47,7 @@ never has to parse an HTML error page.
 | Method | Path | Auth | Body | Success | Errors |
 |---|---|---|---|---|---|
 | POST | `/api/setup` | public | `{username, password}` | `201 {"username"}` | `400 BAD_REQUEST` (missing/blank, or password >72 bytes), `409 ACCOUNT_EXISTS` |
-| POST | `/api/login` | public | `{username, password}` | `200 {"username"}` | `401 UNAUTHENTICATED` (also appends to `login_failures.log`) |
+| POST | `/api/login` | public | `{username, password}` | `200 {"username"}` | `400 BAD_REQUEST` (missing/blank), `401 UNAUTHENTICATED` (also appends to `login_failures.log`) |
 | POST | `/api/logout` | required | — | `200 {}` | `401` |
 | POST | `/api/change-password` | required | `{old_password, new_password}` | `200 {}` | `400 BAD_REQUEST` (missing, or >72 bytes), `401 UNAUTHENTICATED` (old wrong) |
 

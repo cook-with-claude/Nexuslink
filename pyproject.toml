@@ -73,6 +73,7 @@ source_modules = [
     "app.analysis",
     "app.infra.config",
     "app.infra.crypto",
+    "app.infra.logging_config",
     "app.infra.storage",
     "app.infra.migrations",
 ]

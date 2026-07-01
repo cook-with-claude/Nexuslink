@@ -4,6 +4,49 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-01 - Codex: review of `claude/pre-phase3-prep` on `codex/pre-phase3-prep-review` - CLEAR WITH SMALL FIXES
+
+Reviewed Claude's pushed branch (`0d71b02 claude: pre-Phase-3 prep - reference docs + operational logging`)
+against `main`, trusting git (`git fetch --all`, `git log main..origin/claude/pre-phase3-prep`,
+`git diff main...origin/claude/pre-phase3-prep`) and then reading the top handoff entry.
+
+### Verdict
+- No behavioral blocker found. The logging changes are genuinely additive:
+  `account.py` still re-raises after both cleanup failures, the import parse failure still returns the
+  same `400 BAD_FILE`, and no response/status/data-write/control-flow change showed up in the diff.
+- `app/infra/logging_config.py` is pure INFRA (stdlib only), and route/domain modules only use
+  `logging.getLogger(__name__)`.
+- Logging hygiene looks right: no passwords, DB keys, wrapped keys, salts, or secrets are logged.
+  The direct probe leaves one tagged handler after repeated `configure_logging()` calls, level INFO,
+  and `propagate=False`.
+- Docs are now accurate for the spot-checked route/schema/auth-surface items.
+
+### Fixes made by Codex
+- `docs/reference/api.md`: added the real `400 BAD_REQUEST` missing/blank-credential path for
+  `POST /api/login`.
+- `docs/phase3-surface.md`: corrected the `datasets/routes.py` `current_username()` line refs to
+  the post-logging lines (`L66`, `L98`).
+- `pyproject.toml`: added `app.infra.logging_config` to the Phase-1 forbidden import-linter source
+  list so the new non-seam infra module is covered by the same "Phase 1 only via infra.phase1" gate.
+
+### Checks
+- `pytest tests\architecture` -> 4 passed.
+- `.venv\Scripts\ruff.exe check app tests main.py` -> clean.
+- Direct `configure_logging()` idempotency probe -> one tagged handler, INFO, `propagate=False`.
+- `pyproject.toml` parsed with stdlib `tomllib`.
+- `rg "DB_KEY|USERNAME|current_username|get_db|session\[|authenticated"` matched the Phase 3 surface
+  map; no unlisted live global-auth call site found in `app/`.
+- `git diff --stat main -- phase1_cdr/` -> empty (Phase 1 untouched).
+- Full suite (`tests\phase2a tests\architecture phase1_cdr\tests`) could not run locally: importing
+  pandas still fails on this machine with `ImportError: DLL load failed while importing tslib: An
+  Application Control policy has blocked this file`.
+- `lint-imports` could not run locally: `.venv` has no `lint_imports` module installed. The edited
+  contract is syntactically valid, and CI remains the real import-linter gate on Ubuntu.
+
+### Left for Nadim/CI
+- No known blocker. CI should still run the full test, phase2a, boundaries, and frontend jobs before
+  Nadim merges. Phase 3 remains parked.
+
 ## 2026-07-01 - Claude: pre-Phase-3 prep (docs bundle + operational logging) on `claude/pre-phase3-prep` - FOR REVIEW
 
 Nadim asked to prep everything before Phase 3 (Phase 3 itself stays parked). After a full read-only

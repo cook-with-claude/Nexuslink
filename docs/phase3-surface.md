@@ -39,7 +39,7 @@ The cookie is already per-client; the **two `config[...]` slots are the actual g
 - `login_required` (L33) → `session.get("authenticated")` **and** `config.get("DB_KEY")`.
 
 ### Read-only consumers (call the accessors, **no change needed** if the accessors are swapped correctly)
-- `current_username()` callers: `auth/routes.py` (L69, L90), `datasets/routes.py` (L61, L93),
+- `current_username()` callers: `auth/routes.py` (L69, L90), `datasets/routes.py` (L66, L98),
   `targets/routes.py` (L62, L81), `analysis/routes.py` (L49).
 - `get_db()` callers: every route module + `auth/routes.py:_audit`.
 - `session.get("authenticated")` reader: `api/system.py:status` (L22).
