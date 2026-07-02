@@ -4,6 +4,21 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Claude: Home/Work result cards were not level - FOR REVIEW
+
+One-line CSS fix (`9fe7a61`): `.card + .card { margin-top: var(--s4) }` — the stacked-cards
+spacing rule — also matched the side-by-side Home/Work cards inside `.result-grid` on the
+Results screen, dropping the Work card 16px below Home. Added
+`.result-grid > .card + .card { margin-top: 0 }` (the grid gap owns all spacing there,
+including the ≤880px one-column collapse, where the gap still applies).
+
+How it was found/verified (worth keeping as a pattern): static repro page with the real
+app.css measured via Playwright `getBoundingClientRect`, then a live check against a
+headless seeded server (`create_app()+ui_bp`, temp APP_DATA_DIR, sample_data.csv imported,
+target analyzed) — Results screen and Spreadsheet detection panel both measure level now.
+Note: the Spreadsheet panel's `.det-block`s never had the bug (no `.card` selector match);
+Khaled reported both tabs, but only the Results screen was actually offset.
+
 ## 2026-07-02 - Claude: Export file-name picker on `spreadsheet` - FOR REVIEW
 
 Small SPA-only follow-up: the Export screen gets a "File name" text input (default
