@@ -104,11 +104,15 @@ def dataset_records(dataset_id: int):
         limit = min(max(1, int(request.args.get("limit", 100))), 500)
     except (TypeError, ValueError):
         limit = 100
+    # Optional per-subscriber filter; an exact match on the stored number. Empty
+    # string means "all users" so the SPA can bind it straight to a <select>.
+    phone_number = (request.args.get("phone_number") or "").strip() or None
     return ok({
-        "total": repo.count_records(db, dataset_id),
+        "total": repo.count_records(db, dataset_id, phone_number),
         "offset": offset,
         "limit": limit,
-        "rows": repo.read_records_page(db, dataset_id, offset, limit),
+        "phone_number": phone_number,
+        "rows": repo.read_records_page(db, dataset_id, offset, limit, phone_number),
     })
 
 

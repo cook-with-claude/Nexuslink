@@ -55,17 +55,25 @@ def delete_dataset(conn, dataset_id) -> int:
     return cur.rowcount
 
 
-def count_records(conn, dataset_id) -> int:
-    return conn.execute(
-        "SELECT COUNT(*) AS n FROM cdr_records WHERE dataset_id = ?", (dataset_id,)
-    ).fetchone()["n"]
+def count_records(conn, dataset_id, phone_number=None) -> int:
+    sql = "SELECT COUNT(*) AS n FROM cdr_records WHERE dataset_id = ?"
+    params = [dataset_id]
+    if phone_number is not None:
+        sql += " AND phone_number = ?"
+        params.append(phone_number)
+    return conn.execute(sql, params).fetchone()["n"]
 
 
-def read_records_page(conn, dataset_id, offset, limit) -> list[dict]:
-    rows = conn.execute(
+def read_records_page(conn, dataset_id, offset, limit, phone_number=None) -> list[dict]:
+    sql = (
         "SELECT id, phone_number, imei, area, timestamp, call_type, duration_seconds, "
-        "other_party, other_imei, other_area FROM cdr_records "
-        "WHERE dataset_id = ? ORDER BY id LIMIT ? OFFSET ?",
-        (dataset_id, limit, offset),
-    ).fetchall()
+        "other_party, other_imei, other_area FROM cdr_records WHERE dataset_id = ?"
+    )
+    params = [dataset_id]
+    if phone_number is not None:
+        sql += " AND phone_number = ?"
+        params.append(phone_number)
+    sql += " ORDER BY id LIMIT ? OFFSET ?"
+    params += [limit, offset]
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]

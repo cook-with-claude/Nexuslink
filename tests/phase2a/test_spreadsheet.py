@@ -35,8 +35,8 @@ def client(app_data_dir):
     return c
 
 
-def _import_fixture(client, tmp_path):
-    df = pd.DataFrame(ROWS, columns=COLUMNS)
+def _import_fixture(client, tmp_path, rows=ROWS):
+    df = pd.DataFrame(rows, columns=COLUMNS)
     path = tmp_path / "slice.xlsx"
     df.to_excel(path, index=False, engine="openpyxl")
     with open(path, "rb") as fh:
@@ -98,6 +98,52 @@ def test_records_bad_paging_falls_back_to_defaults(client, dataset_id):
     assert data["limit"] == 1               # -9 clamped up to the minimum
     data = client.get(f"/api/datasets/{dataset_id}/records?limit=99999").get_json()["data"]
     assert data["limit"] == 500             # cap
+
+
+# ---- records user filter ----
+
+# Two subscribers in one dataset: "500" x2, "600" x1.
+TWO_USER_ROWS = [
+    ("500", "i1", "A1", "2026-01-01T09:00:00", 1, 60, "P1", "", ""),
+    ("600", "i2", "B1", "2026-01-01T10:00:00", 2, 30, "P9", "", ""),
+    ("500", "i1", "A2", "2026-01-02T11:00:00", 11, 0, "P2", "", ""),
+]
+
+
+@pytest.fixture()
+def two_user_dataset_id(client, tmp_path):
+    return _import_fixture(client, tmp_path, rows=TWO_USER_ROWS)
+
+
+def test_records_filters_by_phone_number(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?phone_number=500").get_json()["data"]
+    assert data["phone_number"] == "500"
+    assert data["total"] == 2
+    assert [r["phone_number"] for r in data["rows"]] == ["500", "500"]
+
+
+def test_records_phone_number_filter_pages(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records"
+        "?phone_number=500&offset=1&limit=1").get_json()["data"]
+    assert data["total"] == 2               # total counts the FILTERED set
+    assert len(data["rows"]) == 1
+    assert data["rows"][0]["area"] == "A2"
+
+
+def test_records_blank_phone_number_means_all_users(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?phone_number=").get_json()["data"]
+    assert data["phone_number"] is None
+    assert data["total"] == 3
+
+
+def test_records_unknown_phone_number_matches_nothing(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?phone_number=999").get_json()["data"]
+    assert data["total"] == 0
+    assert data["rows"] == []
 
 
 # ---- frequency explorer ----

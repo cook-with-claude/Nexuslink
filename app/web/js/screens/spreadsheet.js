@@ -13,7 +13,7 @@ import { shell } from "../layout.js";
 import {
   el, loading, clear, msg, confidencePill, gateTrace,
 } from "../components.js";
-import { callTypeLabel, CALL_TYPE_OPTIONS } from "../call-types.js";
+import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
 const PAGE_SIZE = 100;
 
@@ -53,13 +53,35 @@ function recordsCard(datasets) {
     el("span", { class: "kicker" }, "read-only view"),
   ]));
 
+  // Filter bar at the top of the sheet: pick the dataset, then narrow to a
+  // single user (subscriber) — the common way to read a CDR sheet.
   const picker = el("select", { id: "ss-dataset" },
     datasets.map((d) => el("option", { value: String(d.id) }, `${d.name} (${d.row_count} rows)`)));
-  card.appendChild(el("label", { for: "ss-dataset" }, "Dataset"));
-  card.appendChild(picker);
+  const userPicker = el("select", { id: "ss-user" },
+    [el("option", { value: "" }, "All users")]);
+  const field = (labelText, forId, input) =>
+    el("div", {}, [el("label", { for: forId }, labelText), input]);
+  card.appendChild(el("div", { class: "filter-grid" }, [
+    field("Dataset", "ss-dataset", picker),
+    field("User", "ss-user", userPicker),
+  ]));
 
   const slot = el("div");
   card.appendChild(slot);
+
+  const loadUsers = async () => {
+    clear(userPicker);
+    userPicker.appendChild(el("option", { value: "" }, "All users"));
+    try {
+      const users = await api.phoneNumbers(Number(picker.value));
+      users.forEach((u) => userPicker.appendChild(
+        el("option", { value: u.phone_number },
+          `${u.phone_number} (${u.count} records)`)));
+    } catch {
+      // The records request below surfaces any real error; a user list that
+      // failed to load just leaves the filter at "All users".
+    }
+  };
 
   let offset = 0;
   const load = async () => {
@@ -67,7 +89,7 @@ function recordsCard(datasets) {
     slot.appendChild(loading("Loading records…"));
     let res;
     try {
-      res = await api.records(Number(picker.value), offset, PAGE_SIZE);
+      res = await api.records(Number(picker.value), offset, PAGE_SIZE, userPicker.value);
     } catch (e) {
       clear(slot);
       slot.appendChild(msg(e.message));
@@ -75,7 +97,9 @@ function recordsCard(datasets) {
     }
     clear(slot);
     if (res.total === 0) {
-      slot.appendChild(el("div", { class: "empty" }, "This dataset has no records."));
+      slot.appendChild(el("div", { class: "empty" }, userPicker.value
+        ? "No records for this user in this dataset."
+        : "This dataset has no records."));
       return;
     }
 
@@ -84,9 +108,7 @@ function recordsCard(datasets) {
       el("td", { class: "data dim" }, r.imei || "—"),
       el("td", { class: "data" }, r.area),
       el("td", { class: "data dim" }, r.timestamp),
-      // Display label only (task: literate call types); the numeric code stays
-      // the underlying value — surfaced in the tooltip.
-      el("td", { title: "code " + r.call_type }, callTypeLabel(r.call_type)),
+      el("td", {}, callTypeDisplay(r.call_type)),
       el("td", { class: "num" }, String(r.duration_seconds)),
       el("td", { class: "data" }, r.other_party || "—"),
       el("td", { class: "data dim" }, r.other_imei || "—"),
@@ -113,8 +135,9 @@ function recordsCard(datasets) {
     ]));
   };
 
-  picker.addEventListener("change", () => { offset = 0; load(); });
-  load();
+  picker.addEventListener("change", async () => { offset = 0; await loadUsers(); load(); });
+  userPicker.addEventListener("change", () => { offset = 0; load(); });
+  loadUsers().then(load);
   return card;
 }
 
@@ -301,7 +324,7 @@ function renderTally(slot, res) {
     slot.appendChild(el("div", { class: "empty" }, "No records match the current filter."));
     return;
   }
-  const display = (v) => (res.rank_by === "call_type" ? callTypeLabel(v) : String(v));
+  const display = (v) => (res.rank_by === "call_type" ? callTypeDisplay(v) : String(v));
   const winner = res.top[0];
   slot.appendChild(el("p", { class: "hint" },
     `${res.total_records} record(s) in the current filter. Most frequent:`));

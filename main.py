@@ -281,6 +281,11 @@ def main() -> None:  # pragma: no cover - requires a display
     _ensure_arm64_dotnet_runtime()  # must run before pywebview imports `clr`
     import webview
 
+    # pywebview cancels every download unless this is set (its default is False),
+    # which silently no-ops the Export screen's .xlsx download inside the desktop
+    # window even though the same flow works in a normal browser.
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     app = create_app()
     app.register_blueprint(ui_bp)  # additive UI layer; Phase 2A factory untouched
     server, thread, port = start_server(app, port=0)

@@ -4,7 +4,29 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-02 - Claude: Spreadsheet tab + app-wide xlsx export + call-type labels on `spreadsheet` - FOR REVIEW
+## 2026-07-02 - Claude: Spreadsheet follow-ups from Khaled's live test on `spreadsheet` - FOR REVIEW
+
+Three fixes/changes after Khaled used the new tab in the desktop window:
+
+1. **Export downloaded nothing in the desktop app** — pywebview cancels every download unless
+   `webview.settings["ALLOW_DOWNLOADS"]` is True (default False), so the Export button silently
+   no-oped in the PyWebView window while working in a plain browser (which is where the previous
+   entry's end-to-end pass ran — lesson noted). Fixed in `main.py:main()`; WebView2 now shows its
+   native download UI. No backend change.
+2. **Records user filter** — filter bar at the top of the Records card: Dataset + User selects
+   (`app/web/js/screens/spreadsheet.js:recordsCard`). User options come from the existing
+   `/phone-numbers` endpoint with per-user record counts. Backend: optional exact-match
+   `phone_number` query param on `GET /api/datasets/<id>/records` (`datasets/routes.py`,
+   `datasets/repo.py:count_records/read_records_page`); `total` counts the filtered set so paging
+   stays correct; empty param = all users. +4 tests (`test_spreadsheet.py`, 168 → 172); api.md row
+   updated.
+3. **Call types show code AND wording** — new `callTypeDisplay()` in `call-types.js` renders
+   "out call (1)" etc.; used in the records Type column (tooltip dropped), the explorer's call-type
+   filter options, and rank-by-call_type tally values. Codes remain the stored/submitted values.
+
+Verified: 172 passed, ruff clean, lint-imports 4 contracts KEPT (native AMD64), phase1_cdr diff
+vs main empty. Frequency explorer unchanged by request.
+
 
 Khaled's brief (originally written for a Streamlit app; adapted to our Flask/SPA architecture —
 no Streamlit exists in this repo). Three additive features, existing screens untouched:

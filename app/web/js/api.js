@@ -109,8 +109,11 @@ export const api = {
     request("POST", "/api/targets/" + id + "/analyze", { query: { top_n } }),
   result: (id) => request("GET", "/api/targets/" + id + "/result"),
   // spreadsheet
-  records: (datasetId, offset = 0, limit = 100) =>
-    request("GET", "/api/datasets/" + datasetId + "/records", { query: { offset, limit } }),
+  records: (datasetId, offset = 0, limit = 100, phoneNumber = "") => {
+    const query = { offset, limit };
+    if (phoneNumber) query.phone_number = phoneNumber;
+    return request("GET", "/api/datasets/" + datasetId + "/records", { query });
+  },
   frequency: (targetId, params) =>
     request("GET", "/api/targets/" + targetId + "/frequency", { query: params }),
 };

@@ -20,6 +20,13 @@ export function callTypeLabel(code) {
   return label !== undefined ? label : String(code);
 }
 
-// [code, label] pairs for filter <select>s, ascending code order (1, 2, 11, 22).
+// Wording AND numeric code together, e.g. "out call (1)" — the code is the
+// stored value, so hiding it made rows harder to cross-check against the file.
+export function callTypeDisplay(code) {
+  const label = CALL_TYPE_LABELS[Number(code)];
+  return label !== undefined ? `${label} (${code})` : String(code);
+}
+
+// [code, display] pairs for filter <select>s, ascending code order (1, 2, 11, 22).
 export const CALL_TYPE_OPTIONS = Object.entries(CALL_TYPE_LABELS)
-  .map(([code, label]) => [Number(code), label]);
+  .map(([code, label]) => [Number(code), `${label} (${code})`]);
