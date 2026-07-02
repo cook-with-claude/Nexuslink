@@ -19,7 +19,10 @@ _TXN_CALLS = {"commit", "rollback"}
 
 
 def _routes_files():
-    return sorted(APP.glob("*/routes.py"))
+    # Every APPLICATION-layer module that handles requests, not just the domain
+    # routes.py files: api/system.py and ui.py serve routes too and must obey the
+    # same "no SQL outside repos" invariant.
+    return sorted([*APP.glob("*/routes.py"), APP / "api" / "system.py", APP / "ui.py"])
 
 
 def _repo_files():

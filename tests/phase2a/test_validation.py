@@ -36,6 +36,23 @@ def test_fractional_call_type_skipped():
     assert clean is None and "call_type" in reason
 
 
+def test_underscore_numeric_string_rejected_for_phase1_parity():
+    """int("1_1") == 11 under PEP 515, but Phase 1's loader parses call_type with
+    pd.to_numeric, which rejects underscores -- the frozen loader would DROP this
+    row, so import-time validation must skip it too (no contract drift)."""
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
+           "call_type": "1_1", "duration_seconds": "5"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "call_type" in reason
+
+
+def test_underscore_duration_string_rejected():
+    row = {"phone_number": "x", "area": "Hamra", "timestamp": "2024-01-01 03:00:00",
+           "call_type": "1", "duration_seconds": "1_0"}
+    clean, reason = validation.validate_row(row)
+    assert clean is None and "duration" in reason
+
+
 def test_unparseable_timestamp_skipped():
     row = {"phone_number": "x", "area": "Hamra", "timestamp": "not-a-date",
            "call_type": "1", "duration_seconds": "5"}

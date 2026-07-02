@@ -99,6 +99,32 @@ def test_successful_login_does_not_write_login_fail_to_db(client):
     assert "LOGIN_FAIL" not in events
 
 
+def test_failed_login_still_401_when_sidecar_unwritable(client):
+    """The failed-login sidecar is best-effort by contract: if it can't be written,
+    the user must still get the 401, not a 500."""
+    from app.audit import log as audit
+    from app.infra import config
+
+    _setup(client)
+    client.post("/api/logout")
+    # A directory where the sidecar file should be makes open(..., "a") raise OSError.
+    (config.app_data_dir() / audit.FAILED_LOGIN_FILE).mkdir()
+    r = client.post("/api/login", json={"username": "nadim", "password": "WRONG"})
+    assert r.status_code == 401
+    assert r.get_json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+def test_state_changing_non_json_body_is_415(client):
+    """login_required's light CSRF hardening: a state-changing request whose body is
+    neither JSON nor multipart is rejected with 415 before the view runs."""
+    _setup(client)
+    r = client.post("/api/change-password",
+                    data="old_password=hunter2&new_password=x",
+                    content_type="application/x-www-form-urlencoded")
+    assert r.status_code == 415
+    assert r.get_json()["error"]["code"] == "BAD_CONTENT_TYPE"
+
+
 def test_setup_long_password_returns_400(client):
     """bcrypt rejects > 72-byte passwords; setup must return a clean 400, not 500."""
     r = _setup(client, p="x" * 73)

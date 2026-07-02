@@ -18,6 +18,12 @@ def _unlock(username: str, db_key: bytes) -> None:
     session["authenticated"] = True
 
 
+def _lock() -> None:
+    current_app.config["DB_KEY"] = None
+    current_app.config["USERNAME"] = None
+    session.clear()
+
+
 def _audit(username: str, event: str, detail=None) -> None:
     """Write an audit row using the currently-unlocked connection."""
     db = get_db()
@@ -37,8 +43,16 @@ def setup():
         return err("ACCOUNT_EXISTS", "an account already exists", 409)
     except account.PasswordTooLongError as exc:
         return err("BAD_REQUEST", str(exc), 400)
+    # Granting the session is this route's unit of work: if the SETUP audit row
+    # can't be written, fail closed -- no half-authenticated process/session state
+    # behind the 500. (The on-disk account itself stays; login works once the
+    # audit trail is writable again.)
     _unlock(username, db_key)
-    _audit(username, audit.SETUP)
+    try:
+        _audit(username, audit.SETUP)
+    except Exception:
+        _lock()
+        raise
     return ok({"username": username}, status=201)
 
 
@@ -58,8 +72,13 @@ def login():
         # event we most want to keep). See audit.write_failed_login.
         audit.write_failed_login(username)
         return err("UNAUTHENTICATED", "bad credentials", 401)
+    # Same fail-closed contract as /setup: an unauditable login grants no session.
     _unlock(username, db_key)
-    _audit(username, audit.LOGIN_SUCCESS)
+    try:
+        _audit(username, audit.LOGIN_SUCCESS)
+    except Exception:
+        _lock()
+        raise
     return ok({"username": username})
 
 
@@ -68,9 +87,7 @@ def login():
 def logout():
     username = current_username()
     _audit(username, audit.LOGOUT)
-    current_app.config["DB_KEY"] = None
-    current_app.config["USERNAME"] = None
-    session.clear()
+    _lock()
     return ok({})
 
 

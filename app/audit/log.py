@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from app.infra import config
+
+logger = logging.getLogger(__name__)
 
 SETUP = "SETUP"
 LOGIN_SUCCESS = "LOGIN_SUCCESS"
@@ -53,5 +56,10 @@ def write_failed_login(username: str) -> None:
         "username": username,
     }
     path = config.app_data_dir() / FAILED_LOGIN_FILE
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError:
+        # Best-effort by contract (see docstring): an unwritable sidecar must not
+        # turn the caller's 401 into a 500.
+        logger.warning("could not record failed login to %s", path, exc_info=True)

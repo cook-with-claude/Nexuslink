@@ -40,6 +40,11 @@ def _parse_integer(value, field: str) -> tuple[int | None, str | None]:
     # magnitude. Fractional/scientific strings ("1.5", "42.0", "1e3") raise here
     # and fall through to the float path below, which detects and normalizes them.
     if isinstance(value, str):
+        # int() and float() accept PEP-515 underscores ("1_1" == 11), but Phase 1's
+        # loader parses with pd.to_numeric, which does not -- such a row would import
+        # here yet be dropped by the frozen algorithm's own loader. Reject for parity.
+        if "_" in value:
+            return None, f"invalid {field}"
         try:
             return int(value), None
         except ValueError:

@@ -4,6 +4,75 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-02 - Claude: deep audit + focused fixes on `claude/deep-audit-fixes` - FOR REVIEW
+
+Full-repo debug/correctness/architecture/security audit (pre-production pass, per Nadim), then
+focused fixes only. Reviewed every module in `app/`, `main.py`, the SPA (`app/web/`), all of
+`tests/`, CI, and dependency configs; Phase 1 read-only for contract checks.
+
+### Fixed (each with a regression test)
+- **Fail-closed login/setup on audit failure** (`app/auth/routes.py`): if the SETUP/LOGIN_SUCCESS
+  audit write failed, the 500 left `DB_KEY`/`USERNAME`/session set — a half-committed unit of work
+  (the session grant IS that route's unit of work). Now `_lock()` clears all three before
+  re-raising; `logout` reuses `_lock()`. Tests: `test_transaction_semantics.py` (`*_fails_closed`).
+  Deliberately NOT applied to change-password: its audited action (the file rewrite) is already
+  irrevocable, so revoking the session there would undo nothing.
+- **Failed-login sidecar is now best-effort in code, not just in its docstring**
+  (`app/audit/log.py:write_failed_login`): an OSError writing `login_failures.log` used to escape
+  the login route's `except AuthError` block and turn the 401 into a 500. Now caught + WARNING-logged.
+  Test: `test_auth.py::test_failed_login_still_401_when_sidecar_unwritable`.
+- **Validation parity with the frozen loader** (`app/datasets/validation.py:_parse_integer`):
+  `int("1_1") == 11` under PEP 515, but Phase 1's `pd.to_numeric` rejects underscores — the app
+  imported rows the frozen loader would drop. Underscore-bearing numeric strings are now skipped.
+  Tests: `test_validation.py::test_underscore_*`.
+- **Boundary gap: `app.ui` was invisible to import-linter** (`pyproject.toml`): not in the layers
+  contract and not in the Phase-1 forbidden source list, so `app/ui.py` could have imported
+  `detection`/`loader` (or higher layers) with CI green. Added to both (now 109 deps analyzed, 4 kept).
+- **AST scanner gap** (`tests/architecture/test_boundaries.py`): the no-SQL-in-routes scan only
+  globbed `app/*/routes.py`; now also covers the other route-bearing modules `app/api/system.py`
+  and `app/ui.py`.
+- **Missing coverage**: the 415 `BAD_CONTENT_TYPE` guard (light CSRF hardening in `login_required`)
+  had zero tests. Added `test_auth.py::test_state_changing_non_json_body_is_415`.
+
+### Audited clean (no change needed)
+SQL injection (all binds parameterized; `PRAGMA key` interpolates hex only), path traversal
+(`send_from_directory` everywhere), XSS (SPA renders exclusively via the textContent DOM builder —
+no innerHTML sinks), secrets in logs/responses (none), crypto usage (fresh GCM nonce per wrap, salt
+per KDF, key-length check on unwrap), migration atomicity + v0 adoption fingerprint, teardown
+implicit-rollback semantics (pinned by existing tests), CSRF/DNS-rebinding under
+SameSite=Strict + per-launch SECRET_KEY + ephemeral port, detection NaN paths (all divisions
+guarded), and the repo/route/domain layering.
+
+### Found but deliberately NOT fixed (documented so review can disagree)
+- `infra/phase1.py` `sys.path.insert(0, ...)` shadows top-level names (`main`, `dev_fixtures`) for
+  the whole process; `test_main.py` already works around it. Reordering the frozen seam's path is
+  riskier than the wart.
+- `api.js isLocal401()` distinguishes change-password 401s by exact message text ("login required");
+  correct today but brittle — a distinct error code would be an API change, defer to a deliberate rev.
+- Screens re-invoke themselves after delete/add without catching rejections (`targetsScreen`,
+  `datasetsScreen`) — a dataset deleted in another tab can leave a stuck screen; needs multi-tab
+  misuse, cosmetic exposure only.
+- `latest_result` 500s (clean JSON envelope, Flask logs it) on hand-tampered `result_json`; treating
+  corruption as 404 would hide it, so current behavior kept.
+- xlsx zip-bomb / million-bad-row upload = self-DoS on a local single-user app; compressed size is
+  capped (50 MiB).
+- `requirements.txt` carries `pytest` (test tooling) as a "runtime" dep and CI's phase2a job relies
+  on that; relocation would touch CI for pure hygiene.
+- Two overlapping `/api/setup` requests can interleave `create_account` (last `_save` wins; the
+  wrong-key stale-db path self-heals on retry). Unreachable from the SPA (button disabled on submit).
+
+### Verification
+- WSL (`/root/lp-venv`): `pytest tests/phase2a tests/architecture phase1_cdr/tests` → **142 passed**
+  (was 136; +6 regression tests). `ruff check app tests main.py` → clean. `lint-imports` → 4 contracts
+  kept (incl. the widened ones).
+- `git diff --stat main -- phase1_cdr/` → empty (WSL eol churn on the two fixture files was restored
+  with `git checkout`, per the standing note below).
+
+### Left for Codex/Nadim
+- Review the fail-closed login semantics (behavior change: an unauditable login now grants no
+  session — previously it 500'd but left you logged in). This is the only user-visible change.
+- Phase 3 remains parked; nothing here touches the global-auth surface map.
+
 ## 2026-07-01 - Claude: session close — prep MERGED, Dependabot triaged, local WSL testing established
 
 Session wrap-up. Everything below in the pre-Phase-3 prep thread is now **landed on `main`**; Phase 3

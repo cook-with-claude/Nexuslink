@@ -37,7 +37,7 @@ include_external_packages = true
 name = "Layered architecture"
 type = "layers"
 layers = [
-    "app.api.system | app.auth.routes | app.datasets.routes | app.targets.routes | app.analysis.routes",
+    "app.api.system | app.auth.routes | app.datasets.routes | app.targets.routes | app.analysis.routes | app.ui",
     "app.auth.account | app.datasets.repo | app.datasets.validation | app.targets.repo | app.analysis.repo | app.analysis.bridge",
     "app.audit",
     "app.api.guards | app.api.errors",
@@ -71,6 +71,7 @@ source_modules = [
     "app.datasets",
     "app.targets",
     "app.analysis",
+    "app.ui",
     "app.infra.config",
     "app.infra.crypto",
     "app.infra.logging_config",
