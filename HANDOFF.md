@@ -4,6 +4,20 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-02 - Claude: session close — deep-audit thread MERGED to main, branches pruned
+
+- CI green on `codex/deep-audit-fixes-review` → Nadim had me fast-forward **main to `d211156`**
+  (Claude's `d2a8ced` audit fixes + Codex's logout fail-closed fix) and push. Both audit branches
+  deleted local + origin; only `main` remains.
+- Final verified state on main: **143 passed** (WSL full suite), ruff clean, 4 import-linter
+  contracts kept, `git diff --stat main -- phase1_cdr/` empty.
+- CLAUDE.md test count refreshed 136→143.
+- The two audit entries below carry the full record: what was fixed, what was audited clean, and
+  the document-only findings (phase1.py path shadowing, api.js message-text 401 discrimination,
+  etc.) — revisit those before production if desired.
+- Phase 3 remains parked; first move unchanged (wire `migrations.migrate(g.db)` into
+  `app/api/guards.py:get_db()`, then auth de-globalization per `docs/phase3-surface.md`).
+
 ## 2026-07-02 - Codex: review of `claude/deep-audit-fixes` on `codex/deep-audit-fixes-review` - CLEAR WITH LOGOUT FIX
 
 Reviewed Claude's pushed branch from git, not snapshot state:
