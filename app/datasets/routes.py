@@ -87,6 +87,31 @@ def dataset_phone_numbers(dataset_id: int):
     return ok(repo.phone_numbers(db, dataset_id))
 
 
+@bp.get("/datasets/<int:dataset_id>/records")
+@login_required
+def dataset_records(dataset_id: int):
+    """Read-only page of the raw imported rows (the Spreadsheet view)."""
+    db = get_db()
+    if not repo.dataset_exists(db, dataset_id):
+        return err("NOT_FOUND", "dataset not found", 404)
+    # Bad paging params fall back to defaults rather than 400, matching how
+    # analyze() treats a malformed top_n (single local client, read-only view).
+    try:
+        offset = max(0, int(request.args.get("offset", 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        limit = min(max(1, int(request.args.get("limit", 100))), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    return ok({
+        "total": repo.count_records(db, dataset_id),
+        "offset": offset,
+        "limit": limit,
+        "rows": repo.read_records_page(db, dataset_id, offset, limit),
+    })
+
+
 @bp.delete("/datasets/<int:dataset_id>")
 @login_required
 def delete_dataset(dataset_id: int):

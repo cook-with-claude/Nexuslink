@@ -9,6 +9,8 @@ import { importScreen } from "./screens/import.js";
 import { targetsScreen } from "./screens/targets.js";
 import { resultsScreen } from "./screens/results.js";
 import { passwordScreen } from "./screens/password.js";
+import { spreadsheetScreen } from "./screens/spreadsheet.js";
+import { exportScreen } from "./screens/export.js";
 
 register("#/login", loginScreen, { auth: false });
 register("#/dashboard", dashboardScreen);
@@ -17,6 +19,8 @@ register("#/import", importScreen);
 register("#/datasets/:id/targets", targetsScreen);
 register("#/targets/:id/result", resultsScreen);
 register("#/change-password", passwordScreen);
+register("#/spreadsheet", spreadsheetScreen);
+register("#/export", exportScreen);
 
 initCommandPalette();
 startRouter();

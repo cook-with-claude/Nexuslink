@@ -549,6 +549,49 @@ details.gate[open] > summary { border-bottom: 1px solid var(--border); }
 .pw-crit.met { color: var(--fg); }
 .pw-crit.met .pw-crit-mark { color: var(--good); }
 
+/* ---- spreadsheet screen ---- */
+/* date/number inputs (explorer filters) get the same chrome as text inputs */
+input[type="date"], input[type="number"] {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: inherit;
+  padding: var(--s2) var(--s3);
+  width: 100%;
+  box-sizing: border-box;
+}
+input[type="date"]:focus, input[type="number"]:focus { outline: none; border-color: var(--accent); }
+
+/* kicker: tags a card as inference vs descriptive count, so a filtered tally is
+   never mistaken for a detection verdict (visual separation is a task rule) */
+.kicker {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 var(--s2);
+  white-space: nowrap;
+}
+.kicker-inference { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.kicker-explorer { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.card-inference { border-left: 3px solid var(--accent); }
+.card-explorer { border-left: 3px solid var(--warn); }
+.card .hint { color: var(--fg-muted); font-size: var(--fs-sm); margin: var(--s1) 0 var(--s3); }
+
+.table-scroll { overflow-x: auto; }
+.pager { margin-top: var(--s3); display: flex; gap: var(--s2); align-items: center; }
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0 var(--s4);
+}
+.det-block { margin-top: var(--s4); }
+.det-block h3 { margin: 0; font-size: var(--fs-h3); }
+
 /* respect reduced-motion: kill non-essential animation */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }

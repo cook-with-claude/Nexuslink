@@ -4,6 +4,53 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-02 - Claude: Spreadsheet tab + app-wide xlsx export + call-type labels on `spreadsheet` - FOR REVIEW
+
+Khaled's brief (originally written for a Streamlit app; adapted to our Flask/SPA architecture —
+no Streamlit exists in this repo). Three additive features, existing screens untouched:
+
+### 1. Spreadsheet tab (`#/spreadsheet`, rail nav item)
+- **Records**: read-only paged table of `cdr_records` (all 9 columns + id). New
+  `GET /api/datasets/<id>/records?offset&limit` (`datasets/repo.py:count_records/read_records_page`).
+- **Detection panel**: target picker → existing `POST /analyze` (persists + audits, same as the
+  Targets screen) → home/work/frequent-areas rendered with the shared `confidencePill`/`gateTrace`.
+  Always the FULL record set; the card says why (gates depend on N).
+- **Frequency explorer**: `GET /api/targets/<id>/frequency` — filters compose (call_type, exact
+  area, date range, hour-of-day range **with midnight wrap**, e.g. 22→6) and `rank_by` ∈
+  {area, other_party, call_type} (whitelist — identifiers can't be bound). Response is deliberately
+  a bare tally `{target, rank_by, total_records, top:[{value,count}]}` — NO confidence/gates, and
+  `test_frequency_is_a_tally_not_a_detection` pins that contract. NULL rank values excluded from
+  ranking but counted in total. UI: warn-colored card + "descriptive count · filtered slice" kicker
+  vs the accent "inference · full record set" kicker, so a tally is never read as a verdict.
+
+### 2. App-wide export (`#/export`, rail-foot item, visible on every screen)
+- `GET /api/export/results.xlsx?target_id=<id|all>` → openpyxl workbook of the **stored** latest
+  answers per target (never recomputes; `analysis/repo.py:targets_with_latest_result` picks
+  latest-by-id per target, LEFT JOIN so un-analyzed targets export as "not analyzed").
+  Builder in new `app/analysis/export.py` (DOMAIN; added to the import-linter layer line).
+- **Decision to review**: export writes an `EXPORT` audit row (the one audited GET) — data leaving
+  the encrypted store is what the trail is for. Veto if you disagree with a committing GET.
+
+### 3. Call-type labels (display-only)
+- Single lookup `app/web/js/call-types.js` mirroring frozen `detection.py:105-108`:
+  **1=out call, 2=in call, 11=out SMS, 22=in SMS**. NOTE: the brief guessed the pairing the other
+  way around (1="in SMS"…) but said to trust the source — the source won. Numeric codes stay the
+  stored/filter/API values everywhere; labels are render-time only (records table, explorer filter,
+  rank-by-call_type results; raw code kept in the cell tooltip).
+
+### Verification (native Windows — this AMD64 machine imports pandas fine; the Smart-App-Control
+workaround only applies to the ARM64 machine)
+- `pytest tests/phase2a tests/architecture phase1_cdr/tests` → **168 passed** (was 143; +25).
+- `ruff check app tests main.py` → clean. `lint-imports` → 4 contracts kept (114 deps).
+- `node --check` on all touched JS → clean. `git diff --stat main -- phase1_cdr/` → empty.
+- NOT yet exercised: the real PyWebView app end-to-end (only Flask test-client + JS parse).
+
+### Left for Codex/Nadim
+- Review the EXPORT-audits-on-GET decision and the frequency param policy (records paging falls
+  back to defaults like analyze's top_n; frequency filters 400 on malformed values — asymmetric
+  on purpose: filters silently ignored would lie about what was counted).
+- Smoke the UI in the desktop shell (`python main.py`): Spreadsheet tab, explorer, export download.
+
 ## 2026-07-02 - Claude: session close — deep-audit thread MERGED to main, branches pruned
 
 - CI green on `codex/deep-audit-fixes-review` → Nadim had me fast-forward **main to `d211156`**

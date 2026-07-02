@@ -53,3 +53,19 @@ def phone_numbers(conn, dataset_id) -> list[dict]:
 def delete_dataset(conn, dataset_id) -> int:
     cur = conn.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
     return cur.rowcount
+
+
+def count_records(conn, dataset_id) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM cdr_records WHERE dataset_id = ?", (dataset_id,)
+    ).fetchone()["n"]
+
+
+def read_records_page(conn, dataset_id, offset, limit) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, phone_number, imei, area, timestamp, call_type, duration_seconds, "
+        "other_party, other_imei, other_area FROM cdr_records "
+        "WHERE dataset_id = ? ORDER BY id LIMIT ? OFFSET ?",
+        (dataset_id, limit, offset),
+    ).fetchall()
+    return [dict(r) for r in rows]

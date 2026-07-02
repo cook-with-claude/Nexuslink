@@ -60,6 +60,7 @@ Password length cap is bcrypt's 72-byte hard limit (`account.MAX_PASSWORD_BYTES`
 | POST | `/api/imports` | required | **multipart**: `name` (form) + `file` (.xlsx) | `201 {"dataset_id","imported","skipped","skipped_reasons":[{row,reason}]}` | `400 BAD_REQUEST`/`BAD_FILE`, `400 SCHEMA_MISMATCH` (missing columns), `413 PAYLOAD_TOO_LARGE` (>50 MiB) |
 | GET | `/api/datasets` | required | — | `200 [{id,name,filename,imported_at,row_count,skipped_count}]` | — |
 | GET | `/api/datasets/<id>/phone-numbers` | required | — | `200 [{phone_number,count}]` | `404 NOT_FOUND` |
+| GET | `/api/datasets/<id>/records` | required | query: `offset` (≥0, default 0), `limit` (1–500, default 100) | `200 {total,offset,limit,rows:[...]}` | `404 NOT_FOUND` |
 | DELETE | `/api/datasets/<id>` | required | — | `200 {}` | `404 NOT_FOUND` |
 
 Import validates every row (`app/datasets/validation.py`): required non-empty `phone_number`/`area`,
@@ -85,6 +86,14 @@ dataset); the UI filters client-side (API-MISMATCH #3 in `main.py`).
 |---|---|---|---|---|---|
 | POST | `/api/targets/<id>/analyze` | required | `top_n` (default 5, clamped ≥0) | `200 <payload>` (also persisted) | `404 NOT_FOUND` |
 | GET | `/api/targets/<id>/result` | required | — | `200 <payload>` | `404 NOT_FOUND` (no target, or no analysis yet) |
+| GET | `/api/targets/<id>/frequency` | required | `rank_by` (`area`\|`other_party`\|`call_type`, default `area`), filters: `call_type`, `area`, `date_from`/`date_to` (YYYY-MM-DD), `hour_from`/`hour_to` (0–23, may wrap midnight) | `200 {target,rank_by,total_records,top:[{value,count}]}` | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| GET | `/api/export/results.xlsx` | required | `target_id` (int, or `all`/omitted for every target) | `200` .xlsx attachment | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+
+`frequency` is the Spreadsheet tab's filtered explorer: a **plain descriptive count** over the
+target's filtered records. It deliberately returns no confidence/gates — filters are legitimate
+there precisely because a tally has no sample-size gate to distort (unlike `analyze`, which always
+runs on the full record set). `export/results.xlsx` writes the **stored** latest answers per target
+(never recomputes); un-analyzed targets appear as `not analyzed`.
 
 `analyze` runs the five frozen Phase-1 detectors via the `app/analysis/bridge.py` seam and stores the
 result JSON. Payload shape:
@@ -105,5 +114,7 @@ result JSON. Payload shape:
 
 Every state-changing endpoint writes an `audit_log` row inside the same transaction it commits
 (`app/audit/log.py`): `SETUP, LOGIN_SUCCESS, LOGOUT, CHANGE_PASSWORD, IMPORT, DATASET_DELETE,
-TARGET_CREATE, TARGET_DELETE, ANALYSIS`. Failed logins can't reach the encrypted DB (no key), so they
+TARGET_CREATE, TARGET_DELETE, ANALYSIS, EXPORT`. `EXPORT` is the one audited GET — it changes no
+app state, but detection answers leaving the encrypted store is exactly what the trail is for.
+Failed logins can't reach the encrypted DB (no key), so they
 append to the plaintext `login_failures.log` sidecar (`LOGIN_FAIL`) — best-effort, **not** tamper-evident.

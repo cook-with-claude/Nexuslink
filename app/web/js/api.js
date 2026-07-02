@@ -108,4 +108,37 @@ export const api = {
   analyze: (id, top_n = 5) =>
     request("POST", "/api/targets/" + id + "/analyze", { query: { top_n } }),
   result: (id) => request("GET", "/api/targets/" + id + "/result"),
+  // spreadsheet
+  records: (datasetId, offset = 0, limit = 100) =>
+    request("GET", "/api/datasets/" + datasetId + "/records", { query: { offset, limit } }),
+  frequency: (targetId, params) =>
+    request("GET", "/api/targets/" + targetId + "/frequency", { query: params }),
 };
+
+// Binary download (.xlsx), so it can't go through request()'s JSON envelope
+// unwrap. Errors DO still arrive as the envelope and surface as ApiError; a 401
+// follows the same global redirect policy as everything else in the app area.
+export async function downloadResultsXlsx(targetId) {
+  const url = "/api/export/results.xlsx" + (targetId ? "?target_id=" + targetId : "");
+  let res;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new ApiError("NETWORK", "could not reach the server", 0);
+  }
+  if (!res.ok) {
+    if (res.status === 401) throw redirectToLogin();
+    let body = null;
+    try { body = await res.json(); } catch { /* non-JSON error page */ }
+    const e = (body && body.error) || {};
+    throw new ApiError(e.code || "HTTP_" + res.status, e.message || "export failed", res.status);
+  }
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "lapassion_results.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}

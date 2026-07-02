@@ -13,6 +13,7 @@ import { renderStatusbar } from "./statusbar.js";
 const NAV = [
   ["#/dashboard", "Dashboard", "dashboard"],
   ["#/datasets", "Datasets", "database"],
+  ["#/spreadsheet", "Spreadsheet", "table"],
 ];
 
 const RAIL_KEY = "lp-rail-collapsed";
@@ -74,6 +75,9 @@ export function shell(app) {
     el("div", { class: "rail-spacer" }),
     el("div", { class: "rail-foot" }, [
       collapseBtn,
+      // App-wide export: in the always-visible rail so it is reachable from
+      // every screen, not tied to any one tab.
+      navItem("#/export", "Export", "download"),
       navItem("#/change-password", "Password", "lock"),
       logoutBtn,
     ]),
