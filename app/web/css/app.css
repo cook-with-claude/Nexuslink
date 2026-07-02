@@ -592,6 +592,20 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
 .det-block { margin-top: var(--s4); }
 .det-block h3 { margin: 0; font-size: var(--fs-h3); }
 
+/* header-row column filters (Spreadsheet records). The filter row sticks just
+   below the header row (28px = the th height rule above). */
+.filter-row th {
+  top: calc(-1 * var(--s3) + 28px);
+  text-transform: none;
+  letter-spacing: 0;
+  padding: var(--s1) var(--s2);
+}
+/* input.col-filter must tie the base input[type="text"] specificity — this
+   rule being later in the file is what lets the compact padding win. */
+input.col-filter, select.col-filter { width: 100%; min-width: 90px; padding: 2px var(--s2); font-size: var(--fs-sm); }
+input.col-filter { font-family: var(--mono); }
+.link:hover { text-decoration: underline; }
+
 /* respect reduced-motion: kill non-essential animation */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }

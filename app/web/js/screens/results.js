@@ -1,7 +1,9 @@
 // RESULTS. Loads from store.lastResult (set by analyze) or GET /result on reload.
 // API-MISMATCH #6: analyze payload omits the dataset name — join client-side via
 // target -> dataset_id (/api/targets) -> dataset name (/api/datasets).
-// API-MISMATCH #8: frequent_contacts + frequent_areas_confidence are rendered.
+// API-MISMATCH #8: frequent_contacts are rendered; frequent_areas_confidence is
+// deliberately NOT — frequent areas/contacts are plain counts, not gated verdicts,
+// so showing a confidence pill there misread as a rating on the tally.
 // API-MISMATCH #9: near_tie tag + alternatives are surfaced (display only).
 
 import { api } from "../api.js";
@@ -55,8 +57,8 @@ export async function resultsScreen(app, params) {
     detectionCard("Work", payload.work),
   ]));
 
-  // Frequent areas + overall area confidence
-  body.appendChild(frequentAreasCard(payload.frequent_areas, payload.frequent_areas_confidence));
+  // Frequent areas (a count — no confidence by design)
+  body.appendChild(frequentAreasCard(payload.frequent_areas));
 
   // Frequent contacts
   body.appendChild(frequentContactsCard(payload.frequent_contacts));
@@ -81,11 +83,11 @@ function detectionCard(title, r) {
   return card;
 }
 
-function frequentAreasCard(areas, conf) {
+function frequentAreasCard(areas) {
   const card = el("div", { class: "card" });
   card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Frequent areas"),
-    confidencePill(conf),
+    el("span", { class: "kicker" }, "count, not a verdict"),
   ]));
   if (!areas || areas.length === 0) {
     card.appendChild(el("div", { class: "empty" }, "No area activity."));
@@ -102,7 +104,6 @@ function frequentAreasCard(areas, conf) {
       el("tbody", {}, rows),
     ]));
   }
-  if (conf) card.appendChild(gateTrace(conf, "Overall area gate trace"));
   return card;
 }
 

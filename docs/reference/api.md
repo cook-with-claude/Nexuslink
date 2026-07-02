@@ -60,7 +60,7 @@ Password length cap is bcrypt's 72-byte hard limit (`account.MAX_PASSWORD_BYTES`
 | POST | `/api/imports` | required | **multipart**: `name` (form) + `file` (.xlsx) | `201 {"dataset_id","imported","skipped","skipped_reasons":[{row,reason}]}` | `400 BAD_REQUEST`/`BAD_FILE`, `400 SCHEMA_MISMATCH` (missing columns), `413 PAYLOAD_TOO_LARGE` (>50 MiB) |
 | GET | `/api/datasets` | required | — | `200 [{id,name,filename,imported_at,row_count,skipped_count}]` | — |
 | GET | `/api/datasets/<id>/phone-numbers` | required | — | `200 [{phone_number,count}]` | `404 NOT_FOUND` |
-| GET | `/api/datasets/<id>/records` | required | query: `offset` (≥0, default 0), `limit` (1–500, default 100), `phone_number` (optional exact match; empty = all users) | `200 {total,offset,limit,phone_number,rows:[...]}` (`total` counts the filtered set) | `404 NOT_FOUND` |
+| GET | `/api/datasets/<id>/records` | required | query: `offset` (≥0, default 0), `limit` (1–500, default 100), filters (all optional, composable): `phone_number` + `call_type` exact, `area` + `other_party` substring (LIKE wildcards literal); empty/malformed filter = ignored | `200 {total,offset,limit,phone_number,rows:[...]}` (`total` counts the filtered set) | `404 NOT_FOUND` |
 | DELETE | `/api/datasets/<id>` | required | — | `200 {}` | `404 NOT_FOUND` |
 
 Import validates every row (`app/datasets/validation.py`): required non-empty `phone_number`/`area`,

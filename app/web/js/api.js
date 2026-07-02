@@ -109,9 +109,13 @@ export const api = {
     request("POST", "/api/targets/" + id + "/analyze", { query: { top_n } }),
   result: (id) => request("GET", "/api/targets/" + id + "/result"),
   // spreadsheet
-  records: (datasetId, offset = 0, limit = 100, phoneNumber = "") => {
+  // filters: optional {phone_number, call_type, area, other_party} — only
+  // non-empty values are sent (empty select/input = that column unfiltered).
+  records: (datasetId, offset = 0, limit = 100, filters = {}) => {
     const query = { offset, limit };
-    if (phoneNumber) query.phone_number = phoneNumber;
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== null && String(v).trim() !== "") query[k] = v;
+    }
     return request("GET", "/api/datasets/" + datasetId + "/records", { query });
   },
   frequency: (targetId, params) =>

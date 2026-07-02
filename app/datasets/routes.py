@@ -104,15 +104,25 @@ def dataset_records(dataset_id: int):
         limit = min(max(1, int(request.args.get("limit", 100))), 500)
     except (TypeError, ValueError):
         limit = 100
-    # Optional per-subscriber filter; an exact match on the stored number. Empty
-    # string means "all users" so the SPA can bind it straight to a <select>.
+    # Optional column filters, all composable. phone_number/call_type are exact
+    # (the SPA binds them to <select>s; empty string = unfiltered); area and
+    # other_party are substring matches for header-row typing. A malformed
+    # call_type is ignored like the malformed paging params above.
     phone_number = (request.args.get("phone_number") or "").strip() or None
+    area = (request.args.get("area") or "").strip() or None
+    other_party = (request.args.get("other_party") or "").strip() or None
+    try:
+        call_type = int(request.args.get("call_type", ""))
+    except (TypeError, ValueError):
+        call_type = None
+    filters = dict(phone_number=phone_number, call_type=call_type,
+                   area=area, other_party=other_party)
     return ok({
-        "total": repo.count_records(db, dataset_id, phone_number),
+        "total": repo.count_records(db, dataset_id, **filters),
         "offset": offset,
         "limit": limit,
         "phone_number": phone_number,
-        "rows": repo.read_records_page(db, dataset_id, offset, limit, phone_number),
+        "rows": repo.read_records_page(db, dataset_id, offset, limit, **filters),
     })
 
 

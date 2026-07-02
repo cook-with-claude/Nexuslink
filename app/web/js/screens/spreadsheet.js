@@ -1,9 +1,12 @@
 // SPREADSHEET. Three deliberately separated parts, because they answer
 // different questions:
-//   1. Records — read-only view of the imported rows, paged.
+//   1. Records — read-only view of the imported rows, filterable per column
+//      from the header row (like a sheet's autofilter); filters are applied
+//      server-side so paging and totals stay correct. Clicking a phone number
+//      runs detection for that user (creating the target if needed).
 //   2. Detection — the confidence-gated INFERENCE. Always runs on the target's
 //      FULL record set: the gates depend on sample size (N), so applying the
-//      explorer's filters here would shrink N and produce wrong ratings.
+//      sheet's filters here would shrink N and produce wrong ratings.
 //   3. Frequency explorer — a plain descriptive tally over the FILTERED slice.
 //      No home/work labels and no confidence, by design: a count is not a
 //      verdict, and filtering is legitimate here precisely because it's a tally.
@@ -11,7 +14,7 @@
 import { api } from "../api.js";
 import { shell } from "../layout.js";
 import {
-  el, loading, clear, msg, confidencePill, gateTrace,
+  el, loading, clear, msg, toast, confidencePill, gateTrace,
 } from "../components.js";
 import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
@@ -24,7 +27,7 @@ export async function spreadsheetScreen(app) {
   body.appendChild(loading());
   page.appendChild(body);
 
-  const [datasets, targets] = await Promise.all([api.datasets(), api.targets()]);
+  let [datasets, targets] = await Promise.all([api.datasets(), api.targets()]);
   clear(body);
 
   if (datasets.length === 0) {
@@ -33,9 +36,37 @@ export async function spreadsheetScreen(app) {
     return;
   }
 
-  body.appendChild(recordsCard(datasets));
-  body.appendChild(detectionCard(targets, datasets));
-  body.appendChild(explorerCard(targets, datasets));
+  const detection = detectionCard(datasets);
+  const explorer = explorerCard(datasets);
+  detection.refresh(targets);
+  explorer.refresh(targets);
+
+  // Click a user in the sheet -> make sure a target exists for that phone in
+  // that dataset (created on the fly, named after the number), then run the
+  // full-set detection in the Detection card below.
+  const onUserDetect = async (datasetId, phone) => {
+    let t = targets.find((x) => x.dataset_id === datasetId && x.phone_number === phone);
+    if (!t) {
+      try {
+        await api.createTarget(phone, datasetId, phone);
+        toast(`Target created for ${phone}`);
+      } catch (e) {
+        // CONFLICT = someone created it since we cached the list; re-fetch wins.
+        if (e.code !== "CONFLICT") { toast(e.message); return; }
+      }
+      targets = await api.targets();
+      detection.refresh(targets);
+      explorer.refresh(targets);
+      t = targets.find((x) => x.dataset_id === datasetId && x.phone_number === phone);
+      if (!t) return;
+    }
+    detection.card.scrollIntoView({ behavior: "smooth", block: "start" });
+    detection.runFor(t.id);
+  };
+
+  body.appendChild(recordsCard(datasets, onUserDetect));
+  body.appendChild(detection.card);
+  body.appendChild(explorer.card);
 }
 
 function targetOption(t, datasets) {
@@ -44,85 +75,134 @@ function targetOption(t, datasets) {
     `${t.name} — ${t.phone_number}${d ? ` (${d.name})` : ""}`);
 }
 
+function debounce(fn, ms) {
+  let timer = null;
+  return () => { clearTimeout(timer); timer = setTimeout(fn, ms); };
+}
+
 // ---- 1. records view ----
 
-function recordsCard(datasets) {
+function recordsCard(datasets, onUserDetect) {
   const card = el("div", { class: "card" });
   card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Records"),
     el("span", { class: "kicker" }, "read-only view"),
   ]));
 
-  // Filter bar at the top of the sheet: pick the dataset, then narrow to a
-  // single user (subscriber) — the common way to read a CDR sheet.
   const picker = el("select", { id: "ss-dataset" },
     datasets.map((d) => el("option", { value: String(d.id) }, `${d.name} (${d.row_count} rows)`)));
-  const userPicker = el("select", { id: "ss-user" },
-    [el("option", { value: "" }, "All users")]);
+  const unitPicker = el("select", { id: "ss-unit" }, [
+    el("option", { value: "s" }, "seconds (s)"),
+    el("option", { value: "min" }, "minutes (min)"),
+  ]);
   const field = (labelText, forId, input) =>
     el("div", {}, [el("label", { for: forId }, labelText), input]);
   card.appendChild(el("div", { class: "filter-grid" }, [
     field("Dataset", "ss-dataset", picker),
-    field("User", "ss-user", userPicker),
+    field("Duration unit", "ss-unit", unitPicker),
   ]));
+  card.appendChild(el("p", { class: "hint" },
+    "Filter columns in the header row. Click a phone number to run detection on that user."));
 
-  const slot = el("div");
-  card.appendChild(slot);
+  // Column filters live IN the sheet's header row. Applied server-side; the
+  // table skeleton is built once so typing in a filter never loses focus.
+  const fPhone = el("select", { class: "col-filter", "aria-label": "filter phone" },
+    [el("option", { value: "" }, "All")]);
+  const fArea = el("input", {
+    class: "col-filter", type: "text", placeholder: "contains…", "aria-label": "filter area",
+  });
+  const fType = el("select", { class: "col-filter", "aria-label": "filter type" },
+    [el("option", { value: "" }, "Any")]
+      .concat(CALL_TYPE_OPTIONS.map(([code, label]) => el("option", { value: String(code) }, label))));
+  const fParty = el("input", {
+    class: "col-filter", type: "text", placeholder: "contains…", "aria-label": "filter other party",
+  });
+
+  const durHead = el("th", { class: "num" }, "Duration (s)");
+  const tbody = el("tbody");
+  card.appendChild(el("div", { class: "table-scroll" }, el("table", {}, [
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", {}, "Phone"), el("th", {}, "IMEI"), el("th", {}, "Area"),
+        el("th", {}, "Timestamp"), el("th", {}, "Type"), durHead,
+        el("th", {}, "Other party"), el("th", {}, "Other IMEI"), el("th", {}, "Other area"),
+      ]),
+      el("tr", { class: "filter-row" }, [
+        el("th", {}, fPhone), el("th", {}), el("th", {}, fArea),
+        el("th", {}), el("th", {}, fType), el("th", {}),
+        el("th", {}, fParty), el("th", {}), el("th", {}),
+      ]),
+    ]),
+    tbody,
+  ])));
+  const pagerSlot = el("div");
+  card.appendChild(pagerSlot);
+
+  const filters = () => ({
+    phone_number: fPhone.value,
+    call_type: fType.value,
+    area: fArea.value,
+    other_party: fParty.value,
+  });
 
   const loadUsers = async () => {
-    clear(userPicker);
-    userPicker.appendChild(el("option", { value: "" }, "All users"));
+    clear(fPhone);
+    fPhone.appendChild(el("option", { value: "" }, "All"));
     try {
       const users = await api.phoneNumbers(Number(picker.value));
-      users.forEach((u) => userPicker.appendChild(
-        el("option", { value: u.phone_number },
-          `${u.phone_number} (${u.count} records)`)));
+      users.forEach((u) => fPhone.appendChild(
+        el("option", { value: u.phone_number }, `${u.phone_number} (${u.count})`)));
     } catch {
       // The records request below surfaces any real error; a user list that
-      // failed to load just leaves the filter at "All users".
+      // failed to load just leaves the filter at "All".
     }
   };
 
+  const fmtDuration = (secs) =>
+    unitPicker.value === "min" ? (secs / 60).toFixed(1) : String(secs);
+  const statusRow = (text) => el("tr", {}, el("td", { class: "dim", colspan: "9" }, text));
+
   let offset = 0;
+  let seq = 0; // drop out-of-order responses from fast consecutive filter edits
   const load = async () => {
-    clear(slot);
-    slot.appendChild(loading("Loading records…"));
+    const mine = ++seq;
+    clear(tbody);
+    tbody.appendChild(statusRow("Loading records…"));
+    clear(pagerSlot);
     let res;
     try {
-      res = await api.records(Number(picker.value), offset, PAGE_SIZE, userPicker.value);
+      res = await api.records(Number(picker.value), offset, PAGE_SIZE, filters());
     } catch (e) {
-      clear(slot);
-      slot.appendChild(msg(e.message));
+      if (mine !== seq) return;
+      clear(tbody);
+      tbody.appendChild(statusRow(e.message));
       return;
     }
-    clear(slot);
+    if (mine !== seq) return;
+    clear(tbody);
+    durHead.textContent = unitPicker.value === "min" ? "Duration (min)" : "Duration (s)";
     if (res.total === 0) {
-      slot.appendChild(el("div", { class: "empty" }, userPicker.value
-        ? "No records for this user in this dataset."
-        : "This dataset has no records."));
+      tbody.appendChild(statusRow("No records match the current filters."));
       return;
     }
 
-    const rows = res.rows.map((r) => el("tr", {}, [
-      el("td", { class: "data" }, r.phone_number),
-      el("td", { class: "data dim" }, r.imei || "—"),
-      el("td", { class: "data" }, r.area),
-      el("td", { class: "data dim" }, r.timestamp),
-      el("td", {}, callTypeDisplay(r.call_type)),
-      el("td", { class: "num" }, String(r.duration_seconds)),
-      el("td", { class: "data" }, r.other_party || "—"),
-      el("td", { class: "data dim" }, r.other_imei || "—"),
-      el("td", { class: "data dim" }, r.other_area || "—"),
-    ]));
-    slot.appendChild(el("div", { class: "table-scroll" }, el("table", {}, [
-      el("thead", {}, el("tr", {}, [
-        el("th", {}, "Phone"), el("th", {}, "IMEI"), el("th", {}, "Area"),
-        el("th", {}, "Timestamp"), el("th", {}, "Type"),
-        el("th", { class: "num" }, "Duration (s)"),
-        el("th", {}, "Other party"), el("th", {}, "Other IMEI"), el("th", {}, "Other area"),
-      ])),
-      el("tbody", {}, rows),
-    ])));
+    res.rows.forEach((r) => {
+      const userBtn = el("button", {
+        class: "link data", title: "Run detection for this user",
+      }, r.phone_number);
+      userBtn.addEventListener("click", () => onUserDetect(Number(picker.value), r.phone_number));
+      tbody.appendChild(el("tr", {}, [
+        el("td", { class: "data" }, userBtn),
+        el("td", { class: "data dim" }, r.imei || "—"),
+        el("td", { class: "data" }, r.area),
+        el("td", { class: "data dim" }, r.timestamp),
+        el("td", {}, callTypeDisplay(r.call_type)),
+        el("td", { class: "num" }, fmtDuration(r.duration_seconds)),
+        el("td", { class: "data" }, r.other_party || "—"),
+        el("td", { class: "data dim" }, r.other_imei || "—"),
+        el("td", { class: "data dim" }, r.other_area || "—"),
+      ]));
+    });
 
     const from = res.offset + 1;
     const to = res.offset + res.rows.length;
@@ -130,20 +210,27 @@ function recordsCard(datasets) {
     const next = el("button", { class: "btn btn-sm", disabled: to >= res.total ? "disabled" : null }, "Next ›");
     prev.addEventListener("click", () => { offset = Math.max(0, offset - PAGE_SIZE); load(); });
     next.addEventListener("click", () => { offset += PAGE_SIZE; load(); });
-    slot.appendChild(el("div", { class: "pager" }, [
+    pagerSlot.appendChild(el("div", { class: "pager" }, [
       prev, next, el("span", { class: "dim" }, `${from}–${to} of ${res.total} records`),
     ]));
   };
 
+  const refilter = () => { offset = 0; load(); };
   picker.addEventListener("change", async () => { offset = 0; await loadUsers(); load(); });
-  userPicker.addEventListener("change", () => { offset = 0; load(); });
+  unitPicker.addEventListener("change", () => load());
+  fPhone.addEventListener("change", refilter);
+  fType.addEventListener("change", refilter);
+  const typed = debounce(refilter, 300);
+  fArea.addEventListener("input", typed);
+  fParty.addEventListener("input", typed);
+
   loadUsers().then(load);
   return card;
 }
 
 // ---- 2. detection (full record set) ----
 
-function detectionCard(targets, datasets) {
+function detectionCard(datasets) {
   const card = el("div", { class: "card card-inference" });
   card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Detection"),
@@ -151,27 +238,22 @@ function detectionCard(targets, datasets) {
   ]));
   card.appendChild(el("p", { class: "hint" },
     "Runs the confidence-gated detection on the target's complete record set. " +
-    "The explorer filters below never apply here: the gates depend on sample size, " +
+    "The sheet and explorer filters never apply here: the gates depend on sample size, " +
     "and a filtered subset would produce wrong ratings."));
 
-  if (targets.length === 0) {
-    card.appendChild(el("div", { class: "empty" }, "No targets yet. Add one from a dataset's Targets screen."));
-    return card;
-  }
+  const inner = el("div");
+  card.appendChild(inner);
 
-  const picker = el("select", { id: "ss-det-target" },
-    [el("option", { value: "" }, "— select a target —")]
-      .concat(targets.map((t) => targetOption(t, datasets))));
-  const btn = el("button", { class: "btn btn-primary" }, "Run detection");
-  const slot = el("div");
+  let picker = null;
+  let btn = null;
+  let slot = null;
 
-  btn.addEventListener("click", async () => {
+  const run = async (targetId) => {
     clear(slot);
-    if (!picker.value) { slot.appendChild(msg("Select a target.")); return; }
     btn.disabled = true;
     slot.appendChild(loading("Analyzing…"));
     try {
-      const payload = await api.analyze(Number(picker.value));
+      const payload = await api.analyze(targetId);
       clear(slot);
       renderDetection(slot, payload);
     } catch (e) {
@@ -180,17 +262,48 @@ function detectionCard(targets, datasets) {
     } finally {
       btn.disabled = false;
     }
-  });
+  };
 
-  card.appendChild(el("label", { for: "ss-det-target" }, "Target"));
-  card.appendChild(picker);
-  card.appendChild(el("div", { class: "form-actions" }, [btn]));
-  card.appendChild(slot);
-  return card;
+  // Rebuilds the picker whenever the target list changes (e.g. a target was
+  // created by clicking a user in the sheet); keeps the current selection.
+  const refresh = (targets) => {
+    const keep = picker ? picker.value : "";
+    clear(inner);
+    if (targets.length === 0) {
+      picker = null; btn = null; slot = null;
+      inner.appendChild(el("div", { class: "empty" },
+        "No targets yet. Add one from a dataset's Targets screen, or click a phone number in the sheet above."));
+      return;
+    }
+    picker = el("select", { id: "ss-det-target" },
+      [el("option", { value: "" }, "— select a target —")]
+        .concat(targets.map((t) => targetOption(t, datasets))));
+    if (keep) picker.value = keep;
+    btn = el("button", { class: "btn btn-primary" }, "Run detection");
+    slot = el("div");
+    btn.addEventListener("click", () => {
+      if (!picker.value) { clear(slot); slot.appendChild(msg("Select a target.")); return; }
+      run(Number(picker.value));
+    });
+    inner.appendChild(el("label", { for: "ss-det-target" }, "Target"));
+    inner.appendChild(picker);
+    inner.appendChild(el("div", { class: "form-actions" }, [btn]));
+    inner.appendChild(slot);
+  };
+
+  const runFor = (targetId) => {
+    if (!picker) return;
+    picker.value = String(targetId);
+    run(targetId);
+  };
+
+  return { card, refresh, runFor };
 }
 
 // Same visual language as the RESULTS screen: confidencePill + gateTrace from
-// components.js keep the "one visual language / no raw JSON" rules.
+// components.js keep the "one visual language / no raw JSON" rules. Frequent
+// areas deliberately carry NO confidence pill — a frequency table is a count,
+// not a gated verdict.
 function renderDetection(slot, payload) {
   const block = (title, r) => {
     const b = el("div", { class: "det-block" }, [
@@ -215,7 +328,7 @@ function renderDetection(slot, payload) {
   const fa = el("div", { class: "det-block" });
   fa.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Frequent areas"),
-    confidencePill(payload.frequent_areas_confidence),
+    el("span", { class: "kicker" }, "count, not a verdict"),
   ]));
   const areas = payload.frequent_areas || [];
   if (areas.length === 0) {
@@ -237,7 +350,7 @@ function renderDetection(slot, payload) {
 
 // ---- 3. frequency explorer (filtered slice) ----
 
-function explorerCard(targets, datasets) {
+function explorerCard(datasets) {
   const card = el("div", { class: "card card-explorer" });
   card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Frequency explorer"),
@@ -247,76 +360,83 @@ function explorerCard(targets, datasets) {
     "Counts the most frequent value inside the current filter. This is a plain tally, " +
     "not a detection verdict — no confidence rating applies."));
 
-  if (targets.length === 0) {
-    card.appendChild(el("div", { class: "empty" }, "No targets yet. Add one from a dataset's Targets screen."));
-    return card;
-  }
+  const inner = el("div");
+  card.appendChild(inner);
 
-  const target = el("select", { id: "fx-target" },
-    [el("option", { value: "" }, "— select a target —")]
-      .concat(targets.map((t) => targetOption(t, datasets))));
-  const rankBy = el("select", { id: "fx-rank" }, [
-    el("option", { value: "area" }, "Location / tower"),
-    el("option", { value: "other_party" }, "Call partner"),
-    el("option", { value: "call_type" }, "Call type"),
-  ]);
-  const callType = el("select", { id: "fx-type" },
-    [el("option", { value: "" }, "Any")]
-      .concat(CALL_TYPE_OPTIONS.map(([code, label]) => el("option", { value: String(code) }, label))));
-  const area = el("input", { type: "text", id: "fx-area", placeholder: "exact area, e.g. Hamra" });
-  const dateFrom = el("input", { type: "date", id: "fx-from" });
-  const dateTo = el("input", { type: "date", id: "fx-to" });
-  const hourFrom = el("input", { type: "number", id: "fx-hfrom", min: "0", max: "23", placeholder: "0" });
-  const hourTo = el("input", { type: "number", id: "fx-hto", min: "0", max: "23", placeholder: "23" });
-
-  const field = (labelText, forId, input) =>
-    el("div", {}, [el("label", { for: forId }, labelText), input]);
-
-  card.appendChild(el("div", { class: "filter-grid" }, [
-    field("Target", "fx-target", target),
-    field("Rank by", "fx-rank", rankBy),
-    field("Call type", "fx-type", callType),
-    field("Location", "fx-area", area),
-    field("From date", "fx-from", dateFrom),
-    field("To date", "fx-to", dateTo),
-    field("From hour (0–23)", "fx-hfrom", hourFrom),
-    field("To hour (0–23)", "fx-hto", hourTo),
-  ]));
-
-  const btn = el("button", { class: "btn btn-primary" }, "Count");
-  const slot = el("div");
-  card.appendChild(el("div", { class: "form-actions" }, [
-    btn,
-    el("span", { class: "hint" }, "Hours may wrap midnight (e.g. 22 → 6)."),
-  ]));
-  card.appendChild(slot);
-
-  btn.addEventListener("click", async () => {
-    clear(slot);
-    if (!target.value) { slot.appendChild(msg("Select a target.")); return; }
-    const params = { rank_by: rankBy.value };
-    if (callType.value) params.call_type = callType.value;
-    if (area.value.trim()) params.area = area.value.trim();
-    if (dateFrom.value) params.date_from = dateFrom.value;
-    if (dateTo.value) params.date_to = dateTo.value;
-    if (hourFrom.value !== "") params.hour_from = hourFrom.value;
-    if (hourTo.value !== "") params.hour_to = hourTo.value;
-
-    btn.disabled = true;
-    slot.appendChild(loading("Counting…"));
-    try {
-      const res = await api.frequency(Number(target.value), params);
-      clear(slot);
-      renderTally(slot, res);
-    } catch (e) {
-      clear(slot);
-      slot.appendChild(msg(e.message));
-    } finally {
-      btn.disabled = false;
+  const refresh = (targets) => {
+    clear(inner);
+    if (targets.length === 0) {
+      inner.appendChild(el("div", { class: "empty" },
+        "No targets yet. Add one from a dataset's Targets screen, or click a phone number in the sheet above."));
+      return;
     }
-  });
 
-  return card;
+    const target = el("select", { id: "fx-target" },
+      [el("option", { value: "" }, "— select a target —")]
+        .concat(targets.map((t) => targetOption(t, datasets))));
+    const rankBy = el("select", { id: "fx-rank" }, [
+      el("option", { value: "area" }, "Location / tower"),
+      el("option", { value: "other_party" }, "Call partner"),
+      el("option", { value: "call_type" }, "Call type"),
+    ]);
+    const callType = el("select", { id: "fx-type" },
+      [el("option", { value: "" }, "Any")]
+        .concat(CALL_TYPE_OPTIONS.map(([code, label]) => el("option", { value: String(code) }, label))));
+    const area = el("input", { type: "text", id: "fx-area", placeholder: "exact area, e.g. Hamra" });
+    const dateFrom = el("input", { type: "date", id: "fx-from" });
+    const dateTo = el("input", { type: "date", id: "fx-to" });
+    const hourFrom = el("input", { type: "number", id: "fx-hfrom", min: "0", max: "23", placeholder: "0" });
+    const hourTo = el("input", { type: "number", id: "fx-hto", min: "0", max: "23", placeholder: "23" });
+
+    const field = (labelText, forId, input) =>
+      el("div", {}, [el("label", { for: forId }, labelText), input]);
+
+    inner.appendChild(el("div", { class: "filter-grid" }, [
+      field("Target", "fx-target", target),
+      field("Rank by", "fx-rank", rankBy),
+      field("Call type", "fx-type", callType),
+      field("Location", "fx-area", area),
+      field("From date", "fx-from", dateFrom),
+      field("To date", "fx-to", dateTo),
+      field("From hour (0–23)", "fx-hfrom", hourFrom),
+      field("To hour (0–23)", "fx-hto", hourTo),
+    ]));
+
+    const btn = el("button", { class: "btn btn-primary" }, "Count");
+    const slot = el("div");
+    inner.appendChild(el("div", { class: "form-actions" }, [
+      btn,
+      el("span", { class: "hint" }, "Hours may wrap midnight (e.g. 22 → 6)."),
+    ]));
+    inner.appendChild(slot);
+
+    btn.addEventListener("click", async () => {
+      clear(slot);
+      if (!target.value) { slot.appendChild(msg("Select a target.")); return; }
+      const params = { rank_by: rankBy.value };
+      if (callType.value) params.call_type = callType.value;
+      if (area.value.trim()) params.area = area.value.trim();
+      if (dateFrom.value) params.date_from = dateFrom.value;
+      if (dateTo.value) params.date_to = dateTo.value;
+      if (hourFrom.value !== "") params.hour_from = hourFrom.value;
+      if (hourTo.value !== "") params.hour_to = hourTo.value;
+
+      btn.disabled = true;
+      slot.appendChild(loading("Counting…"));
+      try {
+        const res = await api.frequency(Number(target.value), params);
+        clear(slot);
+        renderTally(slot, res);
+      } catch (e) {
+        clear(slot);
+        slot.appendChild(msg(e.message));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+
+  return { card, refresh };
 }
 
 function renderTally(slot, res) {

@@ -55,25 +55,45 @@ def delete_dataset(conn, dataset_id) -> int:
     return cur.rowcount
 
 
-def count_records(conn, dataset_id, phone_number=None) -> int:
-    sql = "SELECT COUNT(*) AS n FROM cdr_records WHERE dataset_id = ?"
+def _like_pattern(text: str) -> str:
+    """Substring match with LIKE wildcards in the user's text made literal."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _records_where(dataset_id, phone_number, call_type, area, other_party):
+    """Shared WHERE for the records page and its count, so `total` always
+    counts exactly the filtered set the page reads. phone_number/call_type are
+    exact (they come from selects); area/other_party are substring matches."""
+    sql = " FROM cdr_records WHERE dataset_id = ?"
     params = [dataset_id]
     if phone_number is not None:
         sql += " AND phone_number = ?"
         params.append(phone_number)
-    return conn.execute(sql, params).fetchone()["n"]
+    if call_type is not None:
+        sql += " AND call_type = ?"
+        params.append(call_type)
+    if area is not None:
+        sql += " AND area LIKE ? ESCAPE '\\'"
+        params.append(_like_pattern(area))
+    if other_party is not None:
+        sql += " AND other_party LIKE ? ESCAPE '\\'"
+        params.append(_like_pattern(other_party))
+    return sql, params
 
 
-def read_records_page(conn, dataset_id, offset, limit, phone_number=None) -> list[dict]:
+def count_records(conn, dataset_id, phone_number=None, call_type=None,
+                  area=None, other_party=None) -> int:
+    where, params = _records_where(dataset_id, phone_number, call_type, area, other_party)
+    return conn.execute("SELECT COUNT(*) AS n" + where, params).fetchone()["n"]
+
+
+def read_records_page(conn, dataset_id, offset, limit, phone_number=None,
+                      call_type=None, area=None, other_party=None) -> list[dict]:
+    where, params = _records_where(dataset_id, phone_number, call_type, area, other_party)
     sql = (
         "SELECT id, phone_number, imei, area, timestamp, call_type, duration_seconds, "
-        "other_party, other_imei, other_area FROM cdr_records WHERE dataset_id = ?"
+        "other_party, other_imei, other_area" + where + " ORDER BY id LIMIT ? OFFSET ?"
     )
-    params = [dataset_id]
-    if phone_number is not None:
-        sql += " AND phone_number = ?"
-        params.append(phone_number)
-    sql += " ORDER BY id LIMIT ? OFFSET ?"
-    params += [limit, offset]
-    rows = conn.execute(sql, params).fetchall()
+    rows = conn.execute(sql, params + [limit, offset]).fetchall()
     return [dict(r) for r in rows]

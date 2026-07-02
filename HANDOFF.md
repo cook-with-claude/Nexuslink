@@ -4,7 +4,34 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-02 - Claude: Spreadsheet follow-ups from Khaled's live test on `spreadsheet` - FOR REVIEW
+## 2026-07-02 - Claude: Spreadsheet round 3 (Khaled's tweaks) on `spreadsheet` - FOR REVIEW
+
+Four changes from Khaled's second live pass:
+
+1. **In-sheet column filters** — the Records table now has a filter row inside the sheet's header
+   (autofilter-style): Phone (select), Area (substring), Type (select), Other party (substring),
+   all composable and applied **server-side** so paging/totals stay right. Backend:
+   `phone_number`/`call_type` exact + `area`/`other_party` case-insensitive substring on
+   `GET /datasets/<id>/records` (`datasets/repo.py:_records_where`; LIKE wildcards escaped,
+   pinned by test). Malformed `call_type` ignored, consistent with the route's paging fallback.
+   Table skeleton is static (only tbody/pager re-render) so typing keeps focus; stale responses
+   dropped via a sequence guard.
+2. **Click a user → detection** — phone cells are buttons; clicking ensures a target exists for
+   that dataset+phone (auto-created via existing POST /targets, named after the number, CONFLICT
+   treated as success) then scrolls to the Detection card and runs the full-set analysis there.
+   Detection/explorer cards got a `refresh(targets)` rebuild so new targets appear in pickers.
+   No new analyze surface: same target-based endpoint, same audit/persist path.
+3. **Duration unit toggle** — Records top bar: seconds (default) / minutes (1 decimal).
+   Display-only; the stored value stays `duration_seconds`.
+4. **Frequent areas/contacts lose the confidence pill** — they're counts, not gated verdicts
+   (Khaled's call). Removed pill + overall-area gate trace on the Results screen and the pill in
+   the Spreadsheet detection panel; replaced with a "count, not a verdict" kicker.
+   `frequent_areas_confidence` stays in the API payload (frozen Phase 1 computes it; stored
+   results keep it) — this is render-only. API-MISMATCH #8 comment updated to say so.
+
+Verified: 178 passed (172 → +6 filter tests), ruff clean, lint-imports 4 contracts KEPT,
+phase1_cdr diff vs main empty. api.md records row updated.
+
 
 Three fixes/changes after Khaled used the new tab in the desktop window:
 

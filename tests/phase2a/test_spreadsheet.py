@@ -146,6 +146,49 @@ def test_records_unknown_phone_number_matches_nothing(client, two_user_dataset_i
     assert data["rows"] == []
 
 
+def test_records_call_type_filter(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?call_type=11").get_json()["data"]
+    assert data["total"] == 1
+    assert data["rows"][0]["area"] == "A2"
+
+
+def test_records_malformed_call_type_is_ignored(client, two_user_dataset_id):
+    # Consistent with the paging params: a single local client, read-only view.
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?call_type=abc").get_json()["data"]
+    assert data["total"] == 3
+
+
+def test_records_area_filter_is_substring_case_insensitive(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?area=a").get_json()["data"]
+    assert data["total"] == 2               # A1 + A2; "B1" has no 'a'
+    assert {r["area"] for r in data["rows"]} == {"A1", "A2"}
+
+
+def test_records_area_filter_treats_like_wildcards_as_literals(client, two_user_dataset_id):
+    assert client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?area=%25").get_json()["data"]["total"] == 0
+    assert client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?area=_").get_json()["data"]["total"] == 0
+
+
+def test_records_other_party_filter(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?other_party=9").get_json()["data"]
+    assert data["total"] == 1
+    assert data["rows"][0]["other_party"] == "P9"
+
+
+def test_records_filters_compose(client, two_user_dataset_id):
+    data = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records"
+        "?phone_number=500&area=A&call_type=1").get_json()["data"]
+    assert data["total"] == 1
+    assert data["rows"][0]["area"] == "A1"
+
+
 # ---- frequency explorer ----
 
 def test_frequency_unknown_target_404(client):
