@@ -60,7 +60,7 @@ Password length cap is bcrypt's 72-byte hard limit (`account.MAX_PASSWORD_BYTES`
 | POST | `/api/imports` | required | **multipart**: `name` (form) + `file` (.xlsx) | `201 {"dataset_id","imported","skipped","skipped_reasons":[{row,reason}]}` | `400 BAD_REQUEST`/`BAD_FILE`, `400 SCHEMA_MISMATCH` (missing columns), `413 PAYLOAD_TOO_LARGE` (>50 MiB) |
 | GET | `/api/datasets` | required | — | `200 [{id,name,filename,imported_at,row_count,skipped_count}]` | — |
 | GET | `/api/datasets/<id>/phone-numbers` | required | — | `200 [{phone_number,count}]` | `404 NOT_FOUND` |
-| GET | `/api/datasets/<id>/records` | required | query: `offset` (≥0, default 0), `limit` (1–500, default 100), filters (all optional, composable): `phone_number` + `call_type` exact, `area` + `other_party` substring (LIKE wildcards literal); empty/malformed filter = ignored | `200 {total,offset,limit,phone_number,rows:[...]}` (`total` counts the filtered set) | `404 NOT_FOUND` |
+| GET | `/api/datasets/<id>/records` | required | query: `offset` (≥0, default 0), `limit` (1–500, default 100), filters (all optional, composable): `phone_number` + `call_type` exact, `area` + `other_party` substring (LIKE wildcards literal); `sort` (`timestamp`\|`duration_seconds`, whitelisted) + `dir` (`asc` default\|`desc`); empty/malformed filter or sort = ignored | `200 {total,offset,limit,phone_number,rows:[...]}` (`total` counts the filtered set) | `404 NOT_FOUND` |
 | DELETE | `/api/datasets/<id>` | required | — | `200 {}` | `404 NOT_FOUND` |
 
 Import validates every row (`app/datasets/validation.py`): required non-empty `phone_number`/`area`,
@@ -93,7 +93,9 @@ dataset); the UI filters client-side (API-MISMATCH #3 in `main.py`).
 target's filtered records. It deliberately returns no confidence/gates — filters are legitimate
 there precisely because a tally has no sample-size gate to distort (unlike `analyze`, which always
 runs on the full record set). `export/results.xlsx` writes the **stored** latest answers per target
-(never recomputes); un-analyzed targets appear as `not analyzed`.
+(never recomputes); un-analyzed targets appear as `not analyzed`. Workbook layout: a styled
+`Summary` sheet (one row per target: home/work + confidence) plus `Frequent areas` and
+`Frequent contacts` detail sheets — tallies carry **no confidence columns**, same rule as the UI.
 
 `analyze` runs the five frozen Phase-1 detectors via the `app/analysis/bridge.py` seam and stores the
 result JSON. Payload shape:

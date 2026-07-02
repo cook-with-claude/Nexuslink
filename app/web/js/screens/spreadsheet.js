@@ -118,13 +118,19 @@ function recordsCard(datasets, onUserDetect) {
     class: "col-filter", type: "text", placeholder: "contains…", "aria-label": "filter other party",
   });
 
-  const durHead = el("th", { class: "num" }, "Duration (s)");
+  // Sortable headers: click toggles oldest/newest (Timestamp) or
+  // shortest/longest (Duration). Server-side, so sorting spans all pages.
+  let sortCol = null;
+  let sortDir = "asc";
+  const tsBtn = el("button", { class: "link", title: "Sort by time" }, "Timestamp");
+  const durBtn = el("button", { class: "link", title: "Sort by duration" }, "Duration (s)");
+  const sortMark = (col) => (sortCol !== col ? "" : (sortDir === "asc" ? " ↑" : " ↓"));
   const tbody = el("tbody");
   card.appendChild(el("div", { class: "table-scroll" }, el("table", {}, [
     el("thead", {}, [
       el("tr", {}, [
         el("th", {}, "Phone"), el("th", {}, "IMEI"), el("th", {}, "Area"),
-        el("th", {}, "Timestamp"), el("th", {}, "Type"), durHead,
+        el("th", {}, tsBtn), el("th", {}, "Type"), el("th", { class: "num" }, durBtn),
         el("th", {}, "Other party"), el("th", {}, "Other IMEI"), el("th", {}, "Other area"),
       ]),
       el("tr", { class: "filter-row" }, [
@@ -143,6 +149,8 @@ function recordsCard(datasets, onUserDetect) {
     call_type: fType.value,
     area: fArea.value,
     other_party: fParty.value,
+    sort: sortCol || "",
+    dir: sortCol ? sortDir : "",
   });
 
   const loadUsers = async () => {
@@ -180,7 +188,9 @@ function recordsCard(datasets, onUserDetect) {
     }
     if (mine !== seq) return;
     clear(tbody);
-    durHead.textContent = unitPicker.value === "min" ? "Duration (min)" : "Duration (s)";
+    tsBtn.textContent = "Timestamp" + sortMark("timestamp");
+    durBtn.textContent =
+      (unitPicker.value === "min" ? "Duration (min)" : "Duration (s)") + sortMark("duration_seconds");
     if (res.total === 0) {
       tbody.appendChild(statusRow("No records match the current filters."));
       return;
@@ -216,6 +226,13 @@ function recordsCard(datasets, onUserDetect) {
   };
 
   const refilter = () => { offset = 0; load(); };
+  const sortBy = (col) => {
+    if (sortCol === col) sortDir = sortDir === "asc" ? "desc" : "asc";
+    else { sortCol = col; sortDir = "asc"; }
+    refilter();
+  };
+  tsBtn.addEventListener("click", () => sortBy("timestamp"));
+  durBtn.addEventListener("click", () => sortBy("duration_seconds"));
   picker.addEventListener("change", async () => { offset = 0; await loadUsers(); load(); });
   unitPicker.addEventListener("change", () => load());
   fPhone.addEventListener("change", refilter);

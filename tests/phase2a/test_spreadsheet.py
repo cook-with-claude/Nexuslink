@@ -189,6 +189,41 @@ def test_records_filters_compose(client, two_user_dataset_id):
     assert data["rows"][0]["area"] == "A1"
 
 
+# ---- records sorting ----
+
+def test_records_sort_by_timestamp(client, two_user_dataset_id):
+    newest = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records"
+        "?sort=timestamp&dir=desc").get_json()["data"]["rows"]
+    stamps = [r["timestamp"] for r in newest]
+    assert stamps == sorted(stamps, reverse=True)
+    oldest = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records?sort=timestamp").get_json()["data"]["rows"]
+    assert [r["timestamp"] for r in oldest] == sorted(stamps)
+
+
+def test_records_sort_by_duration(client, two_user_dataset_id):
+    longest = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records"
+        "?sort=duration_seconds&dir=desc").get_json()["data"]["rows"]
+    assert [r["duration_seconds"] for r in longest] == [60, 30, 0]
+
+
+def test_records_sort_composes_with_filters(client, two_user_dataset_id):
+    rows = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records"
+        "?phone_number=500&sort=duration_seconds&dir=desc").get_json()["data"]["rows"]
+    assert [r["duration_seconds"] for r in rows] == [60, 0]
+
+
+def test_records_unknown_sort_falls_back_to_import_order(client, two_user_dataset_id):
+    rows = client.get(
+        f"/api/datasets/{two_user_dataset_id}/records"
+        "?sort=phone_number; DROP TABLE cdr_records").get_json()["data"]["rows"]
+    ids = [r["id"] for r in rows]
+    assert ids == sorted(ids)
+
+
 # ---- frequency explorer ----
 
 def test_frequency_unknown_target_404(client):

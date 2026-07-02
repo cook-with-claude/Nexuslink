@@ -88,12 +88,25 @@ def count_records(conn, dataset_id, phone_number=None, call_type=None,
     return conn.execute("SELECT COUNT(*) AS n" + where, params).fetchone()["n"]
 
 
+# Sortable columns for the records page (whitelist — identifiers can't be
+# bound, so only these names ever reach the ORDER BY).
+RECORD_SORT_FIELDS = ("timestamp", "duration_seconds")
+
+
 def read_records_page(conn, dataset_id, offset, limit, phone_number=None,
-                      call_type=None, area=None, other_party=None) -> list[dict]:
+                      call_type=None, area=None, other_party=None,
+                      sort=None, descending=False) -> list[dict]:
     where, params = _records_where(dataset_id, phone_number, call_type, area, other_party)
+    if sort is None:
+        order = " ORDER BY id"
+    else:
+        if sort not in RECORD_SORT_FIELDS:
+            raise ValueError(f"unsortable column: {sort}")
+        # id as tie-break keeps paging stable across equal values.
+        order = f" ORDER BY {sort} {'DESC' if descending else 'ASC'}, id"
     sql = (
         "SELECT id, phone_number, imei, area, timestamp, call_type, duration_seconds, "
-        "other_party, other_imei, other_area" + where + " ORDER BY id LIMIT ? OFFSET ?"
+        "other_party, other_imei, other_area" + where + order + " LIMIT ? OFFSET ?"
     )
     rows = conn.execute(sql, params + [limit, offset]).fetchall()
     return [dict(r) for r in rows]

@@ -10,7 +10,7 @@ import pytest
 from openpyxl import load_workbook
 
 from app import create_app
-from app.analysis.export import HEADERS, XLSX_MIMETYPE
+from app.analysis.export import AREAS_HEADERS, CONTACTS_HEADERS, HEADERS, XLSX_MIMETYPE
 
 
 @pytest.fixture()
@@ -66,6 +66,32 @@ def test_export_all_targets(client, two_targets):
     assert not_analyzed["Target"] == "B"
     assert not_analyzed["Analyzed at"] == "not analyzed"
     assert not_analyzed["Home area"] in (None, "")
+
+
+def test_export_has_no_confidence_on_tallies(client, two_targets):
+    """Frequent areas/contacts are counts, not gated verdicts — no confidence
+    columns anywhere in the workbook except Home/Work on the Summary sheet."""
+    assert "Frequent areas confidence" not in HEADERS
+    for headers in (AREAS_HEADERS, CONTACTS_HEADERS):
+        assert not any("confidence" in h.lower() for h in headers)
+
+
+def test_export_detail_sheets(client, two_targets):
+    res = client.get("/api/export/results.xlsx")
+    wb = load_workbook(io.BytesIO(res.data))
+    assert wb.sheetnames == ["Summary", "Frequent areas", "Frequent contacts"]
+
+    areas = list(wb["Frequent areas"].iter_rows(values_only=True))
+    assert list(areas[0]) == AREAS_HEADERS
+    # Target A (analyzed) contributes ranked area rows; Hamra is its top area.
+    a_rows = [r for r in areas[1:] if r[1] == "A"]
+    assert a_rows and a_rows[0][3] == 1 and a_rows[0][4] == "Hamra"
+    # Target B (not analyzed) contributes none.
+    assert not any(r[1] == "B" for r in areas[1:])
+
+    contacts = list(wb["Frequent contacts"].iter_rows(values_only=True))
+    assert list(contacts[0]) == CONTACTS_HEADERS
+    assert all(r[1] == "A" for r in contacts[1:])
 
 
 def test_export_single_target_scope(client, two_targets):

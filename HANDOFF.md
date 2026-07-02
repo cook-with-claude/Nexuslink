@@ -4,7 +4,27 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-02 - Claude: Spreadsheet round 3 (Khaled's tweaks) on `spreadsheet` - FOR REVIEW
+## 2026-07-02 - Claude: Spreadsheet round 4 — column sorting + export workbook redo on `spreadsheet` - FOR REVIEW
+
+Two changes from Khaled's third pass:
+
+1. **Sortable Timestamp/Duration columns** — clicking the header toggles oldest/newest
+   (Timestamp) or shortest/longest (Duration). Server-side so it spans all pages and composes
+   with the header filters: `sort` (whitelisted `RECORD_SORT_FIELDS` in `datasets/repo.py`,
+   ValueError on anything else as defense-in-depth; route treats unknown as unsorted) +
+   `dir=asc|desc` on GET /records; `ORDER BY <col>, id` tie-break keeps paging stable.
+2. **Export workbook reorganized** (`analysis/export.py` rewrite) — three sheets:
+   `Summary` (one row per target: home/work areas + their confidence, compact frequent-areas
+   text), `Frequent areas` (ranked rows: rank/area/count/share as a real % cell), and
+   `Frequent contacts` (per-contact call/SMS splits, previously not exported at all).
+   **Frequent-areas confidence removed entirely** (header + cells) — same "a count is not a
+   verdict" rule as the UI; the stored payload still carries it, export just doesn't render it.
+   Styling: bold white-on-slate header row, frozen top row, autofilter on every sheet,
+   content-sized column widths, italic-gray "not analyzed".
+
+Verified: 184 passed (178 → +4 sort, +2 export), ruff clean, lint-imports 4 contracts KEPT,
+phase1_cdr diff vs main empty. api.md updated (records sort params + workbook layout note).
+
 
 Four changes from Khaled's second live pass:
 

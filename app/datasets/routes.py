@@ -117,12 +117,19 @@ def dataset_records(dataset_id: int):
         call_type = None
     filters = dict(phone_number=phone_number, call_type=call_type,
                    area=area, other_party=other_party)
+    # Optional column sort (whitelisted in the repo); anything else falls back
+    # to import order, same spirit as the malformed-param fallbacks above.
+    sort = request.args.get("sort")
+    if sort not in repo.RECORD_SORT_FIELDS:
+        sort = None
+    descending = request.args.get("dir") == "desc"
     return ok({
         "total": repo.count_records(db, dataset_id, **filters),
         "offset": offset,
         "limit": limit,
         "phone_number": phone_number,
-        "rows": repo.read_records_page(db, dataset_id, offset, limit, **filters),
+        "rows": repo.read_records_page(db, dataset_id, offset, limit, **filters,
+                                       sort=sort, descending=descending),
     })
 
 
