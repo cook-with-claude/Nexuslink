@@ -125,7 +125,7 @@ export const api = {
 // Binary download (.xlsx), so it can't go through request()'s JSON envelope
 // unwrap. Errors DO still arrive as the envelope and surface as ApiError; a 401
 // follows the same global redirect policy as everything else in the app area.
-export async function downloadResultsXlsx(targetId) {
+export async function downloadResultsXlsx(targetId, filename) {
   const url = "/api/export/results.xlsx" + (targetId ? "?target_id=" + targetId : "");
   let res;
   try {
@@ -143,7 +143,7 @@ export async function downloadResultsXlsx(targetId) {
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "lapassion_results.xlsx";
+  a.download = filename || "lapassion_results.xlsx";
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -4,6 +4,16 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-02 - Claude: Export file-name picker on `spreadsheet` - FOR REVIEW
+
+Small SPA-only follow-up: the Export screen gets a "File name" text input (default
+`lapassion_results`). Client-side only — the name feeds the download anchor's `download`
+attribute in `api.js:downloadResultsXlsx(targetId, filename)`; filesystem-illegal characters
+stripped, `.xlsx` appended exactly once, blank falls back to the default. No backend change
+(the server's Content-Disposition stays the generic default; the anchor name wins in-app).
+Khaled also asked for frequent contacts in the export — already there since round 4
+(third sheet); pointed him at the sheet tabs.
+
 ## 2026-07-02 - Claude: Spreadsheet round 4 — column sorting + export workbook redo on `spreadsheet` - FOR REVIEW
 
 Two changes from Khaled's third pass:

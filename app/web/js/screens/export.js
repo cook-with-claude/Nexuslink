@@ -34,13 +34,25 @@ export async function exportScreen(app) {
       .concat(targets.map((t) =>
         el("option", { value: String(t.id) }, `${t.name} — ${t.phone_number}`))));
 
+  const nameInput = el("input", {
+    type: "text", id: "ex-name", value: "lapassion_results", spellcheck: "false",
+  });
+
+  // Filesystem-illegal characters stripped; ".xlsx" is always appended (typing
+  // it yourself is fine — it won't double up). Blank falls back to the default.
+  const chosenFilename = () => {
+    const clean = nameInput.value
+      .replace(/[\\/:*?"<>|]/g, "").trim().replace(/\.xlsx$/i, "").trim();
+    return (clean || "lapassion_results") + ".xlsx";
+  };
+
   const btn = el("button", { class: "btn btn-primary" }, [icon("download"), "Download .xlsx"]);
   const errSlot = el("div");
   btn.addEventListener("click", async () => {
     clear(errSlot);
     btn.disabled = true;
     try {
-      await downloadResultsXlsx(scope.value || null);
+      await downloadResultsXlsx(scope.value || null, chosenFilename());
       toast("Export downloaded");
     } catch (e) {
       errSlot.appendChild(msg(e.message));
@@ -51,6 +63,8 @@ export async function exportScreen(app) {
 
   card.appendChild(el("label", { for: "ex-scope" }, "Scope"));
   card.appendChild(scope);
+  card.appendChild(el("label", { for: "ex-name" }, "File name (.xlsx added automatically)"));
+  card.appendChild(nameInput);
   card.appendChild(errSlot);
   card.appendChild(el("div", { class: "form-actions" }, [btn]));
   body.appendChild(card);
