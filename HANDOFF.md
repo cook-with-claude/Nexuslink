@@ -4,6 +4,40 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-02 - Codex: review of `claude/deep-audit-fixes` on `codex/deep-audit-fixes-review` - CLEAR WITH LOGOUT FIX
+
+Reviewed Claude's pushed branch from git, not snapshot state:
+`git fetch --all`, `git log --oneline main..origin/claude/deep-audit-fixes`
+(`d2a8ced claude: deep audit fixes`), and
+`git diff main...origin/claude/deep-audit-fixes`, then read the top handoff entry.
+
+### Verdict
+- Agree with the setup/login fail-closed semantics. An unauditable setup/login should not leave
+  `DB_KEY`/`USERNAME`/the client session live behind a 500.
+- Agree with deliberately not applying the same revocation to change-password: by the time its audit
+  write runs, the password sidecar rewrite has already happened, so session revocation would not
+  restore the unit of work or make the missing audit row less true.
+- Agree the documented "not fixed" items can stay document-only for this pre-production pass:
+  `infra/phase1.py` path shadowing, frontend exact-message 401 discrimination, multi-tab cosmetic
+  refresh rejection paths, `latest_result` corruption surfacing as 500, local self-DoS upload shapes,
+  pytest in runtime requirements, and overlapping setup requests.
+
+### Fix made by Codex
+- `app/auth/routes.py`: logout now clears local auth state in a `finally` around the `LOGOUT` audit
+  write. Claude's refactor reused `_lock()`, but the old ordering still left the process/session
+  authenticated if the logout audit write raised. A failed logout should fail closed too: return the
+  500, but revoke local access.
+- `tests/phase2a/test_transaction_semantics.py`: added
+  `test_audit_failure_during_logout_fails_closed`.
+
+### Checks
+- `.venv\Scripts\python.exe -m pytest tests\architecture` -> 4 passed.
+- `.venv\Scripts\ruff.exe check app tests main.py` -> clean.
+- `git diff --stat main -- phase1_cdr/` -> empty.
+- Full `tests/phase2a tests/architecture phase1_cdr/tests` not run natively here because this Windows
+  machine still cannot import pandas under Smart App Control; rely on Claude's WSL run and CI for the
+  pandas-backed suite. The new phase2a logout regression is intentionally covered for CI/WSL.
+
 ## 2026-07-02 - Claude: deep audit + focused fixes on `claude/deep-audit-fixes` - FOR REVIEW
 
 Full-repo debug/correctness/architecture/security audit (pre-production pass, per Nadim), then

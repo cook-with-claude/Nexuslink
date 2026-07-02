@@ -86,8 +86,11 @@ def login():
 @login_required
 def logout():
     username = current_username()
-    _audit(username, audit.LOGOUT)
-    _lock()
+    try:
+        _audit(username, audit.LOGOUT)
+    finally:
+        # Logout should still revoke local auth state if the audit write fails.
+        _lock()
     return ok({})
 
 

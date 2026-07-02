@@ -83,6 +83,17 @@ def test_audit_failure_during_login_fails_closed(client, monkeypatch):
     assert client.get("/api/datasets").status_code == 401
 
 
+def test_audit_failure_during_logout_fails_closed(client, monkeypatch):
+    """A logout request must revoke local auth state even if the LOGOUT audit write
+    fails; preserving access after a failed logout would fail open."""
+    monkeypatch.setattr(audit_log, "write_audit", _boom)
+    with pytest.raises(RuntimeError):
+        client.post("/api/logout")
+    assert client.application.config["DB_KEY"] is None
+    assert client.application.config["USERNAME"] is None
+    assert client.get("/api/datasets").status_code == 401
+
+
 def test_audit_failure_during_setup_fails_closed(app_data_dir, monkeypatch):
     """Same contract as login. The on-disk account survives (it was created before
     the audit write), so a later login succeeds once auditing is healthy again."""
