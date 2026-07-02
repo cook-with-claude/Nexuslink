@@ -390,6 +390,10 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* ---- result blocks ---- */
 .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
+/* .card + .card's stacking margin must not fire on side-by-side cards in the
+   grid — it pushed the second (Work) card 16px below Home. The grid gap owns
+   ALL spacing here, including when the grid collapses to one column. */
+.result-grid > .card + .card { margin-top: 0; }
 @media (max-width: 880px) { .result-grid { grid-template-columns: 1fr; } }
 .result-area { font-family: var(--mono); font-size: var(--fs-h1); margin-top: var(--s1); }
 .alts { color: var(--fg-muted); font-size: var(--fs-sm); margin-top: var(--s2); }
