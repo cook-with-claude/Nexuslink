@@ -44,11 +44,18 @@ def _sheet(res):
 def test_export_requires_auth(app_data_dir):
     app = create_app()
     app.config.update(TESTING=True)
-    assert app.test_client().get("/api/export/results.xlsx").status_code == 401
+    assert app.test_client().post("/api/export/results.xlsx").status_code == 401
+
+
+def test_export_rejects_get(client, two_targets):
+    """Export writes an EXPORT audit row, so it is POST-only: a GET (and the
+    HEAD Flask would auto-add to a GET) must not reach the handler and log a
+    phantom export where no bytes actually left the store."""
+    assert client.get("/api/export/results.xlsx").status_code == 405
 
 
 def test_export_all_targets(client, two_targets):
-    res = client.get("/api/export/results.xlsx")
+    res = client.post("/api/export/results.xlsx")
     assert res.status_code == 200
     assert res.mimetype == XLSX_MIMETYPE
     assert "attachment" in res.headers["Content-Disposition"]
@@ -77,7 +84,7 @@ def test_export_has_no_confidence_on_tallies(client, two_targets):
 
 
 def test_export_detail_sheets(client, two_targets):
-    res = client.get("/api/export/results.xlsx")
+    res = client.post("/api/export/results.xlsx")
     wb = load_workbook(io.BytesIO(res.data))
     assert wb.sheetnames == ["Summary", "Frequent areas", "Frequent contacts"]
 
@@ -96,22 +103,22 @@ def test_export_detail_sheets(client, two_targets):
 
 def test_export_single_target_scope(client, two_targets):
     id_a, _ = two_targets
-    ws = _sheet(client.get(f"/api/export/results.xlsx?target_id={id_a}"))
+    ws = _sheet(client.post(f"/api/export/results.xlsx?target_id={id_a}"))
     rows = list(ws.iter_rows(values_only=True))
     assert len(rows) == 2                       # header + just target A
     assert rows[1][1] == "A"
 
 
 def test_export_unknown_target_404(client, two_targets):
-    assert client.get("/api/export/results.xlsx?target_id=999").status_code == 404
+    assert client.post("/api/export/results.xlsx?target_id=999").status_code == 404
 
 
 def test_export_bad_target_id_400(client, two_targets):
-    assert client.get("/api/export/results.xlsx?target_id=abc").status_code == 400
+    assert client.post("/api/export/results.xlsx?target_id=abc").status_code == 400
 
 
 def test_export_writes_audit_row(client, two_targets):
-    client.get("/api/export/results.xlsx")
+    client.post("/api/export/results.xlsx")
     # The audit trail is the point of auditing EXPORT: data leaving the
     # encrypted store. Read it back through the app's own DB.
     from app.auth import account

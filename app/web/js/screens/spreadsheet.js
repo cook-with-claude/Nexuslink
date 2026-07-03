@@ -264,20 +264,24 @@ function detectionCard(datasets) {
   let picker = null;
   let btn = null;
   let slot = null;
+  let seq = 0; // drop stale detections when a newer run starts (e.g. runFor from a fast second phone-click)
 
   const run = async (targetId) => {
+    const mine = ++seq;
     clear(slot);
     btn.disabled = true;
     slot.appendChild(loading("Analyzing…"));
     try {
       const payload = await api.analyze(targetId);
+      if (mine !== seq) return; // a newer run superseded this one — don't render a stale verdict
       clear(slot);
       renderDetection(slot, payload);
     } catch (e) {
+      if (mine !== seq) return;
       clear(slot);
       slot.appendChild(msg(e.message));
     } finally {
-      btn.disabled = false;
+      if (mine === seq) btn.disabled = false;
     }
   };
 
@@ -457,8 +461,16 @@ function explorerCard(datasets) {
 }
 
 function renderTally(slot, res) {
-  if (res.total_records === 0 || res.top.length === 0) {
+  if (res.total_records === 0) {
     slot.appendChild(el("div", { class: "empty" }, "No records match the current filter."));
+    return;
+  }
+  if (res.top.length === 0) {
+    // Records matched, but every one is NULL for the ranked column (e.g.
+    // ranking by call partner over location-only rows). Saying "no records
+    // match" here would be a lie — the filter matched total_records of them.
+    slot.appendChild(el("div", { class: "empty" },
+      `${res.total_records} record(s) match, but none carry a value for this ranking.`));
     return;
   }
   const display = (v) => (res.rank_by === "call_type" ? callTypeDisplay(v) : String(v));

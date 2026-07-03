@@ -129,7 +129,10 @@ export async function downloadResultsXlsx(targetId, filename) {
   const url = "/api/export/results.xlsx" + (targetId ? "?target_id=" + targetId : "");
   let res;
   try {
-    res = await fetch(url);
+    // POST (not GET): the endpoint writes an EXPORT audit row, so it must not be
+    // a safe/idempotent method the browser or webview can HEAD/prefetch/replay.
+    // No body, so login_required's JSON-content-type guard doesn't apply.
+    res = await fetch(url, { method: "POST" });
   } catch {
     throw new ApiError("NETWORK", "could not reach the server", 0);
   }

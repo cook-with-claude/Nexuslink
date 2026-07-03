@@ -87,7 +87,7 @@ dataset); the UI filters client-side (API-MISMATCH #3 in `main.py`).
 | POST | `/api/targets/<id>/analyze` | required | `top_n` (default 5, clamped ≥0) | `200 <payload>` (also persisted) | `404 NOT_FOUND` |
 | GET | `/api/targets/<id>/result` | required | — | `200 <payload>` | `404 NOT_FOUND` (no target, or no analysis yet) |
 | GET | `/api/targets/<id>/frequency` | required | `rank_by` (`area`\|`other_party`\|`call_type`, default `area`), filters: `call_type`, `area`, `date_from`/`date_to` (YYYY-MM-DD), `hour_from`/`hour_to` (0–23, may wrap midnight) | `200 {target,rank_by,total_records,top:[{value,count}]}` | `404 NOT_FOUND`, `400 BAD_REQUEST` |
-| GET | `/api/export/results.xlsx` | required | `target_id` (int, or `all`/omitted for every target) | `200` .xlsx attachment | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| POST | `/api/export/results.xlsx` | required | `target_id` (int, or `all`/omitted for every target) | `200` .xlsx attachment | `404 NOT_FOUND`, `400 BAD_REQUEST` |
 
 `frequency` is the Spreadsheet tab's filtered explorer: a **plain descriptive count** over the
 target's filtered records. It deliberately returns no confidence/gates — filters are legitimate
@@ -116,7 +116,8 @@ result JSON. Payload shape:
 
 Every state-changing endpoint writes an `audit_log` row inside the same transaction it commits
 (`app/audit/log.py`): `SETUP, LOGIN_SUCCESS, LOGOUT, CHANGE_PASSWORD, IMPORT, DATASET_DELETE,
-TARGET_CREATE, TARGET_DELETE, ANALYSIS, EXPORT`. `EXPORT` is the one audited GET — it changes no
-app state, but detection answers leaving the encrypted store is exactly what the trail is for.
+TARGET_CREATE, TARGET_DELETE, ANALYSIS, EXPORT`. `EXPORT` changes no app state, but detection
+answers leaving the encrypted store is exactly what the trail is for; it is a **POST** (not a GET)
+precisely so the audited action can't be replayed by a browser/webview HEAD, prefetch, or reload.
 Failed logins can't reach the encrypted DB (no key), so they
 append to the plaintext `login_failures.log` sidecar (`LOGIN_FAIL`) — best-effort, **not** tamper-evident.

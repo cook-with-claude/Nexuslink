@@ -4,6 +4,49 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Claude: code-review fixes #1-#4 on `claude/spreadsheet-fixes` - FOR REVIEW
+
+Branched off `origin/spreadsheet` (Khaled's feature branch, in review). A high-effort code review
+of that branch surfaced 10 findings; this fixes the top 4 (the correctness-relevant ones). The
+other 6 (export not resilient to a malformed/partial stored `result_json`, call_type validation
+inconsistency between the records vs frequency endpoints, `loadUsers()` in-flight race, duration
+unit-toggle full refetch, filename double-`.xlsx`, plus a duplication cluster between `results.js`
+and `spreadsheet.js`) are left for a follow-up / Khaled's call.
+
+### Fixed (each with a regression test where testable)
+1. **Detection stale-render race** (`app/web/js/screens/spreadsheet.js` `detectionCard.run`):
+   `run()` had no latest-wins guard, so two fast phone-clicks in the Records grid (`runFor` bypasses
+   the button's `disabled`) could render subscriber A's home/work under B's selection — the
+   worst-case failure for this app. Added a `seq`/`mine` token mirroring the records `load()` guard;
+   a superseded run neither renders nor re-enables the button. (JS-only; covered by `node --check`.)
+2. **Frequency "No records match" lie** (`spreadsheet.js` `renderTally`): the empty-state fired on
+   `total_records === 0 || top.length === 0`, so an all-NULL ranked column (e.g. rank-by-partner over
+   location-only rows) reported "no records match" when N matched. Split into two messages: true-empty
+   vs "N record(s) match, but none carry a value for this ranking." (JS-only.)
+3. **Frequency `area` filter case-sensitivity** (`app/analysis/repo.py` `frequency`): was `area = ?`
+   (case- and whitespace-exact) while the Records grid's area filter is ASCII case-insensitive LIKE,
+   so `hamra` typed in the explorer returned 0 for `Hamra`. Now `area = ? COLLATE NOCASE`. Kept
+   **exact** (not substring) on purpose — the field's placeholder is "exact area" and a tally must
+   not merge `Hamra` with `Hamburg`. Test: `test_frequency_area_filter_is_case_insensitive`.
+4. **Export was a committing GET** (`app/analysis/routes.py` `export_results`): it writes an EXPORT
+   audit row + commits, but a GET is auto-given a HEAD by Flask and is prefetch/reload-idempotent —
+   each of which logs a phantom export where no bytes leave. Changed to **POST** (bodyless, so
+   `login_required`'s JSON-content-type guard doesn't apply, same as `analyze`). Updated the caller
+   (`app/web/js/api.js` `downloadResultsXlsx` → `fetch(url, {method:"POST"})`; the download is already
+   fetch→blob so nothing else changes), the 7 test calls in `test_export.py`, and `docs/reference/api.md`.
+   New test `test_export_rejects_get` asserts 405.
+
+### Verification (WSL `/root/lp-venv`, the canonical Linux/3.11 path)
+- `pytest tests/phase2a tests/architecture phase1_cdr/tests` → **186 passed** (184 → +2 regression).
+- `ruff check app tests main.py` → clean. `lint-imports` → 4 contracts KEPT.
+- `node --check` on the two changed JS files → clean. `git diff --stat main -- phase1_cdr/` → empty.
+
+### Left for Codex/Nadim
+- This branch sits on top of `origin/spreadsheet`; review it as the incremental diff
+  (`git diff origin/spreadsheet...claude/spreadsheet-fixes`). Merge order is Nadim's call — either
+  fold into `spreadsheet` before it merges, or land right after.
+- The 6 non-fixed findings above are documented for a deliberate follow-up; none are blockers.
+
 ## 2026-07-03 - Claude: Home/Work result cards were not level - FOR REVIEW
 
 One-line CSS fix (`9fe7a61`): `.card + .card { margin-top: var(--s4) }` — the stacked-cards

@@ -63,7 +63,12 @@ def frequency(conn, dataset_id, phone_number, rank_by, *, call_type=None, area=N
         where.append("call_type = ?")
         binds.append(call_type)
     if area is not None:
-        where.append("area = ?")
+        # Case-insensitive exact match: the explorer's "exact area" filter should
+        # match regardless of capitalization (the records grid's LIKE filter is
+        # already ASCII case-insensitive, so typing "hamra" there finds "Hamra").
+        # Substring is deliberately NOT used here -- a tally over an exact area
+        # must not merge distinct areas like "Hamra" and "Hamburg".
+        where.append("area = ? COLLATE NOCASE")
         binds.append(area)
     # Timestamps are stored as naive ISO-8601 ("YYYY-MM-DDTHH:MM:SS"), so the
     # date is a prefix substring and the hour sits at chars 12-13.

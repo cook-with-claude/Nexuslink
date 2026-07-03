@@ -251,6 +251,15 @@ def test_frequency_unfiltered_ranks_area(client, target_id):
                            {"value": "A3", "count": 1}]
 
 
+def test_frequency_area_filter_is_case_insensitive(client, target_id):
+    """The explorer's "exact area" filter matches regardless of capitalization,
+    so a value copied from the case-insensitive records grid still counts."""
+    data = client.get(
+        f"/api/targets/{target_id}/frequency?area=a1").get_json()["data"]
+    assert data["total_records"] == 3
+    assert data["top"] == [{"value": "A1", "count": 3}]
+
+
 def test_frequency_is_a_tally_not_a_detection(client, target_id):
     """The explorer's contract: no confidence, no gates, no home/work labels."""
     data = client.get(f"/api/targets/{target_id}/frequency").get_json()["data"]

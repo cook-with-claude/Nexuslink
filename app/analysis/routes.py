@@ -118,12 +118,14 @@ def frequency(target_id: int):
     })
 
 
-@bp.get("/export/results.xlsx")
+@bp.post("/export/results.xlsx")
 @login_required
 def export_results():
     """App-wide export of the stored detection answers (all targets by default,
-    one target via ?target_id=). Read-only for app state, but data leaving the
-    encrypted store is exactly what the audit trail exists for -> EXPORT row."""
+    one target via ?target_id=). It writes an EXPORT audit row (data leaving the
+    encrypted store is exactly what the trail exists for), so it is a POST, not a
+    GET: a GET is auto-given a HEAD by Flask and is prefetch/reload-idempotent,
+    both of which would log phantom exports where no bytes actually left."""
     db = get_db()
     raw = request.args.get("target_id")
     target_id = None
