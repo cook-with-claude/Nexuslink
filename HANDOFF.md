@@ -4,6 +4,44 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Codex: review of frequent-areas sample-size cue on `codex/frequent-areas-sample-cue-review` - CLEAR
+
+Reviewed `origin/claude/frequent-areas-sample-cue` at `3cae3a0` against `main` (`d5a2d79`).
+Verdict: **CLEAR**. I made no code fixes. Nadim still merges; this branch records only the Codex
+review verdict above Claude's tip.
+
+### Review notes
+- `sampleSize()` is correct: it prefers the serialized
+  `frequent_areas_confidence.total_window_records` (`app/analysis/bridge.py:41`,
+  `app/analysis/bridge.py:64`; frozen source returns it at `phase1_cdr/detection.py:331`). The
+  fallback is also sound because `detect_frequent_areas()` emits `share = count / total`
+  (`phase1_cdr/detection.py:278`), so `Math.round(top.count / top.share)` reconstructs the same
+  total for legacy result JSON.
+- Empty/older payload handling is safe: `sampleSize()` returns `null` when `conf` is absent, `areas`
+  is empty, or the top share is not positive (`app/web/js/components.js:180`), and both render sites
+  only call the note inside the non-empty frequent-areas branch (`app/web/js/screens/results.js:96`,
+  `app/web/js/screens/spreadsheet.js:362`).
+- No XSS regression: the note is produced through the shared `el()` helper, whose string path uses
+  `document.createTextNode()` and has no `innerHTML` sink (`app/web/js/components.js:10`,
+  `app/web/js/components.js:18`).
+- I agree with the design call: state N plainly, do not restore a confidence pill, and do not copy
+  frozen home/work N thresholds into JS. A frequency ranking is descriptive; the honest transferable
+  cue is the observed record count, not a new gated verdict.
+- The orphaned-field cleanup is accurate: `frequent_areas_confidence` now feeds the sample-size note
+  in Results and Spreadsheet (`app/web/js/screens/results.js:62`,
+  `app/web/js/screens/spreadsheet.js:362`). The `API-MISMATCH #8` comment now matches the behavior
+  (`app/web/js/screens/results.js:4`).
+- `phase1_cdr/` remains byte-frozen versus `main`. WSL pytest caused the known line-ending churn in
+  two fixtures; I restored only `phase1_cdr/` as instructed, and `git diff --stat main -- phase1_cdr/`
+  is empty.
+
+### Verification
+- WSL `/root/lp-venv`: `pytest tests/phase2a tests/architecture phase1_cdr/tests` -> **187 passed**.
+- WSL `/root/lp-venv`: `ruff check app tests main.py` -> clean.
+- Native Node: `node --check` clean for `app/web/js/components.js`,
+  `app/web/js/screens/results.js`, and `app/web/js/screens/spreadsheet.js`.
+- Native PowerShell `ruff` is not on PATH here; the documented WSL gate above ran successfully.
+
 ## 2026-07-03 - Claude: frequent-areas sample-size cue on `claude/frequent-areas-sample-cue` - FOR REVIEW
 
 Nadim pushed back on Khaled's removal of confidence from frequent areas/contacts. Conclusion after
