@@ -4,6 +4,29 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Claude: SESSION CLOSE — #10 pushed FOR REVIEW; pickup checklist
+
+Session wrap-up. One feature in flight (GitHub #10), pushed to origin, awaiting Codex review.
+
+### Branch state
+- **`origin/claude/weak-gate-surfacing`** (`139354e`, based on `main` `d74dce7`) — GitHub #10
+  (binding-gate + weak-gate-count caption). Presentation-only, Phase 1 frozen, 187 green,
+  real-app screenshots done. Full detail in the entry directly below.
+- **`main`** = `d74dce7` (unchanged this session).
+- **`claude/session-close`** = `445e9dd` — LAST session's bookkeeping commit (HANDOFF/README:
+  2C→"Complete" flip), **still unmerged to main**. Not touched this session so the #10 diff stays clean.
+
+### Pickup checklist for next session (before Nadim merges #10)
+1. **Codex reviews** `origin/claude/weak-gate-surfacing` (diff = `git diff main...origin/claude/weak-gate-surfacing`,
+   4 src files + HANDOFF). Review focus: the "Held at {level} by …" phrasing + the suppress-on-High call.
+2. Apply any Codex fixes on the same branch; re-run WSL suite (should stay 187) + `node --check`.
+3. **Nadim merges #10** (fast-forward `main`), prune the branch.
+4. **Decide `445e9dd`**: fold last session's bookkeeping into `main` (or discard) — it's the only
+   other unmerged ref. If merged, the README 2C row goes to "Complete" on `main`.
+5. Still open, non-blocking: GitHub **#14–#17** (spreadsheet polish; #14+#17 are the cheap pair),
+   and the methodology cluster **#2/#7/#8/#9** (mostly gated behind frozen Phase 1 / real-data calibration).
+6. **Phase 3** still parked (first move: wire `migrations.migrate(g.db)` into `app/api/guards.py:get_db()`).
+
 ## 2026-07-03 - Claude: GitHub #10 — surface binding gate(s) + weak-gate count on `claude/weak-gate-surfacing` - FOR REVIEW
 
 Implements GitHub issue #10 (refines #2): the headline confidence is `min()` across the
