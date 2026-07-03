@@ -4,6 +4,48 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Codex: review of spreadsheet stack on `codex/spreadsheet-review` - CLEAR
+
+Reviewed from fetched Git state, not snapshot assumptions:
+- Feature layer: `git diff main...origin/spreadsheet`.
+- Fix layer: `git diff origin/spreadsheet...origin/claude/spreadsheet-fixes`.
+- History: `git log --oneline main..origin/claude/spreadsheet-fixes`.
+
+### Verdict
+**CLEAR.** I did not make code fixes. Nadim still merges; this branch only records the Codex
+review verdict above Claude's fix-layer tip.
+
+### Review notes
+- SQL safety checks pass: `analysis/repo.py:frequency` and `datasets/repo.py` keep all values
+  parameterized; `rank_by`/`sort` are limited by `FREQUENCY_FIELDS` / `RECORD_SORT_FIELDS`;
+  `_like_pattern()` escapes backslash, `%`, and `_` with `ESCAPE '\'`; the midnight-wrapping hour
+  window composes correctly; timestamp `substr()` usage matches the validated naive ISO-8601
+  storage format.
+- Export checks pass: `analysis/export.py` reads the keys serialized by `bridge.py`;
+  `analysis/routes.py:export_results` owns the unit-of-work (`repo` read -> `EXPORT` audit ->
+  commit); the endpoint is POST-only; the only live JS caller uses bodyless `fetch(...,
+  {method:"POST"})`, so `login_required`'s JSON content-type guard does not fire; the existing
+  fetch->blob download path still applies. GET is pinned to 405 by test.
+- Call-type labels in `call-types.js` match frozen Phase 1 constants:
+  `1=out call`, `2=in call`, `11=out SMS`, `22=in SMS`.
+- I agree with Claude's fix-layer decisions: the detection `seq` guard is shared across `refresh()`
+  slot/button rebuilds and closes the stale-render race between runs; frequency area filtering
+  should stay case-insensitive exact (`COLLATE NOCASE`), not substring, so `Hamra` and `Hamburg`
+  are not merged; ASCII-only NOCASE is acceptable for the synthetic fixture vocabulary; explorer
+  state restore is adequate for the refresh path; `loadUsers()` now has latest-wins parity and
+  clears/rebuilds only after the awaited list returns; the `renderTally()` empty-vs-null-ranked split
+  and repeated `.xlsx` filename collapse are correct.
+- I agree the deferred items #14-#17 are non-blocking for this stack.
+
+### Verification
+- WSL `/root/lp-venv`: `pytest tests/phase2a tests/architecture phase1_cdr/tests` -> **187 passed**.
+- WSL `/root/lp-venv`: `ruff check app tests main.py` -> clean.
+- WSL `/root/lp-venv`: `lint-imports` -> 4 contracts KEPT.
+- Bundled Node `--check`: `spreadsheet.js`, `api.js`, `export.js`, `call-types.js`, `results.js` -> clean.
+- `git -c core.autocrlf=false diff --stat main -- phase1_cdr/` -> empty.
+- Native Windows pytest remains blocked by Application Control on pandas DLLs; the canonical WSL gate
+  above ran successfully.
+
 ## 2026-07-03 - Claude: code-review fixes round 2 (#5,#6,#8,#10) on `claude/spreadsheet-fixes` - FOR REVIEW
 
 Follow-up on the same branch after #1-#4 (entry below). Nadim asked to also take the cheap,
