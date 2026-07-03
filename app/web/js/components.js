@@ -171,6 +171,31 @@ export function loading(text = "Loading…") {
   return el("div", { class: "loading" }, [el("span", { class: "spinner" }), text]);
 }
 
+// --- sample size (data sufficiency for descriptive tallies) ---
+// A frequency ranking is a description, not a gated inference, so it carries no
+// confidence — BUT any tally over too few records is still shaky. The honest
+// sufficiency signal is N itself (the share gate is a pure ratio, so it would
+// rate "100% of 3 records" as High). We surface N descriptively, never as a pill.
+
+export function sampleSize(areas, conf) {
+  // Prefer the stored frequent-areas confidence's window total (this is the one
+  // consumer of that otherwise-unused field); fall back to deriving N from the
+  // top area's count/share for older stored results that lack it.
+  if (conf && Number.isFinite(conf.total_window_records)) return conf.total_window_records;
+  const top = (areas || [])[0];
+  if (top && top.share > 0) return Math.round(top.count / top.share);
+  return null;
+}
+
+export function sampleNote(areas, conf) {
+  const n = sampleSize(areas, conf);
+  if (n === null) return null;
+  // State N plainly and let the number speak — no invented "thin data" cutoff,
+  // which would just be another ungrounded gate. The count is the whole signal.
+  return el("p", { class: "hint sample-note" },
+    `Ranking of ${n} record${n === 1 ? "" : "s"} — read the shares to judge how firm it is.`);
+}
+
 // --- formatting ---
 export function fmtDate(iso) {
   if (!iso) return "—";

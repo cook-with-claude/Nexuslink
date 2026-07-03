@@ -1,15 +1,16 @@
 // RESULTS. Loads from store.lastResult (set by analyze) or GET /result on reload.
 // API-MISMATCH #6: analyze payload omits the dataset name — join client-side via
 // target -> dataset_id (/api/targets) -> dataset name (/api/datasets).
-// API-MISMATCH #8: frequent_contacts are rendered; frequent_areas_confidence is
-// deliberately NOT — frequent areas/contacts are plain counts, not gated verdicts,
-// so showing a confidence pill there misread as a rating on the tally.
+// API-MISMATCH #8: frequent areas/contacts are plain counts, not gated verdicts,
+// so they carry NO confidence pill (a pill would misread as a rating on the tally).
+// frequent_areas_confidence is used only for its record count (total_window_records)
+// to show a descriptive sample-size note — the one gate that transfers to a tally.
 // API-MISMATCH #9: near_tie tag + alternatives are surfaced (display only).
 
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, confidencePill, gateTrace, fmtDate, icon } from "../components.js";
+import { el, loading, clear, confidencePill, gateTrace, fmtDate, icon, sampleNote } from "../components.js";
 import { setActiveDatasetLabel } from "../statusbar.js";
 
 export async function resultsScreen(app, params) {
@@ -57,8 +58,8 @@ export async function resultsScreen(app, params) {
     detectionCard("Work", payload.work),
   ]));
 
-  // Frequent areas (a count — no confidence by design)
-  body.appendChild(frequentAreasCard(payload.frequent_areas));
+  // Frequent areas (a count — no confidence by design, but show the sample size)
+  body.appendChild(frequentAreasCard(payload.frequent_areas, payload.frequent_areas_confidence));
 
   // Frequent contacts
   body.appendChild(frequentContactsCard(payload.frequent_contacts));
@@ -83,7 +84,7 @@ function detectionCard(title, r) {
   return card;
 }
 
-function frequentAreasCard(areas) {
+function frequentAreasCard(areas, conf) {
   const card = el("div", { class: "card" });
   card.appendChild(el("div", { class: "card-head" }, [
     el("h3", {}, "Frequent areas"),
@@ -92,6 +93,8 @@ function frequentAreasCard(areas) {
   if (!areas || areas.length === 0) {
     card.appendChild(el("div", { class: "empty" }, "No area activity."));
   } else {
+    const note = sampleNote(areas, conf);
+    if (note) card.appendChild(note);
     const rows = areas.map((a) => el("tr", {}, [
       el("td", { class: "data" }, a.area),
       el("td", { class: "num" }, String(a.count)),

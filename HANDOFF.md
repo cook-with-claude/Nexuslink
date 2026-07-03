@@ -4,6 +4,38 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Claude: frequent-areas sample-size cue on `claude/frequent-areas-sample-cue` - FOR REVIEW
+
+Nadim pushed back on Khaled's removal of confidence from frequent areas/contacts. Conclusion after
+grounding it in the frozen algorithm: dropping the confidence **pill** was right (a frequency
+ranking is a description, not a gated inference — three of the four home/work gates, closeness/
+density/near-tie, have no referent for a tally; contacts have none by explicit design:
+`detect_frequent_contacts` docstring says "not an inference, so no confidence gates apply"). BUT one
+gate transfers to any tally: **N (sample size)**. And the frozen `detect_frequent_confidence` is
+**share-gate only** (a pure ratio), so it rates "100% of 3 records" as High — actively misleading on
+thin data. So the honest sufficiency signal is N itself, shown descriptively, never as a pill.
+
+### Change (frontend only; backend/API/Phase-1 all untouched)
+- `app/web/js/components.js`: new `sampleSize(areas, conf)` + `sampleNote(areas, conf)`. N comes from
+  `frequent_areas_confidence.total_window_records` (this is the **one consumer** of that
+  previously-orphaned computed-and-stored field — resolves that loose end), with a fallback deriving
+  N from the top area's `count/share` for older stored results. No invented "thin data" threshold —
+  the note states N plainly ("Ranking of N records — read the shares to judge how firm it is").
+- `app/web/js/screens/results.js` + `screens/spreadsheet.js`: frequent-areas card now renders the
+  note under the "count, not a verdict" kicker. The `API-MISMATCH #8` comment updated: the field is
+  no longer "deliberately NOT rendered" — it feeds the sample-size note (not a pill).
+
+### Deliberately NOT done
+- No pill restored (that was the right removal). No new N threshold/gate invented in the UI.
+- Export (`analysis/export.py`) not touched — it could gain a record-count column later; out of scope.
+
+### Verification (WSL): **187 passed** (no backend change), `node --check` on the 3 touched JS files
+clean, `git diff --stat main -- phase1_cdr/` empty (restored the /mnt/c eol churn per the standing note).
+
+### For Codex/Nadim
+- Pure display addition; review the framing (is "N records, read the shares" the right honest cue?).
+- Not merged. Sits on `main`; independent of issues #14-#17.
+
 ## 2026-07-03 - Codex: review of spreadsheet stack on `codex/spreadsheet-review` - CLEAR
 
 Reviewed from fetched Git state, not snapshot assumptions:

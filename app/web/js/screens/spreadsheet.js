@@ -14,7 +14,7 @@
 import { api } from "../api.js";
 import { shell } from "../layout.js";
 import {
-  el, loading, clear, msg, toast, confidencePill, gateTrace,
+  el, loading, clear, msg, toast, confidencePill, gateTrace, sampleNote,
 } from "../components.js";
 import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
@@ -359,6 +359,8 @@ function renderDetection(slot, payload) {
   if (areas.length === 0) {
     fa.appendChild(el("div", { class: "empty" }, "No area activity."));
   } else {
+    const note = sampleNote(areas, payload.frequent_areas_confidence);
+    if (note) fa.appendChild(note);
     fa.appendChild(el("table", {}, [
       el("thead", {}, el("tr", {}, [
         el("th", {}, "Area"), el("th", { class: "num" }, "Count"), el("th", { class: "num" }, "Share"),
