@@ -14,7 +14,7 @@
 import { api } from "../api.js";
 import { shell } from "../layout.js";
 import {
-  el, loading, clear, msg, toast, confidencePill, gateTrace, sampleNote,
+  el, loading, clear, msg, toast, confidencePill, gateTrace, bindingNote, sampleNote,
 } from "../components.js";
 import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
@@ -335,6 +335,8 @@ function renderDetection(slot, payload) {
       el("div", { class: "card-head" }, [el("h3", {}, title), confidencePill(r)]),
       el("div", { class: "result-area mono" }, (r && r.area) ? r.area : "—"),
     ]);
+    const bn = bindingNote(r);
+    if (bn) b.appendChild(bn);
     if (r && r.alternatives && r.alternatives.length) {
       b.appendChild(el("div", { class: "alts" }, [
         "alternatives: ",

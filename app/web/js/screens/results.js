@@ -10,7 +10,7 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, confidencePill, gateTrace, fmtDate, icon, sampleNote } from "../components.js";
+import { el, loading, clear, confidencePill, gateTrace, bindingNote, fmtDate, icon, sampleNote } from "../components.js";
 import { setActiveDatasetLabel } from "../statusbar.js";
 
 export async function resultsScreen(app, params) {
@@ -73,6 +73,9 @@ function detectionCard(title, r) {
   ]));
   const area = (r && r.area) ? r.area : "—";
   card.appendChild(el("div", { class: "result-area mono" }, area));
+
+  const bn = bindingNote(r);
+  if (bn) card.appendChild(bn);
 
   if (r && r.alternatives && r.alternatives.length) {
     card.appendChild(el("div", { class: "alts" }, [

@@ -142,6 +142,51 @@ export function gateTrace(result, summaryLabel = "Gate trace") {
   ]);
 }
 
+// --- binding gates (what caps the weakest-link confidence) ---
+// The headline confidence is min() across the four gates (frozen Phase 1), so it
+// discards HOW MANY gates sit at the floor: "one Low, three High" (a single
+// fixable weakness) and "all four Low" (hopeless) both render as "Low". This
+// surfaces the binding gate(s) + their count next to the pill so the headline
+// stops throwing away the gate vector. Presentation only — `gates` is already on
+// the result (bridge.py serializes r.gates). See GitHub #10 (refines #2).
+const GATE_SHORT = {
+  N: "sample size",
+  share: "dominance",
+  closeness: "separation",
+  density: "coverage",
+};
+const BINDING_ORDER = ["N", "share", "closeness", "density"];
+
+// Which gate(s) hold the result at its headline level, or null when the notion
+// does not apply (empty window → no gates; a High result → every gate is High,
+// nothing caps it; a tally → no 4-gate dict).
+export function bindingGates(result) {
+  const gates = result && result.gates;
+  if (!gates) return null;
+  const present = BINDING_ORDER.filter((k) => gates[k] !== undefined);
+  if (present.length === 0) return null;
+  const level = result.confidence; // the min() headline
+  if (level === "High") return null; // all gates High — nothing is limiting it
+  const binding = present.filter((k) => gates[k] === level);
+  if (binding.length === 0) return null; // headline not among the gates (shouldn't happen)
+  return { level, binding, total: present.length };
+}
+
+export function bindingNote(result) {
+  const b = bindingGates(result);
+  if (!b) return null;
+  const names = b.binding.map((k) => GATE_SHORT[k]).join(", ");
+  let text;
+  if (b.binding.length === 1) {
+    text = `Held at ${b.level} by one gate: ${names}.`;
+  } else if (b.binding.length === b.total) {
+    text = `Held at ${b.level} by all ${b.total} gates: ${names}.`;
+  } else {
+    text = `Held at ${b.level} by ${b.binding.length} of ${b.total} gates: ${names}.`;
+  }
+  return el("p", { class: "binding-note" }, text);
+}
+
 // --- inline confirm for destructive actions (no native confirm/alert) ---
 export function confirmInline(triggerBtn, onConfirm, label = "Delete?") {
   const parent = triggerBtn.parentElement;

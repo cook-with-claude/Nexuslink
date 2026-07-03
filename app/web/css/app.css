@@ -399,6 +399,16 @@ tbody tr:last-child td { border-bottom: none; }
 .alts { color: var(--fg-muted); font-size: var(--fs-sm); margin-top: var(--s2); }
 .alts .mono { color: var(--fg); }
 
+/* binding-gate caption: explains what caps the weakest-link confidence (GitHub
+   #10). A plain annotation, not a competing verdict — no severity color. */
+.binding-note {
+  margin-top: var(--s2);
+  padding-left: var(--s3);
+  border-left: 2px solid var(--border);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
 /* gate trace */
 details.gate {
   margin-top: var(--s3);

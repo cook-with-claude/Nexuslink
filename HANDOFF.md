@@ -4,6 +4,50 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Claude: GitHub #10 — surface binding gate(s) + weak-gate count on `claude/weak-gate-surfacing` - FOR REVIEW
+
+Implements GitHub issue #10 (refines #2): the headline confidence is `min()` across the
+four gates, so it discards **how many** gates sit at the floor — "one Low, three High" (a single
+fixable weakness) and "all four Low" (hopeless) both render as just "Low". This surfaces the
+**binding gate(s)** + their count as a caption under each Home/Work result. **Presentation only —
+Phase 1 is untouched; `gates` was already serialized at `app/analysis/bridge.py:45`.** Branch is
+based cleanly on `main` (d74dce7).
+
+### Change (frontend only)
+- `app/web/js/components.js`: new shared `bindingGates(result)` + `bindingNote(result)`. `bindingGates`
+  returns the gate keys equal to the headline level (the min), or `null` when the notion doesn't
+  apply — **suppressed on High** (all gates High, nothing caps it), on an empty window (`gates` is
+  null → "Insufficient data"), and on tallies (no 4-gate dict). Wording: one gate →
+  "Held at {level} by one gate: {name}."; partial → "…by N of 4 gates: …"; all → "…by all 4 gates: …".
+  Gate short-names: N→sample size, share→dominance, closeness→separation, density→coverage. **No
+  invented severity color** — plain text carries the gradient, consistent with the sample-size note.
+- `app/web/js/screens/results.js` + `screens/spreadsheet.js`: render `bindingNote(r)` under the
+  result area (above alternatives / gate trace) on both detection cards.
+- `app/web/css/app.css`: `.binding-note` — a subtle left-border caption (annotation, not a competing pill).
+
+### Deliberately NOT done
+- No new severity pill/color or invented "N gates weak" threshold (same discipline as the removed
+  frequent-areas pill). The `min()` floor itself is unchanged — this only stops discarding the gate
+  vector at the surface. Export (`analysis/export.py`) not touched — could gain a binding-gate column later.
+
+### Verification
+- Logic smoke test (DOM-stubbed import of the real `components.js`): one/partial/all wording correct;
+  High + empty-window + tally all suppressed. `node --check` clean on all 3 JS files.
+- **187 pytest passed** (WSL `/root/lp-venv`, unchanged — no Python touched). `git diff --stat main --
+  phase1_cdr/` empty.
+- **Live real-app screenshots** (headless Windows Chrome over CDP, seeded through the real
+  setup→import→analyze pipeline in WSL): Sub 02 → Home "Held at Low by one gate: separation." +
+  Work "Held at Medium by one gate: separation." (two levels, single binding gate each); Sub 05 →
+  Home "Held at Low by one gate: coverage.", Work "Insufficient data" with the note correctly absent.
+
+### For Codex/Nadim
+- Pure display addition; review the framing (is "Held at {level} by …" the right honest phrasing, and
+  is suppress-on-High correct?). Not merged — Nadim merges. Independent of issues #14–#17.
+- **Loose end (not mine to fix unprompted):** `claude/session-close` still carries an unmerged
+  bookkeeping commit `445e9dd` (last session's HANDOFF/README writeup) that never landed on `main`.
+  I based this branch on `main` to keep the #10 diff clean, so it's untouched — Nadim's call whether
+  to merge it.
+
 ## 2026-07-03 - Codex: review of frequent-areas sample-size cue on `codex/frequent-areas-sample-cue-review` - CLEAR
 
 Reviewed `origin/claude/frequent-areas-sample-cue` at `3cae3a0` against `main` (`d5a2d79`).
