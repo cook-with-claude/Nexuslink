@@ -153,17 +153,21 @@ function recordsCard(datasets, onUserDetect) {
     dir: sortCol ? sortDir : "",
   });
 
+  let userSeq = 0; // drop out-of-order phone-list responses from fast dataset switches
   const loadUsers = async () => {
-    clear(fPhone);
-    fPhone.appendChild(el("option", { value: "" }, "All"));
+    const mine = ++userSeq;
+    let users = [];
     try {
-      const users = await api.phoneNumbers(Number(picker.value));
-      users.forEach((u) => fPhone.appendChild(
-        el("option", { value: u.phone_number }, `${u.phone_number} (${u.count})`)));
+      users = await api.phoneNumbers(Number(picker.value));
     } catch {
       // The records request below surfaces any real error; a user list that
       // failed to load just leaves the filter at "All".
     }
+    if (mine !== userSeq) return; // a newer dataset selection superseded this list
+    clear(fPhone);
+    fPhone.appendChild(el("option", { value: "" }, "All"));
+    users.forEach((u) => fPhone.appendChild(
+      el("option", { value: u.phone_number }, `${u.phone_number} (${u.count})`)));
   };
 
   const fmtDuration = (secs) =>
@@ -384,7 +388,18 @@ function explorerCard(datasets) {
   const inner = el("div");
   card.appendChild(inner);
 
+  const FIELD_IDS = ["fx-target", "fx-rank", "fx-type", "fx-area",
+                     "fx-from", "fx-to", "fx-hfrom", "fx-hto"];
+
   const refresh = (targets) => {
+    // Preserve any in-progress filter values across a rebuild — refresh() fires
+    // when a target is created by clicking a phone in the grid, and that click
+    // was aimed at the Detection card, not at wiping the explorer the user set up.
+    const keep = {};
+    for (const id of FIELD_IDS) {
+      const prev = inner.querySelector("#" + id);
+      if (prev) keep[id] = prev.value;
+    }
     clear(inner);
     if (targets.length === 0) {
       inner.appendChild(el("div", { class: "empty" },
@@ -411,6 +426,14 @@ function explorerCard(datasets) {
 
     const field = (labelText, forId, input) =>
       el("div", {}, [el("label", { for: forId }, labelText), input]);
+
+    // Restore preserved values. Setting a <select> to an absent option is a
+    // no-op, so a target that no longer exists just falls back to the prompt.
+    for (const [elmt, id] of [[target, "fx-target"], [rankBy, "fx-rank"],
+        [callType, "fx-type"], [area, "fx-area"], [dateFrom, "fx-from"],
+        [dateTo, "fx-to"], [hourFrom, "fx-hfrom"], [hourTo, "fx-hto"]]) {
+      if (id in keep) elmt.value = keep[id];
+    }
 
     inner.appendChild(el("div", { class: "filter-grid" }, [
       field("Target", "fx-target", target),

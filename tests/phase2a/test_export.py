@@ -5,11 +5,13 @@ never recomputes. Uses the real Phase 1 sample fixture so the asserted answer
 (user A -> home Hamra, High) is the frozen suite's own ground truth."""
 
 import io
+import json
 
 import pytest
 from openpyxl import load_workbook
 
 from app import create_app
+from app.analysis import export
 from app.analysis.export import AREAS_HEADERS, CONTACTS_HEADERS, HEADERS, XLSX_MIMETYPE
 
 
@@ -45,6 +47,21 @@ def test_export_requires_auth(app_data_dir):
     app = create_app()
     app.config.update(TESTING=True)
     assert app.test_client().post("/api/export/results.xlsx").status_code == 401
+
+
+def test_build_workbook_tolerates_partial_frequent_area(app_data_dir):
+    """A frequent_areas entry missing 'count' (legacy/hand-edited result) must
+    degrade to a blank in the Summary cell, not KeyError the whole workbook."""
+    payload = {"home": {"area": "Hamra", "confidence_label": "High"},
+               "work": None, "analyzed_at": "2026-01-01T00:00:00",
+               "frequent_areas": [{"area": "Hamra"}],  # no 'count'
+               "frequent_contacts": []}
+    rows = [{"id": 1, "name": "A", "phone_number": "100",
+             "dataset_name": "d", "result_json": json.dumps(payload)}]
+    wb = load_workbook(io.BytesIO(export.build_results_workbook(rows)))
+    summary = list(wb["Summary"].iter_rows(values_only=True))
+    assert summary[1][1] == "A"                 # row was written, no crash
+    assert "Hamra" in (summary[1][9] or "")     # frequent-areas cell degraded, not raised
 
 
 def test_export_rejects_get(client, two_targets):

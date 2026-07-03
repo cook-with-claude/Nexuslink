@@ -39,10 +39,11 @@ export async function exportScreen(app) {
   });
 
   // Filesystem-illegal characters stripped; ".xlsx" is always appended (typing
-  // it yourself is fine — it won't double up). Blank falls back to the default.
+  // it yourself is fine — even a repeated ".xlsx.xlsx" won't double up). Blank
+  // falls back to the default.
   const chosenFilename = () => {
     const clean = nameInput.value
-      .replace(/[\\/:*?"<>|]/g, "").trim().replace(/\.xlsx$/i, "").trim();
+      .replace(/[\\/:*?"<>|]/g, "").trim().replace(/(\.xlsx)+$/i, "").trim();
     return (clean || "lapassion_results") + ".xlsx";
   };
 

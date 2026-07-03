@@ -4,6 +4,41 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-03 - Claude: code-review fixes round 2 (#5,#6,#8,#10) on `claude/spreadsheet-fixes` - FOR REVIEW
+
+Follow-up on the same branch after #1-#4 (entry below). Nadim asked to also take the cheap,
+worthwhile findings; I applied the Tier-1 set plus the 1-line #5 consistency touch-up, and
+**deliberately left #7 (call_type validation consistency — Khaled's call) and #9 (duration-toggle
+refetch — works, the real fix is a client-side re-render refactor disproportionate to a cosmetic
+win)**.
+
+- **#6 Explorer state-wipe** (`spreadsheet.js` `explorerCard.refresh`): refresh() rebuilt every
+  field from scratch, so creating a target by clicking a phone in the grid wiped the explorer's
+  in-progress selection + typed filters (the click targeted the Detection card, not the explorer).
+  Now snapshots the 8 field values by id before `clear(inner)` and restores them after rebuild
+  (setting a `<select>` to a since-deleted target is a no-op → falls back to the prompt). Mirrors
+  `detectionCard.refresh`'s existing `keep`. (JS-only.)
+- **#8 `loadUsers()` race** (`spreadsheet.js`): the phone-filter rebuild had no in-flight guard, so
+  fast dataset switches could leave it listing the wrong dataset's numbers. Added a `userSeq`/`mine`
+  guard (same pattern as the records `load()`), and moved the clear+rebuild to *after* the await so a
+  superseded response can't mix options. (JS-only.)
+- **#5 Export Summary KeyError parity** (`app/analysis/export.py`): the Summary "Frequent areas"
+  cell used `a['area']`/`a['count']` while the detail loop two lines below used `.get()`; a
+  partial/legacy `frequent_areas` entry would KeyError the *whole* workbook. Switched to `.get()` so
+  it degrades to a blank cell instead (cheap consistency fix — I did NOT add full per-row
+  try/except; a malformed top-level `json.loads` still fails, which is tampered-DB territory).
+  Test: `test_build_workbook_tolerates_partial_frequent_area`.
+- **#10 Filename double-`.xlsx`** (`app/web/js/screens/export.js`): the sanitizer stripped only one
+  trailing `.xlsx`, so `report.xlsx.xlsx` → `report.xlsx.xlsx`. Now `replace(/(\.xlsx)+$/i, "")`
+  collapses a repeated extension. (JS-only.)
+
+### Verification (WSL): **187 passed** (186 → +1), ruff clean, lint-imports 4 KEPT, node --check on
+the 3 touched JS files clean, `git diff --stat main -- phase1_cdr/` empty.
+
+### Still open (documented, non-blocking): #7 (validation consistency) and #9 (duration-toggle
+refetch). The frontend duplication cluster between `results.js` and `spreadsheet.js` (pct/detection
+renderer/field helper; `downloadResultsXlsx` vs `request()`) is also still open — pure cleanup.
+
 ## 2026-07-03 - Claude: code-review fixes #1-#4 on `claude/spreadsheet-fixes` - FOR REVIEW
 
 Branched off `origin/spreadsheet` (Khaled's feature branch, in review). A high-effort code review

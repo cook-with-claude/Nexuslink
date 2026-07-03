@@ -90,7 +90,10 @@ def build_results_workbook(rows: list[dict]) -> bytes:
         summary.append(base + [
             row["dataset_name"], _fmt_when(payload.get("analyzed_at")),
             home[0], home[1], work[0], work[1],
-            ", ".join(f"{a['area']} ({a['count']})" for a in frequent),
+            # .get() (not a['area']) to match the detail-sheet loop below: a
+            # partial/legacy frequent_areas entry degrades to a blank cell here
+            # instead of KeyError-ing the whole workbook.
+            ", ".join(f"{a.get('area')} ({a.get('count')})" for a in frequent),
         ])
         for rank, a in enumerate(frequent, start=1):
             areas_ws.append(base + [rank, a.get("area"), a.get("count"), a.get("share")])
