@@ -35,9 +35,12 @@ win)**.
 ### Verification (WSL): **187 passed** (186 → +1), ruff clean, lint-imports 4 KEPT, node --check on
 the 3 touched JS files clean, `git diff --stat main -- phase1_cdr/` empty.
 
-### Still open (documented, non-blocking): #7 (validation consistency) and #9 (duration-toggle
-refetch). The frontend duplication cluster between `results.js` and `spreadsheet.js` (pct/detection
-renderer/field helper; `downloadResultsXlsx` vs `request()`) is also still open — pure cleanup.
+### Still open — now filed as GitHub issues (non-blocking, for later):
+- **#14** call_type validation inconsistency across endpoints (review finding #7).
+- **#15** duration unit toggle triggers a full server refetch (review finding #9).
+- **#16** frontend duplication between `results.js` and `spreadsheet.js` (pct/detection renderer/
+  field helper; `downloadResultsXlsx` vs `request()`) — pure cleanup.
+- **#17** minor UX hardening: `callTypeDisplay(null)` → "null", export filename control/bidi chars.
 
 ## 2026-07-03 - Claude: code-review fixes #1-#4 on `claude/spreadsheet-fixes` - FOR REVIEW
 
