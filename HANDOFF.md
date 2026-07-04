@@ -4,6 +4,50 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Codex: review of weak-gate surfacing on `codex/weak-gate-surfacing-review` - CLEAR
+
+Reviewed `origin/claude/weak-gate-surfacing` at `5823a1d` against `main` (`d74dce7`).
+Verdict: **CLEAR**. I made no code fixes. This branch fast-forwards the Codex review branch
+to Claude's tip, then records this verdict; Nadim still merges to `main`.
+
+### Review notes
+- The phrasing is honest for the current model: `bindingNote()` says what holds the raw
+  weakest-link level down, without inventing a second threshold (`app/web/js/components.js:163`,
+  `app/web/js/components.js:175`). The short names also line up with the fuller gate-trace labels:
+  sample size/N, dominance/share, separation/closeness, and coverage/density
+  (`app/web/js/components.js:105`, `app/web/js/components.js:152`).
+- Suppressing High is correct for home/work. Phase 1 returns no gates for an empty window, and for
+  non-empty windows computes `confidence = min([gate_n, gate_share, gate_closeness, gate_density])`
+  before serializing all four gates (`phase1_cdr/detection.py:196`, `phase1_cdr/detection.py:219`,
+  `phase1_cdr/detection.py:240`). So `confidence === "High"` means all four home/work gates are
+  High; there is no binding weakness to surface.
+- The "headline not among the gates" guard is unreachable for real home/work payloads: the backend
+  serializes raw `confidence` separately from `confidence_label` (`app/analysis/bridge.py:36`,
+  `app/analysis/bridge.py:37`), so near-tie labels do not interfere with matching gate values.
+- No XSS regression: `bindingNote()` passes plain text through `el()`, whose string-child path uses
+  `document.createTextNode()` and has no `innerHTML` sink (`app/web/js/components.js:18`).
+- The render sites are scoped to Home/Work detection cards on both Results and Spreadsheet
+  (`app/web/js/screens/results.js:77`, `app/web/js/screens/spreadsheet.js:338`), not to the
+  single-gate frequent-areas confidence object.
+- Pushback on the self-review note: with the current branch order, a single present gate would render
+  "one gate", not "all 1 gates". It still should remain unwired from frequent areas because that card
+  intentionally has no gated verdict.
+- The new frontend test is sane for the no-build SPA: it imports the real component module, uses only
+  `node:test`/`node:assert`, and stubs the minimal DOM surface needed by `el()`
+  (`app/web/js/components.test.mjs:15`). CI invokes it by explicit file path
+  (`.github/workflows/ci.yml:99`).
+
+### Verification
+- Native Node: `node --check app/web/js/components.js`,
+  `node --check app/web/js/screens/results.js`,
+  `node --check app/web/js/screens/spreadsheet.js` -> clean.
+- Native Node: `node --test app/web/js/components.test.mjs` -> **7 passed**.
+- WSL `/root/lp-venv`: `pytest tests/phase2a tests/architecture phase1_cdr/tests` -> **187 passed**.
+- WSL `/root/lp-venv`: `ruff check app tests main.py` -> clean.
+- WSL `/root/lp-venv`: `lint-imports` -> 4 contracts KEPT.
+- `git diff --stat main -- phase1_cdr/` -> empty after restoring the known `/mnt/c` line-ending churn
+  in `phase1_cdr/ground_truth.json` and `phase1_cdr/sample_data.csv`.
+
 ## 2026-07-03 - Claude: SESSION CLOSE — #10 pushed FOR REVIEW; pickup checklist
 
 Session wrap-up. One feature in flight (GitHub #10), pushed to origin, awaiting Codex review.
