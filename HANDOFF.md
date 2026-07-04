@@ -4,6 +4,55 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: SESSION CLOSE — Phase 3 DESIGN merged to main after 4 Codex rounds; pickup = plan 3.1
+
+Phase 3 design is **fully brainstormed, Codex-reviewed (4 rounds), and MERGED to `main` (`040e3b6`)**.
+Repo is a **single branch again** (`main`, in sync with `origin/main`); all Phase-3 review branches
+pruned. **No code was written this session — the deliverable is the approved design.**
+
+### What's on `main`
+- **The spec (authoritative):** `docs/superpowers/specs/2026-07-04-phase3-multiuser-platform-design.md`
+  — decision table, security-posture triage, data model (migrations), §2 increment plan (3.1→3.7),
+  §4–§10 the auth/RBAC/approval/audit/TLS design, §11 testing, §12 risks, and **§13 the review log**
+  (every Codex finding → its resolution across rounds 1–4). **Read §13 first next session** — it holds
+  the corrections that aren't obvious from the body.
+- `docs/phase3-surface.md` — corrected (the `DB_KEY` de-globalization premise was wrong; see its banner).
+- CLAUDE.md Key-docs points at the spec; README Phase 3 row = "Planned — design approved".
+
+### The decisions + the review corrections (so nothing is re-derived)
+Scope = **real LAN multi-user server**, synthetic/portfolio framing. **Server holds the master key**
+(manual bootstrap passphrase); **accounts in a `users` table inside the encrypted DB**; **browser
+clients** (desktop shell stays single-user localhost → packaging stays deferred); **admin/analyst**
+RBAC; **dataset-access approval only**; **comprehensive tamper-evident activity log** (every operator
+intent). Non-obvious corrections from review, now in the spec:
+- **`DB_KEY` stays process-global** as the *server* master key — NOT per-session. Only *identity*
+  de-globalizes (3.2a swaps `current_username()` to a **data-free SUPPORT** context; no DB read; no
+  `current_role` yet).
+- **Access predicate lives in a shared `app/authz/` module at the AUDIT tier** — imported only by
+  APPLICATION routes, applied as decorators (`require_role`/`require_active`/`require_dataset_access`),
+  **excluded from the independence set**, NOT SUPPORT, NOT a peer domain. `api.guards` stays data-free.
+  The DB-backed `authz.current_role()`/`current_username()` arrive with multi-account (3.2b/3.3).
+- **Logged routes open their unit-of-work `BEGIN IMMEDIATE` up front**; `write_audit` is INSERT-only
+  (invariant 2 intact). **Live role/disabled read per request via `authz`**; cookie carries `user_id`
+  only. **Bootstrap fail-closed** (503 until unlock; first-admin bound to localhost). Access
+  enforcement covers ALL subject-data paths; `403`≡`404`. **`DATASET_OPENED` server-enforced**.
+  Failed-login → encrypted chained log post-unlock. Trusted-proxy CIDR + `SESSION_COOKIE_SECURE`.
+  Internal-service mTLS = **N/A** (monolith). TOTP MFA = late/optional (3.7).
+
+### NEXT SESSION — exact pickup
+1. **Invoke `writing-plans` scoped to increment 3.1 ONLY** — wire `migrations.migrate(g.db)` into
+   `app/api/guards.py:get_db()` (right after `storage.connect`), author **ADR 0002**. Tiny, mechanical,
+   independent of everything the review debated. Then build → Codex review → Nadim merges, per increment.
+2. Increments after 3.1 (each its own plan→build→review→merge): 3.2a (identity de-globalization,
+   behavior-frozen) · 3.2b (server key + multi-account, ADR 0003) · 3.2c (network + TLS) · 3.3 (RBAC +
+   `app/authz/`) · 3.4 (owner dim + approval, ADR 0004) · 3.5a/3.5b (activity capture / hash chain) ·
+   3.6 (UI) · 3.7 (TOTP MFA).
+3. **Before coding 3.2b**, re-grep the `phase3-surface.md` inventory in case anything drifted.
+4. Auto-memory `phase3-design-decisions` carries this same summary for cold-start recall.
+
+### Backlog (unchanged, non-blocking)
+GitHub #14/#17 (UI polish), leftover #16 bits, methodology #2/#7/#8/#9 (mostly gated behind frozen Phase 1).
+
 ## 2026-07-04 - Claude: Phase 3 spec — round-4 patch (Codex #4 accessor-wording closed) on `claude/phase3-spec-patches` - FOR REVIEW
 
 Codex round 4 (`codex/phase3-design-review`, `cc28b36`): the `authz` AUDIT-tier fix holds and the
