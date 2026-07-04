@@ -4,6 +4,47 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: GitHub #16 — dedup the detection renderer on `claude/dedup-detection-renderer` - FOR REVIEW
+
+The home/work detection card and the frequent-areas card were copy-pasted between
+`results.js` and `spreadsheet.js`, differing ONLY by the wrapper class (`.card` vs
+`.det-block`). That is a live drift risk (the two panels could silently show different
+things for the same subscriber) and a real maintenance tax — #10 had to be applied to
+both copies identically. This extracts one source of truth. Based cleanly on `main`
+(`8549b4c`, i.e. post-#10). **Presentation only — Phase 1 untouched.**
+
+### Change (frontend only)
+- `app/web/js/components.js`: new shared `detectionBlock(title, r, wrapClass="card")`,
+  `frequentAreasBlock(areas, conf, wrapClass="card")`, and `pct()` (was duplicated in both
+  screens). Behaviour-identical to the two former copies; `wrapClass` is the only thing that
+  ever differed.
+- `screens/results.js`: uses them (default `"card"`); drops local `detectionCard`,
+  `frequentAreasCard`, `pct`. `frequentContactsCard` stays (Results-only, not duplicated).
+- `screens/spreadsheet.js`: uses them with `"det-block"`; `renderDetection` shrinks to three
+  calls; drops the inline `block()` and the duplicate `pct`. The unrelated `detectionCard(datasets)`
+  controller (L254) is a different function — untouched, no collision.
+- `components.test.mjs`: +3 smoke tests locking the wrapper-class param + card content so the
+  two screens can't drift again (10 tests total).
+
+### Deliberately scoped
+Only the duplicated detection/frequent-areas renderers. The lower-value #16 items
+(`downloadResultsXlsx` vs `request()`, the field helper) are left alone.
+
+### Verification
+- `node --check` clean on all 3 JS files; `node --test app/web/js/components.test.mjs` → **10 passed**.
+- No dangling refs to the removed symbols in either screen (no runtime ReferenceError); every
+  retained/added import is used. Net −11 lines of app code.
+- No Python touched → **187 pytest unaffected**; `git diff --stat main -- phase1_cdr/` empty.
+- Self-review (high-effort, all 8 angles): behaviour-equivalence to both originals confirmed
+  structurally; no correctness findings.
+
+### For Codex/Nadim
+- Review focus: is the shared version truly byte-equivalent to BOTH former copies (child order,
+  the `!areas` empty guard vs the old `payload.frequent_areas || []`, the `(r && r.area)` guard)?
+  And confirm no third detection-card copy was left un-deduped (`renderTally`'s `result-area mono`
+  at `spreadsheet.js:468` is a tally winner line, intentionally NOT a detection card).
+- Not merged — Nadim merges. Independent of everything else.
+
 ## 2026-07-04 - Codex: review of weak-gate surfacing on `codex/weak-gate-surfacing-review` - CLEAR
 
 Reviewed `origin/claude/weak-gate-surfacing` at `5823a1d` against `main` (`d74dce7`).
