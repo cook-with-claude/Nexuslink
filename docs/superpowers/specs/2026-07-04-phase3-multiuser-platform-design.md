@@ -44,8 +44,32 @@ comprehensive tamper-evident activity log the admin can review per operator.
 | 9 | Loggable reads | Any action that must be logged is an **explicit POST intent** (never a loggable GET — avoids HEAD/prefetch phantom rows, the export-endpoint lesson) |
 | 10 | Records browsing granularity | **One "opened dataset" event**, not one row per pagination page |
 | 11 | Tamper-evidence | **Hash-chained audit log, built** — with an honest threat model stated (see §7) |
-| 12 | Transport | **HTTPS/TLS built**, consuming **internal-CA-issued** certs from secure paths, with renewal support. CA issuance + device-trust distribution = documented operating model, not app code (§8) |
+| 12 | Transport | **HTTPS with minimum TLS 1.3**, consuming **internal-CA-issued** certs from secure paths, renewal support, **reverse-proxy-compatible** (`X-Forwarded-*`). CA issuance + device-trust = documented operating model, not app code (§8) |
 | 13 | Login rate-limiting | **In scope** — login is network-reachable for the first time (the condition ADR 0001 named) |
+| 14 | MFA | **TOTP built** (own late/optional increment) as the working second factor; **client-certificate mTLS documented** as the PKI-aligned alternative (§8.6) |
+| 15 | Master-key secret storage | **Manual admin bootstrap passphrase** at server start (never stored unwrapped — strongest form). OS-keyring / TPM / Vault noted as a production seam (§8.5) |
+| 16 | Internal-service mTLS | **Not applicable** — this is a modular monolith with no internal service hop (one process, in-process DB). Design-only *if* ever decomposed (§8.6) |
+
+### Security posture map (triage of the enterprise checklist)
+
+Each requirement is classified so the spec neither over-builds security theater nor
+silently drops a real need. **Built** = app code this phase; **Covered** = already exists;
+**Operating-model** = deployment/org infra, documented not coded; **N/A** = inapplicable to
+this architecture.
+
+| Requirement | Class | Where |
+|---|---|---|
+| TLS 1.3, internal-PKI certs | Built | §8 |
+| RBAC + least-privilege (deny-by-default) | Built | §5 |
+| MFA (TOTP) | Built (late/optional increment) | §8.6 |
+| Encryption at rest (SQLCipher) | Covered (Phase 2A) | — |
+| Immutable audit of privileged actions | Built | §7 |
+| Login rate-limiting | Built | §4.3 |
+| Secrets not in code / secure key handling | Built + Operating-model | §8.5 |
+| Reverse proxy + firewall + network segmentation | Operating-model (app is proxy-compatible) | §8, §8.5 |
+| Continuous monitoring / patch cadence | Operating-model (+ Dependabot, operational logging) | §8.5 |
+| mTLS between internal services | N/A (monolith — no service hop) | §8.6 |
+| Client-cert mutual TLS (client↔server) | Operating-model / design-only alt to TOTP | §8.6 |
 
 ## 2. Increment plan (Approach A — foundation-first reviewable slices)
 
@@ -53,24 +77,38 @@ Each increment is one branch, green suite, its own ADR where noted. Audit is **n
 phase: every increment writes its own audit rows as it is built; §7 only adds the *new*
 capture surface (read intents) and tamper-evidence.
 
+Deliberately fine-grained — Nadim's preference is small, individually reviewable steps.
+The two largest pieces (3.2, 3.5) are pre-split.
+
 - **3.1 — Migrate-on-login wiring** (ADR 0002). Wire `migrations.migrate(g.db)` into
   `api/guards.py:get_db()` right after `storage.connect`. Tiny, mechanical, independent;
   ships first because every later increment appends a migration.
-- **3.2 — Server key model + multi-account auth** (ADR 0003). Master-key bootstrap unlock;
-  `users` table; login = bcrypt against it → session carries `user_id` + `role`; the
-  de-globalization swap of the 5 functions in `phase3-surface.md`; network-security baseline
-  (persistent `SECRET_KEY`, bind config, login rate-limiting).
+- **3.2a — De-globalization seam** (ADR 0003, part 1). Introduce `app/auth/session.py`
+  per-session identity context and swap the 5 `phase3-surface.md` functions to read it —
+  **still single-account, behavior-frozen.** Pure refactor; existing tests stay green
+  unchanged. This is the low-risk half.
+- **3.2b — Server key model + multi-account** (ADR 0003, part 2). Master-key bootstrap
+  unlock; `users` table (migration 2); login = bcrypt against it → session carries
+  `user_id` + `role`; first-run admin creation. Behavior *changes* here (multi-account),
+  so it is isolated from the refactor above.
+- **3.2c — Network + transport baseline.** Persistent `SECRET_KEY` keyfile, bind config,
+  login rate-limiting, **HTTPS with min TLS 1.3** + cert loading (§8). The server must bind
+  HTTPS to be network-reachable, so this rides with the server-startup work; cert-reload is
+  finalized before the UI increment.
 - **3.3 — RBAC guards.** `role_required("admin")` beside `login_required`; enumerate the
   admin-only actions; the shared **access-check** guard used by dataset + analysis routes.
 - **3.4 — Owner dimension + dataset-access approval** (ADR 0004). Owner/visibility on
   `datasets`; the `requested → approved | denied` state machine; server-enforced access
   with no `requested → executed` path.
-- **3.5 — Activity log + tamper-evidence.** Read *intents* become POST + logged; full event
-  vocabulary with real operator identity; hash chain + append-only triggers.
+- **3.5a — Activity capture.** Read *intents* (frequency, export) become POST + logged; full
+  event vocabulary with real operator identity + structured detail; `DATASET_OPENED`. No
+  chain yet — pure "every action writes a row."
+- **3.5b — Tamper-evidence.** Hash chain (`prev_hash`/`entry_hash`) + append-only triggers +
+  chain-verification, layered onto the rows 3.5a already produces.
 - **3.6 — UI** (last). Approval queue, activity/audit viewer (filter by operator), user
-  management, analyst request-status flow. Built against contracts that already exist.
-- **TLS (§8)** lands with 3.2's server-startup work (the server must bind HTTPS to be
-  network-reachable at all), with cert-reload finalized before 3.6.
+  management, analyst request-status flow. May itself split per screen if the diff is large.
+- **3.7 — MFA (TOTP)** — *late, optional, non-blocking.* Enrollment (QR + secret), code at
+  login, recovery codes. Does not gate the core auth→RBAC→approval→audit value (§8.6).
 
 ## 3. Data model (appended migrations; migration 1 untouched)
 
@@ -213,11 +251,15 @@ consistently. Plain records pagination stays GET and is **not** logged per page;
 ## 8. TLS / PKI (built app vs. operating model)
 
 **Built in the application:**
-- Serves over **HTTPS**; loads certificate + private key from **configurable secure paths**
-  (restrictive perms, never committed; no self-signed assumption baked into code).
+- Serves over **HTTPS with a minimum protocol of TLS 1.3** (older versions refused); loads
+  certificate + private key from **configurable secure paths** (restrictive perms, never
+  committed; no self-signed assumption baked into code).
 - Supports **certificate reload for renewal** without dropping sessions (re-read cert/key on
   signal or scheduled reload).
 - **HTTP is refused / redirected to HTTPS**; **HSTS** header set.
+- **Reverse-proxy compatible**: honors `X-Forwarded-Proto`/`-For` so TLS may instead
+  terminate at an internal proxy (the common enterprise topology) without the app
+  mis-detecting scheme or client IP.
 - Private key handling documented; keyfile perms enforced at startup (warn/refuse on
   world-readable).
 
@@ -229,6 +271,37 @@ consistently. Plain records pagination stays GET and is **not** logged per page;
 
 The app is built to *consume* CA-issued certs and support renewal; the CA and device fleet
 are the deployment environment it is designed to fit.
+
+### 8.5 Secrets & the surrounding operating model
+
+- **Master DB key:** never stored unwrapped. Wrapped under the **manual admin bootstrap
+  passphrase** entered at server start (decision #15) — the strongest posture, since the
+  unwrapped key exists only in process memory. Production seam (design-only): back the
+  passphrase / keyfiles with an **OS keyring, TPM, or Vault**; the code isolates key loading
+  behind `infra/tls.py` + the bootstrap step so this is a swap, not a rewrite.
+- **On-disk secrets** (`SECRET_KEY` keyfile, wrapped-master-key keyfile, TLS private key):
+  restrictive perms enforced at startup, covered by `.gitignore`, never committed.
+- **Deployment topology (operating-model, documented):** app runs **behind a reverse proxy
+  and firewall inside a segmented network**; **continuous monitoring / centralized log
+  shipping / patch cadence** are ops processes. Dependency updates are already automated
+  (Dependabot); operational logging already exists (`infra/logging_config.py`). None of these
+  are app code; they are the environment the app is designed to run in.
+
+### 8.6 MFA and mutual TLS
+
+- **MFA — TOTP (built, increment 3.7, late/optional):** per-operator enrollment (QR +
+  shared secret), 6-digit RFC-6238 code required at login after password, one-time **recovery
+  codes**. Standard library (`pyotp`). Scoped as a non-blocking increment so the core
+  auth→RBAC→approval→audit path ships and is reviewable without it.
+- **Client-certificate mutual TLS (design-only alternative):** managed-device client certs
+  from the internal CA as the second factor. Documented as the PKI-aligned alternative to
+  TOTP; the in-app portion is thin (the work is CA/device provisioning = operating-model), so
+  it is not built this phase.
+- **Internal-service mTLS — N/A.** This is a **modular monolith**: one Flask process with an
+  **in-process SQLCipher file**, so there is no internal service-to-service network hop for
+  mTLS to protect. Inventing services purely to secure them would be cargo-cult. Recorded as
+  design-only *if and only if* the monolith is later decomposed into separate services or the
+  database becomes a networked server — at which point mTLS secures those new hops.
 
 ## 9. UI (Phase 3.6, last)
 
@@ -251,9 +324,10 @@ New/changed, following the CLAUDE.md "where does X go" rule and the CI-enforced 
 ```
 app/
   auth/
-    session.py     NEW — per-session identity context (the de-globalization target)
-    account.py     CHANGED — users-table-backed; multi-account; bootstrap admin
-    routes.py      CHANGED — login mints role-bearing session; rate-limit
+    session.py     NEW — per-session identity context (the de-globalization target, 3.2a)
+    account.py     CHANGED — users-table-backed; multi-account; bootstrap admin (3.2b)
+    totp.py        NEW — TOTP enrollment/verify + recovery codes (3.7; pyotp)
+    routes.py      CHANGED — login mints role-bearing session; rate-limit; MFA step
   users/           NEW domain — admin user management (__init__/repo/routes)
   access/          NEW domain — dataset-access approval workflow (__init__/repo/routes)
   api/guards.py    CHANGED — current_role(), role_required(), shared access-check
@@ -274,8 +348,11 @@ app/
 
 ## 11. Testing
 
-- New `tests/phase3/{auth,users,access,audit,tls}/`. Reuse Phase 1 synthetic fixtures; **no
-  invented data** beyond synthetic operators.
+- New `tests/phase3/{auth,users,access,audit,tls,mfa}/`. Reuse Phase 1 synthetic fixtures;
+  **no invented data** beyond synthetic operators.
+- **MFA (3.7):** enrollment produces a verifiable secret; a valid TOTP code passes and a
+  stale/wrong one fails; a recovery code works once then is consumed; MFA is required only
+  after it is enrolled (login without MFA still works for the initial admin bootstrap).
 - **Access enforcement tests hit the API directly** — an analyst with no approved access gets
   `403` on the dataset and analysis routes even when bypassing the UI. This is the security
   assertion, not a hidden button.
@@ -303,8 +380,12 @@ app/
   key." Alternative (OS keyring / TPM-sealed master key) noted as a design extension.
 - **Risk — `SECRET_KEY` / master-key keyfiles** are new on-disk secrets outside the encrypted
   DB; their perms and non-commit are enforced at startup and covered by `.gitignore`.
-- **Risk — increment 3.2 is the largest diff.** If review finds it too big, split into
-  3.2a (de-globalization seam, still single-account, behavior-frozen) and 3.2b (multi-account
-  + server key). The seam swap is designed to be behavior-preserving, which makes the split
-  clean.
+- **Increment 3.2 is pre-split** into 3.2a (de-globalization, behavior-frozen), 3.2b
+  (multi-account + server key), 3.2c (network + TLS baseline) — per Nadim's small-steps
+  preference (§2). 3.5 is likewise split into 3.5a (capture) / 3.5b (chain), and 3.6 may
+  split per screen. Each half is an independently reviewable, green-suite branch.
+- **MFA (3.7) is deliberately last and non-blocking** — the core value ships without it.
+- **New runtime dependency:** `pyotp` (for 3.7 only) — added under `constraints.txt`; if no
+  suitable pinned wheel exists for the Python floor, TOTP slips to design-only rather than
+  forcing a floor bump (the numpy-bump lesson).
 ```
