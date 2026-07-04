@@ -29,7 +29,8 @@ globalThis.document = {
   }),
 };
 
-const { bindingGates, bindingNote } = await import("./components.js");
+const { bindingGates, bindingNote, detectionBlock, frequentAreasBlock } =
+  await import("./components.js");
 
 const noteText = (result) => {
   const p = bindingNote(result);
@@ -81,4 +82,34 @@ test("missing gates key and null result are suppressed (defensive)", () => {
   assert.equal(bindingGates({ confidence: "Low" }), null);
   assert.equal(bindingGates(null), null);
   assert.equal(noteText(null), null);
+});
+
+// --- shared detection renderers (GitHub #16) ---
+// The Results screen and the Spreadsheet panel render these SAME two cards; they
+// differ only by the wrapper class. These smoke tests lock the wrapper param and
+// the content so the two screens can't drift the way they did before the merge.
+
+test("detectionBlock wrapper class is the only per-screen difference", () => {
+  const r = { confidence: "Low", confidence_label: "Low",
+    area: "Hamra", gates: G("High", "High", "Low", "High"), alternatives: [] };
+  assert.equal(detectionBlock("Home", r).className, "card");              // Results default
+  assert.equal(detectionBlock("Home", r, "det-block").className, "det-block"); // Spreadsheet
+});
+
+test("detectionBlock renders title, area, and the binding-gate note", () => {
+  const r = { confidence: "Low", confidence_label: "Low",
+    area: "Hamra", gates: G("High", "High", "Low", "High"), alternatives: [] };
+  const text = detectionBlock("Work", r).textContent;
+  assert.match(text, /Work/);
+  assert.match(text, /Hamra/);
+  assert.match(text, /Held at Low by one gate: separation\./);
+});
+
+test("frequentAreasBlock: empty vs ranked, and wrapper class", () => {
+  assert.match(frequentAreasBlock([], null).textContent, /No area activity\./);
+  const areas = [{ area: "Hamra", count: 12, share: 0.5 }];
+  const block = frequentAreasBlock(areas, null, "det-block");
+  assert.equal(block.className, "det-block");
+  assert.match(block.textContent, /Hamra/);
+  assert.match(block.textContent, /50\.0%/);   // pct() formatting
 });

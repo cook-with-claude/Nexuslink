@@ -14,7 +14,7 @@
 import { api } from "../api.js";
 import { shell } from "../layout.js";
 import {
-  el, loading, clear, msg, toast, confidencePill, gateTrace, bindingNote, sampleNote,
+  el, loading, clear, msg, toast, detectionBlock, frequentAreasBlock,
 } from "../components.js";
 import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
@@ -325,56 +325,17 @@ function detectionCard(datasets) {
   return { card, refresh, runFor };
 }
 
-// Same visual language as the RESULTS screen: confidencePill + gateTrace from
-// components.js keep the "one visual language / no raw JSON" rules. Frequent
-// areas deliberately carry NO confidence pill — a frequency table is a count,
-// not a gated verdict.
+// Same visual language as the RESULTS screen — it renders the SAME cards via the
+// shared detectionBlock/frequentAreasBlock (components.js), differing only by the
+// ".det-block" wrapper (Results uses ".card"). Frequent areas deliberately carry
+// NO confidence pill — a frequency table is a count, not a gated verdict.
 function renderDetection(slot, payload) {
-  const block = (title, r) => {
-    const b = el("div", { class: "det-block" }, [
-      el("div", { class: "card-head" }, [el("h3", {}, title), confidencePill(r)]),
-      el("div", { class: "result-area mono" }, (r && r.area) ? r.area : "—"),
-    ]);
-    const bn = bindingNote(r);
-    if (bn) b.appendChild(bn);
-    if (r && r.alternatives && r.alternatives.length) {
-      b.appendChild(el("div", { class: "alts" }, [
-        "alternatives: ",
-        ...r.alternatives.flatMap((a, i) => [i ? ", " : "", el("span", { class: "mono" }, a)]),
-      ]));
-    }
-    b.appendChild(gateTrace(r));
-    return b;
-  };
-
   slot.appendChild(el("div", { class: "result-grid" }, [
-    block("Home", payload.home),
-    block("Work", payload.work),
+    detectionBlock("Home", payload.home, "det-block"),
+    detectionBlock("Work", payload.work, "det-block"),
   ]));
-
-  const fa = el("div", { class: "det-block" });
-  fa.appendChild(el("div", { class: "card-head" }, [
-    el("h3", {}, "Frequent areas"),
-    el("span", { class: "kicker" }, "count, not a verdict"),
-  ]));
-  const areas = payload.frequent_areas || [];
-  if (areas.length === 0) {
-    fa.appendChild(el("div", { class: "empty" }, "No area activity."));
-  } else {
-    const note = sampleNote(areas, payload.frequent_areas_confidence);
-    if (note) fa.appendChild(note);
-    fa.appendChild(el("table", {}, [
-      el("thead", {}, el("tr", {}, [
-        el("th", {}, "Area"), el("th", { class: "num" }, "Count"), el("th", { class: "num" }, "Share"),
-      ])),
-      el("tbody", {}, areas.map((a) => el("tr", {}, [
-        el("td", { class: "data" }, a.area),
-        el("td", { class: "num" }, String(a.count)),
-        el("td", { class: "num dim" }, pct(a.share)),
-      ]))),
-    ]));
-  }
-  slot.appendChild(fa);
+  slot.appendChild(frequentAreasBlock(
+    payload.frequent_areas, payload.frequent_areas_confidence, "det-block"));
 }
 
 // ---- 3. frequency explorer (filtered slice) ----
@@ -515,10 +476,4 @@ function renderTally(slot, res) {
       el("td", { class: "num" }, String(r.count)),
     ]))),
   ]));
-}
-
-function pct(share) {
-  const n = Number(share);
-  if (!Number.isFinite(n)) return "—";
-  return (n * 100).toFixed(1) + "%";
 }

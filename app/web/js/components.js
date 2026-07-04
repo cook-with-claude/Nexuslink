@@ -187,6 +187,63 @@ export function bindingNote(result) {
   return el("p", { class: "binding-note" }, text);
 }
 
+// --- detection renderers (shared by the Results screen and the Spreadsheet
+// detection panel, which show the SAME home/work card + frequent-areas card in
+// two different wrappers). Kept here so the two can't drift — GitHub #16. #10 had
+// to be applied to both copies, which is exactly the maintenance tax this removes.
+export function pct(share) {
+  const n = Number(share);
+  if (!Number.isFinite(n)) return "—";
+  return (n * 100).toFixed(1) + "%";
+}
+
+// One home/work detection card: pill, area, binding-gate note, alternatives, gate
+// trace. `wrapClass` is the ONLY thing that differed between the two screens
+// (".card" on Results, ".det-block" in the Spreadsheet panel).
+export function detectionBlock(title, r, wrapClass = "card") {
+  const block = el("div", { class: wrapClass }, [
+    el("div", { class: "card-head" }, [el("h3", {}, title), confidencePill(r)]),
+    el("div", { class: "result-area mono" }, (r && r.area) ? r.area : "—"),
+  ]);
+  const bn = bindingNote(r);
+  if (bn) block.appendChild(bn);
+  if (r && r.alternatives && r.alternatives.length) {
+    block.appendChild(el("div", { class: "alts" }, [
+      "alternatives: ",
+      ...r.alternatives.flatMap((a, i) => [i ? ", " : "", el("span", { class: "mono" }, a)]),
+    ]));
+  }
+  block.appendChild(gateTrace(r));
+  return block;
+}
+
+// The frequent-areas card: a plain count, NO confidence pill (a frequency table is
+// a description, not a gated verdict) — only a descriptive sample-size note.
+export function frequentAreasBlock(areas, conf, wrapClass = "card") {
+  const block = el("div", { class: wrapClass });
+  block.appendChild(el("div", { class: "card-head" }, [
+    el("h3", {}, "Frequent areas"),
+    el("span", { class: "kicker" }, "count, not a verdict"),
+  ]));
+  if (!areas || areas.length === 0) {
+    block.appendChild(el("div", { class: "empty" }, "No area activity."));
+    return block;
+  }
+  const note = sampleNote(areas, conf);
+  if (note) block.appendChild(note);
+  block.appendChild(el("table", {}, [
+    el("thead", {}, el("tr", {}, [
+      el("th", {}, "Area"), el("th", { class: "num" }, "Count"), el("th", { class: "num" }, "Share"),
+    ])),
+    el("tbody", {}, areas.map((a) => el("tr", {}, [
+      el("td", { class: "data" }, a.area),
+      el("td", { class: "num" }, String(a.count)),
+      el("td", { class: "num dim" }, pct(a.share)),
+    ]))),
+  ]));
+  return block;
+}
+
 // --- inline confirm for destructive actions (no native confirm/alert) ---
 export function confirmInline(triggerBtn, onConfirm, label = "Delete?") {
   const parent = triggerBtn.parentElement;

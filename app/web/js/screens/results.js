@@ -10,7 +10,7 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, confidencePill, gateTrace, bindingNote, fmtDate, icon, sampleNote } from "../components.js";
+import { el, loading, clear, detectionBlock, frequentAreasBlock, fmtDate, icon } from "../components.js";
 import { setActiveDatasetLabel } from "../statusbar.js";
 
 export async function resultsScreen(app, params) {
@@ -54,63 +54,15 @@ export async function resultsScreen(app, params) {
 
   // Home / Work side by side
   body.appendChild(el("div", { class: "result-grid" }, [
-    detectionCard("Home", payload.home),
-    detectionCard("Work", payload.work),
+    detectionBlock("Home", payload.home),
+    detectionBlock("Work", payload.work),
   ]));
 
   // Frequent areas (a count — no confidence by design, but show the sample size)
-  body.appendChild(frequentAreasCard(payload.frequent_areas, payload.frequent_areas_confidence));
+  body.appendChild(frequentAreasBlock(payload.frequent_areas, payload.frequent_areas_confidence));
 
   // Frequent contacts
   body.appendChild(frequentContactsCard(payload.frequent_contacts));
-}
-
-function detectionCard(title, r) {
-  const card = el("div", { class: "card" });
-  card.appendChild(el("div", { class: "card-head" }, [
-    el("h3", {}, title),
-    confidencePill(r),
-  ]));
-  const area = (r && r.area) ? r.area : "—";
-  card.appendChild(el("div", { class: "result-area mono" }, area));
-
-  const bn = bindingNote(r);
-  if (bn) card.appendChild(bn);
-
-  if (r && r.alternatives && r.alternatives.length) {
-    card.appendChild(el("div", { class: "alts" }, [
-      "alternatives: ",
-      ...r.alternatives.flatMap((a, i) => [i ? ", " : "", el("span", { class: "mono" }, a)]),
-    ]));
-  }
-  card.appendChild(gateTrace(r));
-  return card;
-}
-
-function frequentAreasCard(areas, conf) {
-  const card = el("div", { class: "card" });
-  card.appendChild(el("div", { class: "card-head" }, [
-    el("h3", {}, "Frequent areas"),
-    el("span", { class: "kicker" }, "count, not a verdict"),
-  ]));
-  if (!areas || areas.length === 0) {
-    card.appendChild(el("div", { class: "empty" }, "No area activity."));
-  } else {
-    const note = sampleNote(areas, conf);
-    if (note) card.appendChild(note);
-    const rows = areas.map((a) => el("tr", {}, [
-      el("td", { class: "data" }, a.area),
-      el("td", { class: "num" }, String(a.count)),
-      el("td", { class: "num dim" }, pct(a.share)),
-    ]));
-    card.appendChild(el("table", {}, [
-      el("thead", {}, el("tr", {}, [
-        el("th", {}, "Area"), el("th", { class: "num" }, "Count"), el("th", { class: "num" }, "Share"),
-      ])),
-      el("tbody", {}, rows),
-    ]));
-  }
-  return card;
 }
 
 function frequentContactsCard(contacts) {
@@ -134,10 +86,4 @@ function frequentContactsCard(contacts) {
     el("tbody", {}, rows),
   ]));
   return card;
-}
-
-function pct(share) {
-  const n = Number(share);
-  if (!Number.isFinite(n)) return "—";
-  return (n * 100).toFixed(1) + "%";
 }
