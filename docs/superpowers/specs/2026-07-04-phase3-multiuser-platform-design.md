@@ -88,9 +88,13 @@ The two largest pieces (3.2, 3.5) are pre-split.
   ships first because every later increment appends a migration.
 - **3.2a — Identity-accessor de-globalization ONLY** (ADR 0003, part 1). Move a **per-session
   identity context** into a SUPPORT module (`app/api/identity.py` — *not* `auth` DOMAIN; see
-  §4.2) and swap the **identity** accessors (`current_username`, add `current_role`) to read it.
-  **`DB_KEY` is deliberately left process-global here** — see the correction below. Truly
-  behavior-frozen for the single account; existing tests stay green unchanged. (Codex #2, #3.)
+  §4.2) and swap `current_username()`'s body to read it instead of `config["USERNAME"]`.
+  **Data-free and single-account here** — the username lives in the session context, so there is
+  **no DB read** (matches today's config-read behavior exactly → behavior-frozen; existing tests
+  stay green). **No `current_role` yet** (roles don't exist until 3.2b); the DB-backed live
+  accessors (`authz.current_role()`/`authz.current_username()`, §5) arrive with multi-account in
+  3.2b/3.3, in the `authz` tier — **not** here, and **not** in SUPPORT.
+  **`DB_KEY` is deliberately left process-global here** — see the correction below. (Codex #2, #3.)
   > **Why `DB_KEY` is not touched in 3.2a:** in today's single-account model the raw SQLCipher
   > key is *derived from the user's password* at login. It cannot move into the signed (not
   > encrypted) session cookie, and a per-session server-side key cache would be new
@@ -210,9 +214,13 @@ existence is itself sensitive is indistinguishable from `404` to a non-owner (no
 `config["DB_KEY"]` into per-session context. That is **half wrong for this trust model**, and
 the spec corrects it:
 
-- **`USERNAME`/identity → per-session (correct).** The identity accessor reads a per-session
-  context. It carries `user_id`; `current_username()`/`current_role()` resolve from the users
-  row (§4.4). This is the genuinely mechanical, behavior-frozen part (increment 3.2a).
+- **`USERNAME`/identity → per-session (correct).** The SUPPORT identity context
+  (`app/api/identity.py`) carries **`user_id`** (and, single-account, the username) — **data-free,
+  no DB read.** In 3.2a, `current_username()`'s body is swapped from `config["USERNAME"]` to this
+  context — mechanical and behavior-frozen. **The DB-backed live accessors that resolve
+  `role`/`username` from the users row are `authz`-tier, not SUPPORT** (`authz.current_role()`/
+  `authz.current_username()`, §5); they arrive with multi-account (3.2b/3.3). A SUPPORT module
+  never reads the DB — that was the whole point of the round-3 `authz` layer fix.
 - **`DB_KEY` → stays process-global, and that is now CORRECT, not a leak.** Under
   server-holds-the-key there is **one master key for the whole server**, set at bootstrap, used
   by every request's `get_db()`. There is **no per-session DB key** to de-globalize. Trying to
@@ -573,7 +581,7 @@ are unchanged.
 | 1 | Bootstrap/locked-state fail-closed; `/api/status` must not read locked as "no admin"; first-admin LAN race | §4.1 fail-closed locked state; `503` until unlock; `status` = locked\|uninitialized\|ready; first-admin bound to localhost/bootstrap |
 | 2 | 3.2a not a pure refactor — where does the password-derived DB key live? | §4.2 + §2: **`DB_KEY` stays process-global (server master key), not per-session**; 3.2a narrowed to identity accessors only. `phase3-surface.md` premise corrected |
 | 3 | `auth/session.py` layer inversion (SUPPORT `guards` → DOMAIN `auth`) | §4.2 + §10: identity context moves to **`app/api/identity.py` (SUPPORT)** |
-| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in the **shared `app/authz/` module at the AUDIT tier**, applied by routes as decorators; `api.guards` (SUPPORT) does NOT import it; excluded from independence; `app/access` holds only the workflow *(layer pinned in round 3 — see below)* |
+| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in the **shared `app/authz/` module at the AUDIT tier**, applied by routes as decorators; `api.guards` (SUPPORT) does NOT import it; excluded from independence; `app/access` holds only the workflow *(layer pinned round 3; accessor-phasing wording closed round 4 — see below)* |
 | 5 | Access coverage wider than dataset+analysis | §3, §6, §11: gate/filter records, targets, results, exports, pickers, `target_id` resolution; `403`≡`404` |
 | 6 | `DATASET_OPENED` can't be UI-only | §7.2: server-side emit, deduped per `(session, dataset)`; direct-API GET still logs (test) |
 | 7 | Failed-login audit contradiction | §4.3: operator `LOGIN_FAILED` → encrypted chained log post-unlock; sidecar only pre-unlock |
@@ -623,5 +631,20 @@ sentence.) **Fixed:**
   (session `user_id` + server-unlocked) + content-type guard + `get_db`. Live `current_role()`/
   `current_username()` are `authz` accessors. A `tests/architecture/` case asserts no
   `api.* → app.authz` import. (§2 3.3/3.4, §3, §4.4, §5, §10 all updated to match.)
-- Stale §3 sentence corrected. With this, **all 12 findings + both pushbacks are closed** and the
-  full 3.2+ design is internally consistent under the CI-enforced contracts.
+- Stale §3 sentence corrected.
+
+### Review round 4 (Codex, 2026-07-04) — the last wording carryover closed
+
+Round 4 (`codex/phase3-design-review`, `cc28b36`) confirmed the `authz` AUDIT-tier placement is
+expressible (`app.audit | app.authz`) and the illegal `guards → authz` edge is gone, but flagged
+#4 **STILL-PARTIAL** for a residual **wording** inconsistency: §2 3.2a and §4.2 still called
+`current_username()`/`current_role()` SUPPORT identity accessors "resolving from the users row,"
+which contradicts §5/§10 (those DB-backed accessors are `authz`) and could still send an
+implementer toward a SUPPORT DB read. **Fixed (§2 3.2a, §4.2):** the phasing is now explicit —
+- **3.2a** swaps only `current_username()` to read the **data-free** SUPPORT identity context
+  (single-account, no DB — behavior-frozen); **`current_role` is not introduced in 3.2a.**
+- The **DB-backed** live `authz.current_role()`/`authz.current_username()` arrive with multi-account
+  (3.2b/3.3) in the **`authz` tier**; a SUPPORT module never reads the DB.
+
+With this, **all 12 findings + both pushbacks are closed**, the accessor phasing matches the layer
+model everywhere, and the full 3.2+ design is internally consistent under the CI-enforced contracts.

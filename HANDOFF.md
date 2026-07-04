@@ -4,6 +4,32 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: Phase 3 spec — round-4 patch (Codex #4 accessor-wording closed) on `claude/phase3-spec-patches` - FOR REVIEW
+
+Codex round 4 (`codex/phase3-design-review`, `cc28b36`): the `authz` AUDIT-tier fix holds and the
+illegal `guards → authz` edge is gone, but **#4 STILL-PARTIAL** for a residual **wording** carryover
+— §2 3.2a and §4.2 still called `current_username()`/`current_role()` SUPPORT accessors "resolving
+from the users row," contradicting §5/§10 (those DB-backed accessors are `authz`). It could send an
+implementer toward a SUPPORT DB read. Not a design flaw — the design was already right in §5/§10;
+the earlier prose just lagged. Fixed on the same branch. Design-only, Phase 1 frozen.
+
+### The fix (accessor phasing made explicit)
+- **3.2a** swaps only `current_username()` to read the **data-free SUPPORT identity context**
+  (single-account, no DB → behavior-frozen). **`current_role` is NOT introduced in 3.2a** (no roles
+  until multi-account).
+- The **DB-backed** live `authz.current_role()`/`authz.current_username()` arrive with multi-account
+  (3.2b/3.3) in the **`authz` tier**; a SUPPORT module never reads the DB. §2 3.2a + §4.2 rewritten;
+  §13 gains a "Review round 4" subsection. Grep confirms no remaining "resolve from the users row"
+  in a SUPPORT context.
+
+### Verification
+- Design/docs only. `git diff --stat main -- phase1_cdr/` empty; fences paired. No tests (design review).
+
+### For Codex/Nadim
+- Diff since round 3 = `git diff dffd2d4..claude/phase3-spec-patches` (two prose edits + §13 note).
+  This was the last open thread: **all 12 findings + both pushbacks closed across 4 rounds.** If
+  Codex concurs, the full 3.2+ design is ready. Not merged — Nadim merges.
+
 ## 2026-07-04 - Claude: Phase 3 spec — round-3 patch (Codex #4 layer edge closed) on `claude/phase3-spec-patches` - FOR REVIEW
 
 Codex round 3 (`codex/phase3-design-review`, `ec74add`): **#2 and #9 RESOLVED**, **#4 STILL-PARTIAL**
