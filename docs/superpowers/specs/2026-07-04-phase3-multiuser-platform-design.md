@@ -111,8 +111,9 @@ The two largest pieces (3.2, 3.5) are pre-split.
   guard now would be a fake that changes meaning later (Codex #11).
 - **3.4 — Owner dimension + dataset-access approval + the access predicate** (ADR 0004).
   Owner/visibility on `datasets`; the `requested → approved | denied` state machine; the
-  **shared access predicate in a neutral SUPPORT policy module** (§5, Codex #4); server-enforced
-  access across **all** subject-data reads (§3, §6, Codex #5) with no `requested → executed` path.
+  **shared access predicate in the `app/authz/` module** (§5, Codex #4 — a shared layer like
+  `audit`, not a peer domain); server-enforced access across **all** subject-data reads (§3, §6,
+  Codex #5) with no `requested → executed` path.
 - **3.5a — Activity capture.** Read *intents* (frequency, export) become POST + logged; full
   event vocabulary with real operator identity + structured detail; `DATASET_OPENED`. No
   chain yet — pure "every action writes a row."
@@ -249,8 +250,9 @@ the spec corrects it:
 Persistent `SECRET_KEY` means sessions survive restarts, so authority **must not be trusted
 from the cookie**:
 - The cookie carries **`user_id` only**. On **every** request, `login_required`/`role_required`
-  load the current users row and read **`role` + `disabled` live**. A disabled or re-roled
-  operator loses/loses-elevation immediately, even on a pre-existing cookie.
+  load the current users row **via `authz/repo.py`** (§5 — keeps the data read out of the SUPPORT
+  guard) and read **`role` + `disabled` live**. A disabled or re-roled operator
+  loses/loses-elevation immediately, even on a pre-existing cookie.
 - Equivalent acceptable implementation: a **session epoch/version** bumped on disable/role-change
   and compared per request. Either way the authoritative source is the DB row, never the cookie.
 - This is cheap: every request already opens `get_db()`; the user-row read joins that unit of
@@ -262,13 +264,26 @@ from the cookie**:
   / disable users, approve / deny dataset access, view the activity log, import + own
   datasets. **Analyst actions:** request dataset access, run analysis on granted datasets,
   view own request status.
-- The **access-check** predicate (§3) lives in a **neutral SUPPORT policy module** — **not** in
-  the `app/access` workflow domain (Codex #4). Reason: the import-linter independence contract
-  names whole domain packages, so `app.datasets.routes → app.access.*` (and `analysis`,
-  `targets`) would violate independence. Placement: a small `app/api/policy.py` (SUPPORT) holds
-  the predicate; `api.guards` exposes a thin `require_dataset_access(...)` that delegates to it;
-  domain routes call the guard. No domain imports another domain's internals; no ad-hoc SQL in
-  routes (the predicate's data read goes through a repo).
+- **The access-check lives in a shared `app/authz/` module, modeled exactly on `app/audit/`
+  (Codex #4 round 2).** This is the executable shape under the current contracts — an earlier
+  draft said "`api/policy.py` (SUPPORT) reads via a repo," but SUPPORT cannot import a DOMAIN
+  repo (upward) nor run its own SQL, so that was under-specified. Concretely:
+  - `authz/repo.py` — reads the authorization **facts** (the caller's `users` row → `role`,
+    `disabled`; `datasets.owner_id`; the `dataset_access` status) taking a `conn`, returning a
+    dict. Same repo discipline as everywhere: takes `conn`, returns dicts, imports `infra` only,
+    **never commits**.
+  - `authz/policy.py` — the **pure** decision functions (no data access):
+    `dataset_access_allowed(role, is_owner, has_approved) -> bool` and the role check.
+  - `authz/__init__.py` — `require_dataset_access(conn, user_id, dataset_id)` /
+    `require_role(conn, user_id, role)` compose repo + policy and yield the `403` signal.
+  - **Layer placement = a small, deliberate contract adjustment:** `authz` is a **shared
+    cross-cutting layer, peer to `audit`** — placed above `infra`, importable by every
+    `<domain>.routes` (APPLICATION) and by `api.guards`, and **excluded from the peer-independence
+    set** (it is not a peer domain, exactly as `audit` is not). So `datasets.routes → authz` is a
+    normal downward import, not an independence violation, and no SUPPORT module imports upward.
+  - Routes (APPLICATION) orchestrate: resolve identity → `authz.require_*` → proceed or `403`.
+    The live `role`/`disabled` read of §4.4 also goes through `authz/repo.py`, keeping the SUPPORT
+    guards data-free.
 - Hiding a UI button is never the control; the guard is.
 - Denied access = a deliberate, **logged** `403` (`FORBIDDEN`), never a crash or silent no-op.
 
@@ -282,10 +297,11 @@ from the cookie**:
   work; there is no code path from `requested` straight to `executed`. Enforced by tests that
   hit the API directly (not just the UI).
 - New domain `app/access/` (`__init__/repo/routes`) holds **only the request/decide workflow**
-  (the state machine + its audit writes). The access **predicate is NOT here** — it is the
-  neutral SUPPORT policy module (§5), precisely so `datasets`/`analysis`/`targets` can consult it
-  without importing this domain (independence-contract safe). Cross-domain joins go through repos
-  returning dicts.
+  (the state machine + its audit writes) — it is a peer domain in the independence set. The access
+  **predicate is NOT here** — it is the shared `app/authz/` module (§5), which every domain's routes
+  may consult because `authz` is cross-cutting like `audit`, not a peer domain. (`authz/repo` may
+  read the `dataset_access` rows that `access` writes — a table read, not a Python import of another
+  domain's internals, so no independence edge.)
 
 ## 7. Activity log + tamper-evidence
 
@@ -323,13 +339,26 @@ its first hit per session; the dedup marker keeps subsequent pages non-writing.)
   after it. Genesis: the chain begins at the first row written post-migration (older rows
   carry NULL chain columns); documented, not hidden.
 - SQLite `RAISE(ABORT)` triggers block `UPDATE`/`DELETE` on `audit_log` (append-only).
-- **Concurrent append must be serialized (Codex #9).** The desktop server is threaded and each
-  request opens its own connection, so two concurrent logged intents could both read the same
-  chain head and fork/break the chain. The append (read head → compute `entry_hash` → insert)
-  runs under **`BEGIN IMMEDIATE`** (write lock taken before the head read) within the route's
-  existing unit-of-work — `busy_timeout` (already 5000 ms) absorbs contention. A single-row
-  **`chain_head` table** updated in the same transaction is the alternative; either way the
-  head read and the insert are one atomic, serialized step. No two rows share a `prev_hash`.
+- **Concurrent append must be serialized — and the transaction recipe must compose with the
+  route-owned unit-of-work (Codex #9, round 2).** The threaded server + per-request connections
+  mean two concurrent logged intents could read the same chain head and fork it. The fix must NOT
+  be a `BEGIN IMMEDIATE` *inside* `write_audit`: by the time audit runs, the route's repo
+  mutations have already opened a transaction, so a nested `BEGIN` raises "cannot start a
+  transaction within a transaction," and `write_audit` must stay commit/rollback-free
+  (invariant 2). **The recipe:**
+  1. **For any route that writes an audit-chain row, the route opens its unit-of-work with
+     `BEGIN IMMEDIATE` up front** — before its first repo call — so the write lock (and therefore
+     a stable chain head) is held for the whole request. `busy_timeout` (already 5000 ms) absorbs
+     contention; a second writer waits rather than forking.
+  2. Repo mutations run inside that transaction. `write_audit` then just **reads the current head
+     and `INSERT`s** the chained row — **no `BEGIN`, no `COMMIT`, no `ROLLBACK` of its own.**
+  3. The **route** commits (or rolls back) exactly once at the end — invariant 2 unchanged.
+  - Helper: `get_db()` (or a small `begin_immediate(conn)` in `infra.storage`) exposes the
+    up-front IMMEDIATE begin so logged routes opt in explicitly. A single-row **`chain_head`
+    table** updated in the same transaction is an equivalent serialization if preferred; either
+    way the head read + insert are one atomic, already-locked step and no two rows share a
+    `prev_hash`. Pure-read routes that write **no** audit row keep today's implicit-transaction
+    behavior.
 - **Stated plainly in the spec and UI:** this proves *ordering and integrity against naive or
   accidental edits* and detects a careless insider. It is **not** proof against an adversary
   holding the master key — they can recompute the chain — unless the chain head is anchored
@@ -418,10 +447,13 @@ New/changed, following the CLAUDE.md "where does X go" rule and the CI-enforced 
 app/
   api/
     identity.py    NEW (SUPPORT) — per-session identity context (3.2a; NOT auth DOMAIN, Codex #3)
-    policy.py      NEW (SUPPORT) — the neutral dataset-access predicate (3.4; Codex #4)
-    guards.py      CHANGED — current_role()/role_required() (live role, §4.4);
-                             require_dataset_access() delegating to api.policy
+    guards.py      CHANGED — login_required/role_required delegate the live user-row read to
+                             app.authz (§4.4); no data access in this SUPPORT module
     system.py      CHANGED — /api/status returns locked|uninitialized|ready + user_id/role/MFA (#1,#12)
+  authz/           NEW shared authorization module — modeled on `audit`, NOT a peer domain (Codex #4)
+    repo.py          reads authz facts (users row role/disabled, owner_id, dataset_access status)
+    policy.py        PURE decision fns: dataset_access_allowed(role,is_owner,has_approved); role check
+    __init__.py      require_dataset_access(conn,user_id,dataset_id) / require_role(...) → 403 signal
   auth/
     account.py     CHANGED — users-table-backed; multi-account; bootstrap admin (3.2b)
     totp.py        NEW — TOTP enrollment/verify + recovery codes (3.7; pyotp)
@@ -429,21 +461,24 @@ app/
                              LOGIN_FAILED to encrypted log post-unlock (§4.3)
   users/           NEW domain — admin user management (__init__/repo/routes)
   access/          NEW domain — dataset-access WORKFLOW only (request/decide); NOT the predicate
-  audit/log.py     CHANGED — serialized hash-chain append, richer rows, new event vocabulary
+  audit/log.py     CHANGED — chain append is INSERT-only (no BEGIN/COMMIT); route begins IMMEDIATE (§7.3)
   analysis/routes.py  CHANGED — frequency + export become logged POST intents; access-gated
   targets/routes.py   CHANGED — access-gated; target_id -> dataset resolution re-checks (#5)
   datasets/*       CHANGED — owner_id; server-side DATASET_OPENED; list/pickers access-filtered
   infra/
     migrations.py  CHANGED — append migration 2+ (users, dataset_access, audit ALTERs, chain_head?)
+    storage.py     CHANGED — expose begin_immediate(conn) so logged routes open the UoW IMMEDIATE (§7.3)
     tls.py         NEW (infra) — cert/key loading, HTTPS server config, trusted-proxy config
 ```
 
-- New domains `users`, `access` added to the import-linter **layers** + **independence**
-  contracts and the AST scan; each gets a `tests/phase3/<domain>/` dir. `api.identity` and
-  `api.policy` are **SUPPORT** (like `api.guards`) — added to the layers contract there, so
-  domains may depend on them without a domain→domain edge.
-- Invariants hold: routes call repos (no SQL in routes); repos take `conn`, return dicts,
-  import `infra` only, never commit; route owns the unit-of-work → `write_audit` → commit.
+- New peer domains `users`, `access` added to the import-linter **layers** + **independence**
+  contracts and the AST scan. **`app.authz` is added as a shared layer peer to `audit`** — in the
+  **layers** contract (importable by `<domain>.routes` and `api.guards`), **excluded from the
+  independence set** — so cross-domain routes may call it with no domain→domain edge. `api.identity`
+  is **SUPPORT** (like `api.guards`). Each new package gets a `tests/phase3/<pkg>/` dir.
+- Invariants hold: routes call repos (no SQL in routes); repos/authz take `conn`, return dicts,
+  import `infra` only, never commit; the **route owns the unit-of-work** — and for logged routes it
+  is opened `BEGIN IMMEDIATE` up front (§7.3) → repo mutations → `write_audit` (INSERT-only) → commit.
 - `infra/tls.py` is pure INFRA (no Flask/domain imports); added to the Phase-1 forbidden
   source list like the other infra modules.
 
@@ -520,15 +555,34 @@ are unchanged.
 | 1 | Bootstrap/locked-state fail-closed; `/api/status` must not read locked as "no admin"; first-admin LAN race | §4.1 fail-closed locked state; `503` until unlock; `status` = locked\|uninitialized\|ready; first-admin bound to localhost/bootstrap |
 | 2 | 3.2a not a pure refactor — where does the password-derived DB key live? | §4.2 + §2: **`DB_KEY` stays process-global (server master key), not per-session**; 3.2a narrowed to identity accessors only. `phase3-surface.md` premise corrected |
 | 3 | `auth/session.py` layer inversion (SUPPORT `guards` → DOMAIN `auth`) | §4.2 + §10: identity context moves to **`app/api/identity.py` (SUPPORT)** |
-| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in **neutral `app/api/policy.py` (SUPPORT)**; `app/access` holds only the workflow |
+| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in the **shared `app/authz/` module** (repo=facts, policy=pure decision), modeled on `audit`, in the layers contract + excluded from independence; `app/access` holds only the workflow *(shape pinned in round 2 — see below)* |
 | 5 | Access coverage wider than dataset+analysis | §3, §6, §11: gate/filter records, targets, results, exports, pickers, `target_id` resolution; `403`≡`404` |
 | 6 | `DATASET_OPENED` can't be UI-only | §7.2: server-side emit, deduped per `(session, dataset)`; direct-API GET still logs (test) |
 | 7 | Failed-login audit contradiction | §4.3: operator `LOGIN_FAILED` → encrypted chained log post-unlock; sidecar only pre-unlock |
-| 8 | Stale role/disabled in live sessions | §4.4: cookie carries `user_id` only; role/disabled read live per request (or session epoch); tests |
-| 9 | Hash-chain concurrency / tail truncation | §7.3: serialized append (`BEGIN IMMEDIATE`/`chain_head`); UI says "stored log verifies," not "complete" |
+| 8 | Stale role/disabled in live sessions | §4.4: cookie carries `user_id` only; role/disabled read live per request via `authz/repo`; tests |
+| 9 | Hash-chain concurrency / tail truncation | §7.3: route opens UoW `BEGIN IMMEDIATE` up front; `write_audit` INSERT-only; UI says "stored log verifies," not "complete" *(recipe pinned in round 2 — see below)* |
 | 10 | Blind `X-Forwarded-*` trust | §4.3, §8: honored only from a configured proxy CIDR; `SESSION_COOKIE_SECURE` in HTTPS mode |
 | 11 | 3.3/3.4 sequencing (predicate needs schema) | §2: predicate moves to **3.4** (with its schema); 3.3 = `role_required` + admin-action list only |
 | 12 | `/api/status` needs Phase 3 semantics | §10: status returns locked\|uninitialized\|ready + `user_id`/`role`/MFA state |
 | — | Cert hot-reload heavier than scope | §8, §12: downgraded to a documented restart/reload procedure |
 | — | Keep the no-real-telecom-ops boundary loud | §0 unchanged; reaffirmed |
-```
+
+### Review round 2 (Codex, 2026-07-04) — the three PARTIALs closed
+
+Codex's round 2 (`codex/phase3-design-review`, `5def70f`) confirmed 1/3/5/6/7/8/10/11/12 RESOLVED
+and flagged **#2, #4, #9** as PARTIAL. All three are now closed:
+
+- **#2 (map still stale):** `phase3-surface.md` had the correction banner but its "intended seam" +
+  "change plan" body bullets still said `get_db` de-globalizes the key and the `DB_KEY` default is
+  removed. **Fixed:** both sections rewritten to the corrected model (`DB_KEY` reinterpreted as the
+  server master key, not per-session; only identity moves to `app/api/identity.py`).
+- **#4 (predicate module shape):** an `api/policy.py` SUPPORT module that reads via a repo would
+  import upward (SUPPORT→DATA) or run its own SQL. **Fixed (§5, §10):** the access seam is a shared
+  **`app/authz/`** module modeled on `audit` — `authz/repo` (facts), `authz/policy` (pure decision),
+  added to the **layers** contract and **excluded from independence**; routes call it, guards stay
+  data-free.
+- **#9 (transaction composition):** `BEGIN IMMEDIATE` inside `write_audit` would nest inside the
+  route's open transaction. **Fixed (§7.3):** the *route* opens its unit-of-work `BEGIN IMMEDIATE`
+  up front for logged routes; `write_audit` is INSERT-only (no begin/commit/rollback), preserving
+  invariant 2. `infra.storage.begin_immediate(conn)` exposes the opt-in.
+- Doc nit: removed the stray trailing Markdown code fence Codex noted (pre-existing since the first draft).

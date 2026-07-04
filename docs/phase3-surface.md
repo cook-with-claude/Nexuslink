@@ -31,10 +31,14 @@ The cookie is already per-client; the **two `config[...]` slots are the actual g
 (ADR 0001, invariant 6):
 
 - `current_username()` — the single read accessor for identity. Callers never read
-  `config["USERNAME"]` directly. Phase 3 swaps its body to read per-session context.
-- `get_db()` — the single per-request connection factory. Phase 3 derives the key from session context
-  instead of `config["DB_KEY"]`, and is also where **migrate-on-login** wires in (ADR 0002):
-  `migrations.migrate(g.db)` right after `storage.connect(key)`.
+  `config["USERNAME"]` directly. Phase 3 swaps its body to read the **per-session identity
+  context** (in `app/api/identity.py`, SUPPORT — design spec §4.2). ✅ the genuinely per-session slot.
+- `get_db()` — the single per-request connection factory. **CORRECTED (see banner + spec §4.2):**
+  under server-holds-the-master-key, `get_db()` opens the connection from the **process-held
+  server master key** set once at bootstrap — *not* a per-session key. `config["DB_KEY"]` is
+  **reinterpreted** as "the server's master key," **not** de-globalized. This is still where
+  **migrate-on-login** wires in (ADR 0002): `migrations.migrate(g.db)` right after
+  `storage.connect(key)`.
 
 ## Exact call sites
 
@@ -54,14 +58,23 @@ The cookie is already per-client; the **two `config[...]` slots are the actual g
 - `get_db()` callers: every route module + `auth/routes.py:_audit`.
 - `session.get("authenticated")` reader: `api/system.py:status` (L22).
 
-## Phase 3 change plan (implied by the above — not a commitment)
+## Phase 3 change plan (CORRECTED for server-holds-the-master-key — see spec §4.2)
 
-1. Introduce per-session unlock context (candidate: `app/auth/session.py`, referenced in CLAUDE.md).
-2. Rewrite **only** `_unlock`, `logout`, `get_db`, `current_username`, `login_required` to use it.
-3. Wire `migrations.migrate()` into `get_db()` (ADR 0002).
-4. Remove the `DB_KEY`/`USERNAME` config defaults from `create_app()`.
-5. Everything in "read-only consumers" should need **zero** edits — if it doesn't, the accessor seam
-   leaked and that's a design signal to fix at the accessor, not the call site.
+The original plan below assumed `DB_KEY` de-globalizes to per-session context. **It does not** in
+the chosen trust model. The corrected plan:
+
+1. Introduce a **per-session identity context** in **`app/api/identity.py` (SUPPORT)** — carries
+   `user_id`; `current_username()`/`current_role()` resolve from the users row. (NOT `auth/session.py`;
+   SUPPORT `guards` must not import `auth` DOMAIN — spec §4.2, Codex #3.)
+2. Rewrite the **identity** accessors (`current_username`, add `current_role`) + `_unlock`/`logout`
+   (which now write identity + `session["user_id"]`) to use it. **`get_db` is NOT rewritten to be
+   per-session** — it keeps using the process-held master key (now the *server's* key, set at bootstrap).
+3. Wire `migrations.migrate()` into `get_db()` (ADR 0002) — unchanged, still correct.
+4. **Do NOT remove `DB_KEY` from config** — it is repurposed as the server master-key slot, set at
+   bootstrap unlock (not at login). Only the *identity* slot moves to the session context.
+   `login_required` reads live role/disabled from the users row (spec §4.4), not the cookie.
+5. Everything in "read-only consumers" should still need **zero** edits — if it doesn't, the accessor
+   seam leaked; fix at the accessor, not the call site.
 
 ## Schema implication (flagged, not designed here)
 Multi-account almost certainly needs an owner/account dimension on the data tables (`datasets`,
