@@ -85,5 +85,10 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - `HANDOFF.md` — running intent log (newest on top); read the top entry first.
 - `docs/reference/` — `api.md` (endpoint reference) + `schema.md` (DB schema mirror).
 - `docs/phase3-surface.md` — the global-auth de-globalization inventory for the Phase 3 first move.
-- `docs/adr/` — Architecture Decision Records (start at `0001-modular-monolith.md`).
+- `docs/superpowers/specs/2026-07-04-phase3-multiuser-platform-design.md` — **the approved Phase 3
+  design** (brainstormed 2026-07-04): LAN multi-user server, server-holds-master-key, browser
+  clients, admin/analyst RBAC, dataset-access approval, tamper-evident activity log, CA-issued
+  HTTPS, TOTP MFA. Decomposed into small increments 3.1→3.7. Read this before writing any Phase 3 plan.
+- `docs/adr/` — Architecture Decision Records (start at `0001-modular-monolith.md`; ADRs 0002
+  migrate-on-login, 0003 server-key/auth, 0004 approval to be authored per Phase 3 increment).
 - `EXPERT_BRIEF.md` — the domain/method brief (the algorithm and its assumptions).

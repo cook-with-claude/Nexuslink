@@ -4,6 +4,54 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: PHASE 3 DESIGN brainstormed + spec committed (NOT merged) — pickup = write plan for 3.1
+
+Full brainstorming session on Phase 3 with Nadim. **No code, no implementation** — the deliverable is
+an approved design spec. Nadim explicitly stopped before plan-writing so next session resumes with all
+decisions already made.
+
+### Where it lives
+- Branch **`claude/phase3-design`** (commits `bc535d9` spec, `077b836` security/split updates, + this
+  bookkeeping commit). **NOT merged to `main`.** `main` unchanged (`143a551`).
+- The design: **`docs/superpowers/specs/2026-07-04-phase3-multiuser-platform-design.md`** — read it first;
+  it has the full decision table (16 rows), security-posture triage, increment plan, data model, and risks.
+- **Pickup decision for Nadim:** either merge the spec branch to `main` first, or next session works on
+  `claude/phase3-design` directly. Nothing depends on it being on main except discoverability.
+
+### Decisions locked this session (see spec §1 for the authoritative table)
+1. **Scope:** real **LAN multi-user server** (synthetic-data/portfolio framing — accountability demo, not
+   surveillance; keeps the CLAUDE.md hard rule satisfied). Resolves the long-open LAN shared-vs-independent
+   fork → **shared**.
+2. **Key/trust model:** **server holds the master key** in memory, unlocked at server start by a **manual
+   admin bootstrap passphrase** (never stored unwrapped). Accounts become a **`users` table inside the
+   encrypted DB** (replaces per-user `auth.json`).
+3. **Clients:** **browsers → LAN server**. Desktop PyWebView shell stays a single-user localhost
+   convenience → the deferred packaging/distribution work **stays deferred**.
+4. **Roles:** admin / analyst (least-privilege, deny-by-default). Admin imports+owns datasets.
+5. **Approval gate:** **dataset-access only** (no per-query approval).
+6. **Activity log:** **every operator query/intent logged** (actor/action/dataset/subject/params/result),
+   admin-reviewable per operator. Loggable reads become **POST intents** (avoids the HEAD/prefetch phantom
+   rows — the export-endpoint lesson). Records browsing = one `DATASET_OPENED` event, not per page.
+7. **Tamper-evidence:** hash-chained audit + append-only triggers, built, with an **honest threat model**
+   (detects naive edits/ordering; NOT proof against a key-holder unless externally anchored = design-only).
+8. **Transport:** HTTPS **min TLS 1.3**, internal-CA certs, renewal, reverse-proxy-compatible.
+9. **MFA:** **TOTP built** as a late/non-blocking increment (3.7); client-cert mTLS documented as the PKI
+   alternative.
+10. **Security triage** of Nadim's enterprise checklist done (spec §1 posture map). Honest pushback: **mTLS
+    between "internal services" is N/A** — this is a modular monolith, no service hop; design-only if ever
+    decomposed. Reverse proxy / firewall / segmentation / monitoring / KMS = operating-model, documented not coded.
+
+### Increment plan (small steps, per Nadim's preference — spec §2)
+3.1 migrate-on-login wiring (ADR 0002) · 3.2a de-globalization (behavior-frozen) · 3.2b multi-account+server
+key (ADR 0003) · 3.2c network+TLS baseline · 3.3 RBAC guards · 3.4 owner dim + dataset-access approval
+(ADR 0004) · 3.5a activity capture · 3.5b tamper-evidence · 3.6 UI (may split per screen) · 3.7 TOTP MFA.
+
+### Next session (pickup)
+1. (Optional) Nadim merges `claude/phase3-design` to `main`.
+2. Invoke **writing-plans** scoped to **increment 3.1 ONLY** (tiny: wire `migrations.migrate(g.db)` into
+   `api/guards.py:get_db()`, author ADR 0002). Then build → Codex review → merge, per increment.
+3. Before coding 3.2b: re-grep the `phase3-surface.md` inventory in case anything drifted.
+
 ## 2026-07-04 - Claude: SESSION CLOSE — #10, README 2C, #16 all merged; native testing restored
 
 Everything this session is **landed on `main`** (`143a551`); the repo is a single branch again.
