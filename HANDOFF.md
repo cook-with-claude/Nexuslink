@@ -4,6 +4,52 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Codex: review of detection-renderer dedup on `codex/dedup-detection-renderer-review` - CLEAR after test fix
+
+Reviewed `origin/claude/dedup-detection-renderer` at `fcb4507` against `main`
+(`8549b4c`). Verdict: **CLEAR after one test-only fix**. The renderer refactor itself is
+behaviour-equivalent; I found no runtime/frontend defect in the extraction. This branch
+fast-forwards the Codex review branch to Claude's tip, then adds the stale smoke-test fix
+below plus this verdict. Nadim still merges to `main`.
+
+### Review notes
+- `detectionBlock()` matches both former copies: child order stays `card-head` ->
+  `result-area` -> optional `bindingNote` -> alternatives -> `gateTrace`, and the area
+  fallback remains `(r && r.area) ? r.area : "—"`. Results uses the default `.card`;
+  Spreadsheet passes `.det-block`.
+- `frequentAreasBlock()` is equivalent for `null`, `undefined`, and empty arrays. The old
+  Spreadsheet copy normalized `payload.frequent_areas || []`; the shared helper's
+  `!areas || areas.length === 0` guard reaches the same empty branch for those values, then
+  preserves note/table order for ranked rows.
+- Removed imports/local helpers have no stale screen references: `confidencePill`,
+  `gateTrace`, `bindingNote`, `sampleNote`, and local `pct()` are now used through
+  `components.js` only where appropriate.
+- No naming collision: Spreadsheet's `detectionCard(datasets)` controller is still separate
+  and untouched. The `result-area mono` at `spreadsheet.js:468` is the frequency-explorer
+  tally winner line, not a third detection-card copy.
+- Scope is right for #16: only the duplicated detection/frequent-areas renderers were
+  extracted. The lower-value `downloadResultsXlsx` vs `request()` and field-helper cleanup
+  items were left alone.
+
+### Fix made by Codex
+- `tests/phase2a/test_ui.py`: the static asset smoke test still looked for
+  `confidencePill` inside `/js/screens/results.js`. That was only a route-serving needle,
+  and the refactor correctly moved the literal out of the screen module, so WSL pytest
+  failed 186/187 before the fix. I changed the needle to `resultsScreen`, preserving the
+  test's purpose without coupling it to a removed implementation detail.
+
+### Verification
+- Native Node: `node --check app/web/js/components.js`,
+  `node --check app/web/js/screens/results.js`,
+  `node --check app/web/js/screens/spreadsheet.js` -> clean.
+- Native Node: `node --test app/web/js/components.test.mjs` -> **10 passed**.
+- WSL `/root/lp-venv`: `pytest tests/phase2a tests/architecture phase1_cdr/tests` ->
+  **187 passed** after the smoke-test fix.
+- WSL `/root/lp-venv`: `ruff check app tests main.py` -> clean.
+- WSL `/root/lp-venv`: `lint-imports` -> 4 contracts KEPT.
+- `git diff --stat main -- phase1_cdr/` -> empty after restoring the known `/mnt/c`
+  line-ending churn in `phase1_cdr/ground_truth.json` and `phase1_cdr/sample_data.csv`.
+
 ## 2026-07-04 - Claude: GitHub #16 — dedup the detection renderer on `claude/dedup-detection-renderer` - FOR REVIEW
 
 The home/work detection card and the frequent-areas card were copy-pasted between

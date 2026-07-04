@@ -38,7 +38,7 @@ def test_serves_spa_shell_at_root(client):
         ("/js/api.js", "javascript", "ApiError"),
         ("/js/store.js", "javascript", "authenticated"),
         # nested path-converter route must resolve screen modules too
-        ("/js/screens/results.js", "javascript", "confidencePill"),
+        ("/js/screens/results.js", "javascript", "resultsScreen"),
     ],
 )
 def test_serves_static_assets(client, path, content_type, needle):
