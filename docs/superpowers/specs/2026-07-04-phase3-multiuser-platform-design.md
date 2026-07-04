@@ -105,14 +105,15 @@ The two largest pieces (3.2, 3.5) are pre-split.
   login rate-limiting, **trusted-proxy CIDR** for `X-Forwarded-*`, `SESSION_COOKIE_SECURE`,
   **HTTPS with min TLS 1.3** + cert loading (§8). The server must bind HTTPS to be
   network-reachable, so this rides with the server-startup work.
-- **3.3 — RBAC guards (role only).** `role_required("admin")` beside `login_required`;
-  enumerate the admin-only actions; **per-request role/disabled freshness** (§4.4). The
-  **dataset-access predicate is NOT here** — it depends on 3.4's schema, so shipping a stub
-  guard now would be a fake that changes meaning later (Codex #11).
+- **3.3 — RBAC (role only).** Introduce the `app/authz/` module (AUDIT tier) with
+  `@authz.require_role("admin")` + `@authz.require_active` (the live role/disabled read, §4.4),
+  applied by routes; `api.guards` keeps only the data-free `login_required`. Enumerate the
+  admin-only actions. The **dataset-access predicate is NOT here** — it depends on 3.4's schema,
+  so shipping a stub now would be a fake that changes meaning later (Codex #11).
 - **3.4 — Owner dimension + dataset-access approval + the access predicate** (ADR 0004).
   Owner/visibility on `datasets`; the `requested → approved | denied` state machine; the
-  **shared access predicate in the `app/authz/` module** (§5, Codex #4 — a shared layer like
-  `audit`, not a peer domain); server-enforced access across **all** subject-data reads (§3, §6,
+  **`@authz.require_dataset_access` predicate** (§5, added to the same AUDIT-tier `authz` module);
+  server-enforced access across **all** subject-data reads (§3, §6,
   Codex #5) with no `requested → executed` path.
 - **3.5a — Activity capture.** Read *intents* (frequency, export) become POST + logged; full
   event vocabulary with real operator identity + structured detail; `DATASET_OPENED`. No
@@ -167,7 +168,8 @@ ALTER TABLE audit_log ADD COLUMN entry_hash TEXT;
 
 **Access rule (single source of truth, enforced server-side):** operator U may touch dataset
 D iff `U.role = 'admin'` **OR** `D.owner_id = U.id` **OR** an `approved` `dataset_access(D, U)`
-row exists. This predicate lives in one shared SUPPORT policy module (§5).
+row exists. This predicate lives in the shared `app/authz/` module at the AUDIT tier (§5),
+applied by routes — not a SUPPORT module.
 
 **Enforcement is dataset-scoped but reaches every subject-data path (Codex #5).** Targets,
 analysis results, exports, and phone-number pickers are all reachable by `target_id`/`dataset_id`
@@ -249,10 +251,12 @@ the spec corrects it:
 ### 4.4 Live session authority — no stale roles (Codex #8)
 Persistent `SECRET_KEY` means sessions survive restarts, so authority **must not be trusted
 from the cookie**:
-- The cookie carries **`user_id` only**. On **every** request, `login_required`/`role_required`
-  load the current users row **via `authz/repo.py`** (§5 — keeps the data read out of the SUPPORT
-  guard) and read **`role` + `disabled` live**. A disabled or re-roled operator
-  loses/loses-elevation immediately, even on a pre-existing cookie.
+- The cookie carries **`user_id` only**. On **every** authenticated request an **`authz`-tier
+  decorator** (`@authz.require_active`, with `@authz.require_role` on admin routes) loads the
+  current users row via `authz/repo.py` and reads **`role` + `disabled` live**. This is why the
+  data read lives in `authz` (AUDIT tier, routes apply it), **not** in the SUPPORT `login_required`
+  — a SUPPORT guard cannot read the DB without an upward import (§5, Codex #4). A disabled or
+  re-roled operator loses/loses-elevation immediately, even on a pre-existing cookie.
 - Equivalent acceptable implementation: a **session epoch/version** bumped on disable/role-change
   and compared per request. Either way the authoritative source is the DB row, never the cookie.
 - This is cheap: every request already opens `get_db()`; the user-row read joins that unit of
@@ -260,32 +264,39 @@ from the cookie**:
 
 ## 5. RBAC (thin — no engine)
 
-- `role_required("admin")` decorator beside `login_required`. **Admin-only actions:** create
-  / disable users, approve / deny dataset access, view the activity log, import + own
-  datasets. **Analyst actions:** request dataset access, run analysis on granted datasets,
-  view own request status.
-- **The access-check lives in a shared `app/authz/` module, modeled exactly on `app/audit/`
-  (Codex #4 round 2).** This is the executable shape under the current contracts — an earlier
-  draft said "`api/policy.py` (SUPPORT) reads via a repo," but SUPPORT cannot import a DOMAIN
-  repo (upward) nor run its own SQL, so that was under-specified. Concretely:
-  - `authz/repo.py` — reads the authorization **facts** (the caller's `users` row → `role`,
-    `disabled`; `datasets.owner_id`; the `dataset_access` status) taking a `conn`, returning a
-    dict. Same repo discipline as everywhere: takes `conn`, returns dicts, imports `infra` only,
-    **never commits**.
-  - `authz/policy.py` — the **pure** decision functions (no data access):
-    `dataset_access_allowed(role, is_owner, has_approved) -> bool` and the role check.
-  - `authz/__init__.py` — `require_dataset_access(conn, user_id, dataset_id)` /
-    `require_role(conn, user_id, role)` compose repo + policy and yield the `403` signal.
-  - **Layer placement = a small, deliberate contract adjustment:** `authz` is a **shared
-    cross-cutting layer, peer to `audit`** — placed above `infra`, importable by every
-    `<domain>.routes` (APPLICATION) and by `api.guards`, and **excluded from the peer-independence
-    set** (it is not a peer domain, exactly as `audit` is not). So `datasets.routes → authz` is a
-    normal downward import, not an independence violation, and no SUPPORT module imports upward.
-  - Routes (APPLICATION) orchestrate: resolve identity → `authz.require_*` → proceed or `403`.
-    The live `role`/`disabled` read of §4.4 also goes through `authz/repo.py`, keeping the SUPPORT
-    guards data-free.
+- `@authz.require_role("admin")` (an `authz`-tier decorator, applied by routes — see the layer
+  note below) stacked under `@login_required`. **Admin-only actions:** create / disable users,
+  approve / deny dataset access, view the activity log, import + own datasets. **Analyst
+  actions:** request dataset access, run analysis on granted datasets, view own request status.
+- **The access-check lives in a shared `app/authz/` module (Codex #4).** An earlier draft put it
+  in `api/policy.py` (SUPPORT), which can't read data; round 2 called it "peer to `audit`" **and**
+  said `api.guards` imports it — but `audit` sits **above** SUPPORT in the layer order, so
+  `api.guards → authz` would be an illegal upward import (Codex round 3). The pinned resolution:
+  - **`authz` sits at the AUDIT tier** — the layer order becomes
+    `APPLICATION → DOMAIN/DATA → {audit, authz} → SUPPORT → INFRA`. Both `audit` and `authz` are
+    shared cross-cutting services at that tier: imported **by APPLICATION `<domain>.routes`**
+    (downward — legal, exactly how routes already import `audit`), importing only **SUPPORT
+    (`api.responses` for `err`) + INFRA** downward. Added to the `layers` contract at the audit
+    tier; **excluded from the `independence` set** (not a peer domain). Its own `authz/repo.py`
+    reads via `conn` + `infra` only (repo discipline), so it needs no DOMAIN/DATA import.
+  - **No SUPPORT → authz edge.** The data-reading checks are **`authz` decorators applied by
+    routes**, not `api.guards` helpers: `@authz.require_role("admin")`,
+    `@authz.require_dataset_access(...)`, `@authz.require_active` (the live not-disabled check).
+    A route stacks them under `@login_required`. `api.guards` keeps only **data-free** gates
+    (`login_required` = session has `user_id` **and** server is unlocked; the content-type guard;
+    `get_db`).
+  - `authz/repo.py` (facts: `users` row role/disabled, `datasets.owner_id`, `dataset_access`
+    status; `conn`→dict, never commits) · `authz/policy.py` (pure
+    `dataset_access_allowed(role, is_owner, has_approved)` + role check) · `authz/__init__.py`
+    (the `require_*` decorators composing repo + policy → `403` via `api.responses`).
+  - **Live identity that needs the DB is an `authz` accessor**, not a guard: `authz.current_role()`
+    / `authz.current_username()` resolve from the `users` row (§4.4). The SUPPORT
+    `api/identity.py` holds only the session-derived `user_id` (data-free).
 - Hiding a UI button is never the control; the guard is.
-- Denied access = a deliberate, **logged** `403` (`FORBIDDEN`), never a crash or silent no-op.
+- Denied access = a deliberate, **logged** `403` (`FORBIDDEN`), never a crash or silent no-op. The
+  `authz` decorator raises/returns the `403` signal; the **audit row for the denial is written by
+  the route (or the error handler) via `audit`** — APPLICATION → `audit`, the normal edge — so
+  `authz` needs no `audit` import (they are the same tier).
 
 ## 6. Dataset-access approval (ADR 0004)
 
@@ -446,14 +457,15 @@ New/changed, following the CLAUDE.md "where does X go" rule and the CI-enforced 
 ```
 app/
   api/
-    identity.py    NEW (SUPPORT) — per-session identity context (3.2a; NOT auth DOMAIN, Codex #3)
-    guards.py      CHANGED — login_required/role_required delegate the live user-row read to
-                             app.authz (§4.4); no data access in this SUPPORT module
+    identity.py    NEW (SUPPORT) — session-derived user_id ONLY, data-free (3.2a; Codex #3)
+    guards.py      CHANGED — login_required = session has user_id + server unlocked (DATA-FREE);
+                             content-type guard; get_db. NO role/access read here (that's authz)
     system.py      CHANGED — /api/status returns locked|uninitialized|ready + user_id/role/MFA (#1,#12)
-  authz/           NEW shared authorization module — modeled on `audit`, NOT a peer domain (Codex #4)
+  authz/           NEW shared authorization module at the AUDIT tier — NOT SUPPORT, NOT a peer domain
     repo.py          reads authz facts (users row role/disabled, owner_id, dataset_access status)
     policy.py        PURE decision fns: dataset_access_allowed(role,is_owner,has_approved); role check
-    __init__.py      require_dataset_access(conn,user_id,dataset_id) / require_role(...) → 403 signal
+    __init__.py      route-applied decorators: require_role / require_active / require_dataset_access
+                     (→ 403 via api.responses); current_role()/current_username() live accessors
   auth/
     account.py     CHANGED — users-table-backed; multi-account; bootstrap admin (3.2b)
     totp.py        NEW — TOTP enrollment/verify + recovery codes (3.7; pyotp)
@@ -472,13 +484,19 @@ app/
 ```
 
 - New peer domains `users`, `access` added to the import-linter **layers** + **independence**
-  contracts and the AST scan. **`app.authz` is added as a shared layer peer to `audit`** — in the
-  **layers** contract (importable by `<domain>.routes` and `api.guards`), **excluded from the
-  independence set** — so cross-domain routes may call it with no domain→domain edge. `api.identity`
-  is **SUPPORT** (like `api.guards`). Each new package gets a `tests/phase3/<pkg>/` dir.
-- Invariants hold: routes call repos (no SQL in routes); repos/authz take `conn`, return dicts,
-  import `infra` only, never commit; the **route owns the unit-of-work** — and for logged routes it
-  is opened `BEGIN IMMEDIATE` up front (§7.3) → repo mutations → `write_audit` (INSERT-only) → commit.
+  contracts and the AST scan. **`app.authz` joins the layer order at the AUDIT tier** — the tier
+  becomes `APPLICATION → DOMAIN/DATA → {audit, authz} → SUPPORT → INFRA`. `authz` is imported
+  **only by APPLICATION `<domain>.routes`** (downward — exactly how routes already import `audit`),
+  and it imports **only SUPPORT (`api.responses`) + INFRA** downward; it is **excluded from the
+  independence set** (not a peer domain, like `audit`). **There is deliberately NO `api.guards →
+  authz` edge** — the SUPPORT guard would be importing upward (Codex #4 round 3); the live
+  role/disabled/access reads are `authz` decorators the routes apply, so no SUPPORT module reads
+  data. `api.identity` stays **SUPPORT** (data-free, `user_id` only). Each new package gets a
+  `tests/phase3/<pkg>/` dir; a `tests/architecture/` case asserts no `api.* → app.authz` import.
+- Invariants hold: routes call repos (no SQL in routes); repos/`authz.repo` take `conn`, return
+  dicts, import `infra` only, never commit; the **route owns the unit-of-work** — and for logged
+  routes it opens `BEGIN IMMEDIATE` up front (§7.3) → repo mutations → `write_audit` (INSERT-only)
+  → commit.
 - `infra/tls.py` is pure INFRA (no Flask/domain imports); added to the Phase-1 forbidden
   source list like the other infra modules.
 
@@ -555,7 +573,7 @@ are unchanged.
 | 1 | Bootstrap/locked-state fail-closed; `/api/status` must not read locked as "no admin"; first-admin LAN race | §4.1 fail-closed locked state; `503` until unlock; `status` = locked\|uninitialized\|ready; first-admin bound to localhost/bootstrap |
 | 2 | 3.2a not a pure refactor — where does the password-derived DB key live? | §4.2 + §2: **`DB_KEY` stays process-global (server master key), not per-session**; 3.2a narrowed to identity accessors only. `phase3-surface.md` premise corrected |
 | 3 | `auth/session.py` layer inversion (SUPPORT `guards` → DOMAIN `auth`) | §4.2 + §10: identity context moves to **`app/api/identity.py` (SUPPORT)** |
-| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in the **shared `app/authz/` module** (repo=facts, policy=pure decision), modeled on `audit`, in the layers contract + excluded from independence; `app/access` holds only the workflow *(shape pinned in round 2 — see below)* |
+| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in the **shared `app/authz/` module at the AUDIT tier**, applied by routes as decorators; `api.guards` (SUPPORT) does NOT import it; excluded from independence; `app/access` holds only the workflow *(layer pinned in round 3 — see below)* |
 | 5 | Access coverage wider than dataset+analysis | §3, §6, §11: gate/filter records, targets, results, exports, pickers, `target_id` resolution; `403`≡`404` |
 | 6 | `DATASET_OPENED` can't be UI-only | §7.2: server-side emit, deduped per `(session, dataset)`; direct-API GET still logs (test) |
 | 7 | Failed-login audit contradiction | §4.3: operator `LOGIN_FAILED` → encrypted chained log post-unlock; sidecar only pre-unlock |
@@ -586,3 +604,24 @@ and flagged **#2, #4, #9** as PARTIAL. All three are now closed:
   up front for logged routes; `write_audit` is INSERT-only (no begin/commit/rollback), preserving
   invariant 2. `infra.storage.begin_immediate(conn)` exposes the opt-in.
 - Doc nit: removed the stray trailing Markdown code fence Codex noted (pre-existing since the first draft).
+
+### Review round 3 (Codex, 2026-07-04) — the last PARTIAL (#4 layer edge) closed
+
+Round 3 (`codex/phase3-design-review`, `ec74add`) confirmed **#2 and #9 RESOLVED** and flagged
+**#4 STILL-PARTIAL** for one real reason: round 2 called `authz` "peer to `audit`" **and** said
+`api.guards` (SUPPORT) imports it — but `audit` sits **above** SUPPORT in the layer order, so
+`api.guards → authz` is an illegal **upward** import. (Also one stale §3 "SUPPORT policy module"
+sentence.) **Fixed:**
+
+- **`authz` layer pinned to the AUDIT tier:** the order is now
+  `APPLICATION → DOMAIN/DATA → {audit, authz} → SUPPORT → INFRA`. `authz` is imported **only by
+  APPLICATION `<domain>.routes`** (downward, exactly like `audit`), imports only `api.responses`
+  (SUPPORT) + `infra` (its `authz/repo` reads via `conn`+`infra`), and is excluded from independence.
+- **`api.guards → authz` edge eliminated:** the data-reading checks are `authz` **decorators the
+  routes apply** (`@authz.require_role` / `@authz.require_active` / `@authz.require_dataset_access`),
+  not guard helpers. `api.guards` (SUPPORT) keeps only the **data-free** `login_required`
+  (session `user_id` + server-unlocked) + content-type guard + `get_db`. Live `current_role()`/
+  `current_username()` are `authz` accessors. A `tests/architecture/` case asserts no
+  `api.* → app.authz` import. (§2 3.3/3.4, §3, §4.4, §5, §10 all updated to match.)
+- Stale §3 sentence corrected. With this, **all 12 findings + both pushbacks are closed** and the
+  full 3.2+ design is internally consistent under the CI-enforced contracts.

@@ -4,6 +4,41 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: Phase 3 spec — round-3 patch (Codex #4 layer edge closed) on `claude/phase3-spec-patches` - FOR REVIEW
+
+Codex round 3 (`codex/phase3-design-review`, `ec74add`): **#2 and #9 RESOLVED**, **#4 STILL-PARTIAL**
+for one real reason — the round-2 `authz` design was self-contradictory. I said `authz` is "peer to
+`audit`" **and** that `api.guards` imports it; but `audit` sits **above** SUPPORT in the layer order,
+so `api.guards (SUPPORT) → authz` is an illegal **upward** import. Codex is right; fixed on the same
+branch. Design-only, Phase 1 frozen.
+
+### The fix (authz layer pinned; the SUPPORT→authz edge removed)
+- **`authz` placed at the AUDIT tier:** `APPLICATION → DOMAIN/DATA → {audit, authz} → SUPPORT →
+  INFRA`. Imported **only by APPLICATION `<domain>.routes`** (downward, exactly like `audit`);
+  imports only `api.responses` (SUPPORT) + `infra`; excluded from independence. `authz/repo` reads
+  its facts via `conn`+`infra` (like `audit` writes its table) — no DOMAIN/DATA import.
+- **No `api.guards → authz` edge.** The data-reading checks are **`authz` decorators the routes
+  apply** — `@authz.require_role` / `@authz.require_active` (live role/disabled) /
+  `@authz.require_dataset_access`. `api.guards` (SUPPORT) keeps only the **data-free**
+  `login_required` (session `user_id` + server-unlocked) + content-type guard + `get_db`. Live
+  `current_role()`/`current_username()` are `authz` accessors. Added a `tests/architecture/` assertion:
+  no `api.* → app.authz` import.
+- **Denial-audit ownership pinned:** the `authz` decorator returns the 403 signal; the **route/error
+  handler** writes the audit row via `audit` (APPLICATION→audit), so `authz` needs no `audit` import.
+- Stale §3 "SUPPORT policy module" sentence corrected. Sections updated: §2 (3.3/3.4), §3, §4.4, §5,
+  §10, §13 (new "Review round 3" subsection).
+
+### Verification
+- Design/docs only. `git diff --stat main -- phase1_cdr/` empty; code fences paired (4). Grepped: the
+  only remaining `peer to audit` / `guards imports authz` strings are historical text describing the
+  rejected round-2 shape while explaining the fix — no live stale claim.
+- No tests (design review).
+
+### For Codex/Nadim
+- Diff since round 2 = `git diff e66fbab..claude/phase3-spec-patches`. All 12 findings + both
+  pushbacks are now closed and the design is internally consistent under the CI-enforced contracts.
+  If Codex concurs, **the full 3.2+ design is ready** (3.1 was always independent). Not merged — Nadim merges.
+
 ## 2026-07-04 - Claude: Phase 3 spec — round-2 patches (Codex #2/#4/#9 PARTIALs closed) on `claude/phase3-spec-patches` - FOR REVIEW
 
 Codex's round-2 review (`codex/phase3-design-review`, `5def70f`) confirmed 9/12 findings RESOLVED
