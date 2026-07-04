@@ -27,7 +27,7 @@ any UI, server, or account work is layered on.
 | **2A — Backend foundation** | A Flask + PyWebView desktop app over a SQLCipher-encrypted database: single-account auth, xlsx import, targets, and an analysis bridge that reuses the Phase 1 detectors unchanged. | ✅ Complete — merged |
 | **2B — Frontend + desktop shell** | Vanilla no-build SPA (analyst-workstation UI), served by Flask; ARM64 PyWebView launch; informational password-strength meter. | ✅ Complete — merged |
 | **Pre-3 — Modular monolith** | Behavior-frozen reorganization of the backend into a layered, package-per-domain modular monolith ([ADR 0001](docs/adr/0001-modular-monolith.md)), ahead of the Phase 3 multi-user build. | ✅ Complete — merged |
-| **2C — Spreadsheet & export** | Spreadsheet tab (filterable + sortable records sheet, click-a-user detection, frequency explorer), app-wide styled 3-sheet .xlsx export with custom file name, literate call-type labels. | 🔍 In review — `spreadsheet` branch |
+| **2C — Spreadsheet & export** | Spreadsheet tab (filterable + sortable records sheet, click-a-user detection, frequency explorer), app-wide styled 3-sheet .xlsx export with custom file name, literate call-type labels; frequent-areas sample-size cue. | ✅ Complete — merged |
 | **3 — Multi-user platform** | Multi-user + admin roles, connected over LAN. | Planned |
 
 **Phase 1 lives in [`phase1_cdr/`](phase1_cdr/) — see its
