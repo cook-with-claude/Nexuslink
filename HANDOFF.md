@@ -4,6 +4,35 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: SESSION CLOSE — #10, README 2C, #16 all merged; native testing restored
+
+Everything this session is **landed on `main`** (`143a551`); the repo is a single branch again.
+
+### What landed on `main` (d74dce7 → 143a551, all Codex-CLEAR, all pruned)
+1. **#10 weak-gate surfacing** (`2e2d00c`) — binding-gate + weak-gate-count caption under Home/Work
+   cards (`bindingGates`/`bindingNote` in `components.js`). Plus the **first frontend behavioural
+   test** (`components.test.mjs`, Node's built-in `node --test`, wired into the CI `frontend` job).
+2. **README 2C → "Complete — merged"** (`8549b4c`) — the durable half of last session's dangling
+   `445e9dd`, re-applied README-only; stale HANDOFF half discarded; `claude/session-close` deleted.
+3. **#16 dedup detection renderer** (`143a551`) — shared `detectionBlock`/`frequentAreasBlock`/`pct`
+   in `components.js`; `results.js` + `spreadsheet.js` both call them (only wrapper class differs).
+   Codex fixed one stale gate: `test_ui.py` needle `confidencePill` → `resultsScreen`.
+
+### Verified end state
+- **187 passed** — now runs **natively** on Windows (`.venv` py3.11.9, pandas 3.0.3; the old Smart
+  App Control block is gone), AND Codex's WSL run. `node --test` 10/10. ruff clean, import-linter 4
+  kept. `git diff --stat main -- phase1_cdr/` empty (Phase 1 frozen).
+- CLAUDE.md refreshed: frontend-test commands + the "grep `tests/` on JS symbol renames" caveat +
+  the native-testing update.
+
+### Open / next
+- **Nothing in flight.** No branches pending review.
+- **Phase 3** is the next move (first: wire `migrations.migrate(g.db)` into `app/api/guards.py:get_db()`,
+  ADR 0002, then auth de-globalization per `docs/phase3-surface.md`).
+- Backlog (non-blocking): GitHub **#14/#17** (skippable portfolio-gloss on UI-unreachable edges),
+  the remaining low-value #16 bits (`downloadResultsXlsx` vs `request()`, field helper), and
+  methodology **#2/#7/#8/#9** (mostly gated behind frozen Phase 1).
+
 ## 2026-07-04 - Codex: review of detection-renderer dedup on `codex/dedup-detection-renderer-review` - CLEAR after test fix
 
 Reviewed `origin/claude/dedup-detection-renderer` at `fcb4507` against `main`

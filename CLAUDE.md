@@ -63,14 +63,21 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 ## Running things
 - Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **187 passing**;
   `tests/architecture/` holds the AST boundary checks).
+- Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
+  every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's
+  built-in runner). Both run in the CI `frontend` job. NOTE: a JS refactor that renames/removes an
+  exported symbol can still break **pytest** — `tests/phase2a/test_ui.py` greps served JS for symbol
+  needles, so grep `tests/` too before assuming "no Python touched → tests unaffected".
 - Lint: `ruff check app tests main.py` (config in `pyproject.toml`; excludes `phase1_cdr/`, `vendor/`).
 - Boundaries: `lint-imports` (import-linter) — **enforcing** (CI `boundaries` job). grimp has no
   win_arm64 wheel, so it can't run on native Windows; it runs in CI on ubuntu x64 (and locally in WSL).
-- Desktop app: `python main.py` (needs the .NET Desktop Runtime on Windows; see `README.md`).
-- **Local testing note:** native Windows on the ARM64 dev machine **cannot import pandas** — Smart App
-  Control (enforced) blocks unsigned compiled `.pyd`s, so `pytest tests/phase2a` fails there. Run the
-  suite in **WSL2** instead (Ubuntu, uv-managed Python 3.11 venv at `/root/lp-venv`); CI (Ubuntu) is the
-  canonical gate. See the `local-testing-wsl` auto-memory for the exact command.
+- Desktop app: `.venv\Scripts\python.exe main.py` (needs the .NET Desktop Runtime on Windows; see
+  `README.md`). Import `sample_cdr_data.xlsx` (repo root) to seed data for manual testing.
+- **Local testing:** as of 2026-07-04 native Windows **runs the full suite** (`.venv` Python 3.11.9,
+  pandas 3.0.3 — the earlier Smart App Control / `tslib` block is gone): `.venv\Scripts\python.exe -m
+  pytest tests/phase2a tests/architecture phase1_cdr/tests` → 187 passed (~58s). **WSL2** (Ubuntu, venv
+  at `/root/lp-venv`) still works as a fallback; CI (Ubuntu) is the canonical gate. See the
+  `local-testing-wsl` auto-memory.
 
 ## Key docs
 - `COLLAB.md` — two-agent protocol + the architecture rules (agent-neutral).
