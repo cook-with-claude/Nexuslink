@@ -4,6 +4,52 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-04 - Claude: Phase 3 spec PATCHED for Codex review round 1 on `claude/phase3-spec-patches` - FOR REVIEW
+
+Codex reviewed the merged Phase 3 design spec (on `codex/phase3-design-review`, `92b667d`) —
+verdict **sound direction, patch before planning 3.2+**. Twelve required changes + two smaller
+pushbacks. I verified each against the current code model (single-account login derives the raw
+SQLCipher key from the password; `config` globals; `/api/status` = `{account_exists,authenticated}`;
+independence contract names whole domain packages) and **accepted all of them** — several fix real
+flaws, not nits. Spec patched on this branch; `phase3-surface.md` corrected too. **Design-only, no
+code, Phase 1 frozen.**
+
+### What changed in the spec (see the new §13 resolution table for the full map)
+- **DB-key premise corrected (Codex #2, the big one):** 3.2a narrowed to **identity accessors
+  only**; `DB_KEY` **stays process-global** and is reinterpreted as the *server* master key (there is
+  **no per-session DB key** under server-holds-key). `phase3-surface.md` got a correction banner.
+- **Layering (Codex #3, #4):** per-session identity context → `app/api/identity.py` (SUPPORT, not
+  `auth` DOMAIN); the dataset-access **predicate** → neutral `app/api/policy.py` (SUPPORT), NOT the
+  `app/access` domain (which keeps only the request/decide workflow) — avoids an independence-contract
+  violation.
+- **Bootstrap fail-closed (Codex #1):** `503`/locked until master-key unlock; `/api/status` =
+  locked|uninitialized|ready; first-admin bound to localhost (no public LAN `/api/setup` race).
+- **Access coverage widened (Codex #5):** gate/filter records, targets, results, exports, phone
+  pickers, and `target_id` resolution — not just dataset+analysis; `403`≡`404`.
+- **`DATASET_OPENED` server-enforced (Codex #6):** emitted server-side, deduped per (session,dataset),
+  so a direct-API `GET /records` still logs.
+- **Failed-login contradiction fixed (Codex #7):** operator `LOGIN_FAILED` → encrypted chained log
+  post-unlock; sidecar only pre-unlock.
+- **Live session authority (Codex #8):** cookie carries `user_id` only; role/disabled read live per
+  request — disabling/re-roling revokes stale sessions.
+- **Hash-chain concurrency (Codex #9):** serialized append (`BEGIN IMMEDIATE`/`chain_head`); UI says
+  "stored log verifies," not "history complete" (tail-truncation caveat).
+- **Trusted-proxy (Codex #10):** `X-Forwarded-*` trusted only from a configured CIDR;
+  `SESSION_COOKIE_SECURE` in HTTPS mode.
+- **Sequencing (Codex #11):** access predicate moves to 3.4 (with its schema); 3.3 = role guard only.
+- **`/api/status` semantics (Codex #12)** + **cert hot-reload downgraded** to a documented
+  restart/reload procedure (smaller pushback).
+
+### Verification
+- Design/docs only. `git diff --stat main -- phase1_cdr/` empty. No code, no tests run (spec review).
+- Spec self-consistency grepped: no stale `auth/session.py`, no per-session `DB_KEY`, no
+  `user_id + role` cookie claim contradicting the live-role model.
+
+### For Codex/Nadim
+- Diff to review = `git diff main...claude/phase3-spec-patches` (spec + `phase3-surface.md` + this
+  entry). Not merged — Nadim merges. If Codex is satisfied, **next step is writing-plans for 3.1**
+  (unchanged and independent); do NOT plan 3.2+ until this patched design is accepted.
+
 ## 2026-07-04 - Claude: PHASE 3 DESIGN brainstormed + spec committed (NOT merged) — pickup = write plan for 3.1
 
 Full brainstorming session on Phase 3 with Nadim. **No code, no implementation** — the deliverable is

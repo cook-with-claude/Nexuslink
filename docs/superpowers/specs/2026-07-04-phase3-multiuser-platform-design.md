@@ -1,10 +1,12 @@
 # Phase 3 — Multi-User LAN Platform: Design Spec
 
 **Date:** 2026-07-04
-**Status:** Approved design (pre-implementation)
-**Author:** Claude Code (branch `claude/phase3-design`)
+**Status:** Approved design, **revised after Codex review round 1** (branch `claude/phase3-spec-patches`)
+**Author:** Claude Code
 **Supersedes framing in:** ADR 0001 §Context (Phase 3 = "multi-user platform with admin
-roles, connected over LAN"); `docs/phase3-surface.md` (de-globalization inventory)
+roles, connected over LAN"); `docs/phase3-surface.md` (de-globalization inventory — **note the
+`DB_KEY` premise is corrected here: under server-holds-key there is no per-session DB key; see §4.2**)
+**Review resolutions:** see §13 (maps each Codex finding → how it was resolved)
 
 ## 0. Hard constraints (override everything below)
 
@@ -42,10 +44,11 @@ comprehensive tamper-evident activity log the admin can review per operator.
 | 7 | Approval gate | **Dataset-access only.** No per-query approval |
 | 8 | Activity logging | **Every operator query/intent is logged** (actor, action, dataset, subject, query params, result summary), admin-reviewable per operator |
 | 9 | Loggable reads | Any action that must be logged is an **explicit POST intent** (never a loggable GET — avoids HEAD/prefetch phantom rows, the export-endpoint lesson) |
-| 10 | Records browsing granularity | **One "opened dataset" event**, not one row per pagination page |
+| 10 | Records browsing granularity | **One `DATASET_OPENED` event per (session, dataset), emitted server-side** (deduped in the server, NOT a UI convention) — not one row per pagination page. A direct-API records read still triggers the guard + the once-per-session row (§7.2) |
 | 11 | Tamper-evidence | **Hash-chained audit log, built** — with an honest threat model stated (see §7) |
-| 12 | Transport | **HTTPS with minimum TLS 1.3**, consuming **internal-CA-issued** certs from secure paths, renewal support, **reverse-proxy-compatible** (`X-Forwarded-*`). CA issuance + device-trust = documented operating model, not app code (§8) |
+| 12 | Transport | **HTTPS with minimum TLS 1.3**, consuming **internal-CA-issued** certs from secure paths, **reverse-proxy-compatible but only trusting `X-Forwarded-*` from a configured proxy CIDR** (§4.3). Cert *hot-reload* downgraded to a documented restart/reload procedure (§8). CA issuance + device-trust = operating model (§8) |
 | 13 | Login rate-limiting | **In scope** — login is network-reachable for the first time (the condition ADR 0001 named) |
+| 17 | Live session authority | Cookie carries `user_id` only; **`role` + `disabled` are read from the users row per request** (or via a session epoch) — disabling/re-roling an operator revokes stale sessions (§4.3, §4.4) |
 | 14 | MFA | **TOTP built** (own late/optional increment) as the working second factor; **client-certificate mTLS documented** as the PKI-aligned alternative (§8.6) |
 | 15 | Master-key secret storage | **Manual admin bootstrap passphrase** at server start (never stored unwrapped — strongest form). OS-keyring / TPM / Vault noted as a production seam (§8.5) |
 | 16 | Internal-service mTLS | **Not applicable** — this is a modular monolith with no internal service hop (one process, in-process DB). Design-only *if* ever decomposed (§8.6) |
@@ -83,23 +86,33 @@ The two largest pieces (3.2, 3.5) are pre-split.
 - **3.1 — Migrate-on-login wiring** (ADR 0002). Wire `migrations.migrate(g.db)` into
   `api/guards.py:get_db()` right after `storage.connect`. Tiny, mechanical, independent;
   ships first because every later increment appends a migration.
-- **3.2a — De-globalization seam** (ADR 0003, part 1). Introduce `app/auth/session.py`
-  per-session identity context and swap the 5 `phase3-surface.md` functions to read it —
-  **still single-account, behavior-frozen.** Pure refactor; existing tests stay green
-  unchanged. This is the low-risk half.
+- **3.2a — Identity-accessor de-globalization ONLY** (ADR 0003, part 1). Move a **per-session
+  identity context** into a SUPPORT module (`app/api/identity.py` — *not* `auth` DOMAIN; see
+  §4.2) and swap the **identity** accessors (`current_username`, add `current_role`) to read it.
+  **`DB_KEY` is deliberately left process-global here** — see the correction below. Truly
+  behavior-frozen for the single account; existing tests stay green unchanged. (Codex #2, #3.)
+  > **Why `DB_KEY` is not touched in 3.2a:** in today's single-account model the raw SQLCipher
+  > key is *derived from the user's password* at login. It cannot move into the signed (not
+  > encrypted) session cookie, and a per-session server-side key cache would be new
+  > infrastructure — not a mechanical refactor. So the DB-key half waits for 3.2b, where the
+  > server-holds-key model **eliminates per-session keys entirely** (one server master key).
 - **3.2b — Server key model + multi-account** (ADR 0003, part 2). Master-key bootstrap
-  unlock; `users` table (migration 2); login = bcrypt against it → session carries
-  `user_id` + `role`; first-run admin creation. Behavior *changes* here (multi-account),
-  so it is isolated from the refactor above.
+  unlock (fail-closed, §4.1); `users` table (migration 2); login = bcrypt against it → session
+  carries **`user_id` only**; first-run admin creation bound to localhost. `get_db()` now uses
+  the **process-held server master key** (set once at bootstrap, legitimately process-wide —
+  it is the *server's* key, never a user's per-session key). Behavior *changes* here.
 - **3.2c — Network + transport baseline.** Persistent `SECRET_KEY` keyfile, bind config,
-  login rate-limiting, **HTTPS with min TLS 1.3** + cert loading (§8). The server must bind
-  HTTPS to be network-reachable, so this rides with the server-startup work; cert-reload is
-  finalized before the UI increment.
-- **3.3 — RBAC guards.** `role_required("admin")` beside `login_required`; enumerate the
-  admin-only actions; the shared **access-check** guard used by dataset + analysis routes.
-- **3.4 — Owner dimension + dataset-access approval** (ADR 0004). Owner/visibility on
-  `datasets`; the `requested → approved | denied` state machine; server-enforced access
-  with no `requested → executed` path.
+  login rate-limiting, **trusted-proxy CIDR** for `X-Forwarded-*`, `SESSION_COOKIE_SECURE`,
+  **HTTPS with min TLS 1.3** + cert loading (§8). The server must bind HTTPS to be
+  network-reachable, so this rides with the server-startup work.
+- **3.3 — RBAC guards (role only).** `role_required("admin")` beside `login_required`;
+  enumerate the admin-only actions; **per-request role/disabled freshness** (§4.4). The
+  **dataset-access predicate is NOT here** — it depends on 3.4's schema, so shipping a stub
+  guard now would be a fake that changes meaning later (Codex #11).
+- **3.4 — Owner dimension + dataset-access approval + the access predicate** (ADR 0004).
+  Owner/visibility on `datasets`; the `requested → approved | denied` state machine; the
+  **shared access predicate in a neutral SUPPORT policy module** (§5, Codex #4); server-enforced
+  access across **all** subject-data reads (§3, §6, Codex #5) with no `requested → executed` path.
 - **3.5a — Activity capture.** Read *intents* (frequency, export) become POST + logged; full
   event vocabulary with real operator identity + structured detail; `DATASET_OPENED`. No
   chain yet — pure "every action writes a row."
@@ -153,40 +166,95 @@ ALTER TABLE audit_log ADD COLUMN entry_hash TEXT;
 
 **Access rule (single source of truth, enforced server-side):** operator U may touch dataset
 D iff `U.role = 'admin'` **OR** `D.owner_id = U.id` **OR** an `approved` `dataset_access(D, U)`
-row exists. This predicate lives in one shared guard (§5), consulted by both the dataset and
-analysis routes.
+row exists. This predicate lives in one shared SUPPORT policy module (§5).
+
+**Enforcement is dataset-scoped but reaches every subject-data path (Codex #5).** Targets,
+analysis results, exports, and phone-number pickers are all reachable by `target_id`/`dataset_id`
+and each **resolves to its owning dataset and re-checks the predicate** — not just the raw
+`/records` route. Concretely, access filtering/gating covers: dataset list, `/records`,
+phone-number pickers, target list/create/delete, `target_id → dataset_id` resolution, latest-result
+reads, frequency queries, and exports. A `target_id` an operator has no dataset access to must
+return `403` (not leak the phone number, name, or a stored result). Lists are **filtered** to the
+operator's accessible datasets; single-item reads are **gated**. `403` on a resource whose
+existence is itself sensitive is indistinguishable from `404` to a non-owner (no existence oracle).
 
 ## 4. Server key model, auth, and network baseline (ADR 0003)
 
-### 4.1 Two distinct unlocks
+### 4.1 Two distinct unlocks — and the fail-closed locked state (Codex #1)
 - **Server unlock (once, at startup) ≠ operator login (per person).** First run generates
   the master DB key + creates the first admin account, and wraps the master key under an
   **admin bootstrap passphrase** into a server keyfile (outside the encrypted DB, restrictive
   perms, never committed). Every server start unwraps the master key into process memory
-  (passphrase via prompt or environment). This is the "server holds the key" mechanism —
-  `storage.connect()` uses the in-memory master key; clients never see it.
-- **Operator login** = bcrypt verify against `users` → mint a session carrying `user_id` +
-  `role`. No password ever unwraps the DB key in this model (that was the single-account
-  design); the server already holds it.
+  (passphrase via console prompt or environment). `storage.connect()` uses the in-memory
+  master key; clients never see it.
+- **Operator login** = bcrypt verify against `users` → mint a session carrying **`user_id`
+  only** (role/disabled are read live, §4.4). No password ever unwraps the DB key in this
+  model; the server already holds it.
+- **Fail-closed locked state (required).** Because `users`, bcrypt hashes, roles, and
+  `disabled` flags live *inside* the encrypted DB, none of them are readable until the master
+  key is unwrapped. Therefore:
+  - Until bootstrap unlock succeeds, the server serves **only** a `503`/locked status on every
+    route (no login, no data). It does not silently behave like a fresh install.
+  - `/api/status` must distinguish **`locked`** (DB not unwrapped) from **`uninitialized`**
+    (no admin exists) from **`ready`**. It must **never** report "locked" as "no admin exists"
+    — that would invite a first-admin takeover.
+  - **First-admin creation is a local/console/bootstrap operation, bound to localhost** (or
+    gated by the bootstrap passphrase) — **never a public LAN race on `/api/setup`.** Once an
+    admin exists, `/api/setup` is closed exactly as today.
 
-### 4.2 De-globalization (the `phase3-surface.md` swap)
-Replace the two process-global config slots with a **per-session identity context**
-(`app/auth/session.py`). Rewrite only these five: `_unlock`, `logout`, `get_db`,
-`current_username`, and add `current_role`; `login_required` gains a role-aware sibling.
-`get_db()` derives the connection from the server-held master key (not `config["DB_KEY"]`).
-The read-only consumers listed in `phase3-surface.md` should need **zero** edits — if one
-does, the accessor seam leaked and the fix belongs at the accessor.
+### 4.2 De-globalization, corrected (Codex #2, #3)
+`phase3-surface.md` framed Phase 3 as de-globalizing **both** `config["USERNAME"]` **and**
+`config["DB_KEY"]` into per-session context. That is **half wrong for this trust model**, and
+the spec corrects it:
+
+- **`USERNAME`/identity → per-session (correct).** The identity accessor reads a per-session
+  context. It carries `user_id`; `current_username()`/`current_role()` resolve from the users
+  row (§4.4). This is the genuinely mechanical, behavior-frozen part (increment 3.2a).
+- **`DB_KEY` → stays process-global, and that is now CORRECT, not a leak.** Under
+  server-holds-the-key there is **one master key for the whole server**, set at bootstrap, used
+  by every request's `get_db()`. There is **no per-session DB key** to de-globalize. Trying to
+  make it per-session in the single-account model would require caching a password-derived key
+  server-side (new infra) or putting it in a signed-not-encrypted cookie (unsafe). So `DB_KEY`
+  is simply *reinterpreted* from "the logged-in user's key" to "the server's master key."
+- **Layer placement (Codex #3):** the per-session identity context is a **SUPPORT** concern
+  (`app/api/identity.py`), **not** `auth` DOMAIN. `api.guards` (SUPPORT) reads it; if the
+  context lived in `auth` DOMAIN, `guards → auth` would invert the layer rule. `auth/routes.py`
+  (APPLICATION) *writes* it at login/logout — allowed (higher may call lower).
+- **Zero-edit consumers:** the read-only `current_username()` call sites in `phase3-surface.md`
+  still need **zero** edits — if one does, the accessor seam leaked; fix it at the accessor.
 
 ### 4.3 Network security baseline (login is now reachable)
 - **Persistent `SECRET_KEY`** in a server keyfile (generated once). Per-launch secret is
-  wrong for a shared server — it would log every operator out on restart.
-- **Login rate-limiting**: per-username + per-IP throttle (simple in-memory token bucket;
-  resets on restart — acceptable at synthetic/portfolio scope; documented).
-- **CSRF**: the SPA is served **same-origin** by the same server, so `SameSite=Strict` +
-  the existing JSON-content-type guard on state-changing requests still carry it. No
-  cross-origin surface is introduced.
-- **Failed-login sidecar** (`audit.write_failed_login`) keeps working; failures now also
-  carry the attempted username for the admin activity view.
+  wrong for a shared server — it would log every operator out on restart. (This is *why* stale
+  sessions can outlive a restart, which is exactly what §4.4 handles.)
+- **`SESSION_COOKIE_SECURE = True`** whenever serving network HTTPS (cookies never sent over
+  plaintext) — added alongside the existing `HTTPONLY` + `SameSite=Strict`.
+- **Login rate-limiting**: per-username + per-IP throttle (in-memory token bucket; resets on
+  restart — acceptable at synthetic/portfolio scope; documented). **Depends on a trustworthy
+  client IP**, hence the proxy rule below.
+- **Trusted-proxy rule (Codex #10):** `X-Forwarded-Proto`/`-For` are honored **only when the
+  request arrives from a configured proxy address/CIDR**; from any other source they are
+  ignored. Otherwise a LAN client could spoof `https` scheme (defeating HTTPS detection) or a
+  fake source IP (defeating rate-limiting). Direct-bind (no proxy) mode ignores them entirely.
+- **CSRF**: the SPA is served **same-origin**, so `SameSite=Strict` + the JSON-content-type
+  guard on state-changing requests still carry it. No cross-origin surface is introduced.
+- **Failed-login audit, corrected (Codex #7):** once the server is bootstrap-unlocked the
+  encrypted DB *is* available before operator login, so a normal operator **`LOGIN_FAILED`
+  goes into the encrypted, hash-chained audit log** (with attempted username) — not the
+  plaintext sidecar. The `write_failed_login` **sidecar is reserved for pre-unlock / bootstrap
+  failures only** (when the DB genuinely cannot be opened). This removes the "sidecar keeps
+  working" vs "vocabulary includes `LOGIN_FAILED`" contradiction in the earlier draft.
+
+### 4.4 Live session authority — no stale roles (Codex #8)
+Persistent `SECRET_KEY` means sessions survive restarts, so authority **must not be trusted
+from the cookie**:
+- The cookie carries **`user_id` only**. On **every** request, `login_required`/`role_required`
+  load the current users row and read **`role` + `disabled` live**. A disabled or re-roled
+  operator loses/loses-elevation immediately, even on a pre-existing cookie.
+- Equivalent acceptable implementation: a **session epoch/version** bumped on disable/role-change
+  and compared per request. Either way the authoritative source is the DB row, never the cookie.
+- This is cheap: every request already opens `get_db()`; the user-row read joins that unit of
+  work. Covered by tests (§11): disable-mid-session and role-downgrade-mid-session both revoke.
 
 ## 5. RBAC (thin — no engine)
 
@@ -194,23 +262,30 @@ does, the accessor seam leaked and the fix belongs at the accessor.
   / disable users, approve / deny dataset access, view the activity log, import + own
   datasets. **Analyst actions:** request dataset access, run analysis on granted datasets,
   view own request status.
-- The **access-check** predicate (§3) is one shared guard (candidate: `api.guards` or a small
-  `app/access/` service) consulted by dataset and analysis routes — so there is no
-  server-side path that skips it. Hiding a UI button is never the control; the guard is.
-- Denied access = a deliberate, **logged** `403` (`FORBIDDEN`), never a crash or silent
-  no-op.
+- The **access-check** predicate (§3) lives in a **neutral SUPPORT policy module** — **not** in
+  the `app/access` workflow domain (Codex #4). Reason: the import-linter independence contract
+  names whole domain packages, so `app.datasets.routes → app.access.*` (and `analysis`,
+  `targets`) would violate independence. Placement: a small `app/api/policy.py` (SUPPORT) holds
+  the predicate; `api.guards` exposes a thin `require_dataset_access(...)` that delegates to it;
+  domain routes call the guard. No domain imports another domain's internals; no ad-hoc SQL in
+  routes (the predicate's data read goes through a repo).
+- Hiding a UI button is never the control; the guard is.
+- Denied access = a deliberate, **logged** `403` (`FORBIDDEN`), never a crash or silent no-op.
 
 ## 6. Dataset-access approval (ADR 0004)
 
 - State machine: `requested → approved | denied`; an admin may re-decide later
   (`denied → approved`). Every transition writes an audit row (`ACCESS_REQUESTED`,
   `ACCESS_GRANTED`, `ACCESS_DENIED`) with actor + dataset.
-- **No bypass:** the analysis and dataset-read routes call the access guard *before* doing
-  any work; there is no code path from `requested` straight to `executed`. Enforced by tests
-  that hit the API directly (not just the UI).
-- New domain `app/access/` (`__init__/repo/routes`): the request/decide workflow. The access
-  *predicate* is shared (§5); the *workflow* is this domain. Respects invariant 4 (no domain
-  reads another's internals) — cross-domain joins happen through repos returning dicts.
+- **No bypass:** every subject-data route (§3: records, targets, results, exports, pickers,
+  `target_id` resolution — not just dataset+analysis) calls the access guard *before* doing any
+  work; there is no code path from `requested` straight to `executed`. Enforced by tests that
+  hit the API directly (not just the UI).
+- New domain `app/access/` (`__init__/repo/routes`) holds **only the request/decide workflow**
+  (the state machine + its audit writes). The access **predicate is NOT here** — it is the
+  neutral SUPPORT policy module (§5), precisely so `datasets`/`analysis`/`targets` can consult it
+  without importing this domain (independence-contract safe). Cross-domain joins go through repos
+  returning dicts.
 
 ## 7. Activity log + tamper-evidence
 
@@ -221,19 +296,26 @@ ts**. Event vocabulary:
 
 | Event | Written by | Notable detail |
 |---|---|---|
-| `LOGIN_SUCCESS` / `LOGIN_FAILED` / `LOGOUT` | auth | attempted username on failure |
-| `DATASET_IMPORTED` / `DATASET_OPENED` | datasets | one `OPENED` per session entry, **not per page** |
+| `LOGIN_SUCCESS` / `LOGIN_FAILED` / `LOGOUT` | auth | attempted username on failure; `LOGIN_FAILED` in the encrypted chained log post-unlock, sidecar only pre-unlock (§4.3) |
+| `DATASET_IMPORTED` / `DATASET_OPENED` | datasets | `OPENED` emitted **server-side**, deduped once per `(session, dataset)` — not per page, not a UI convention (§7.2) |
 | `ACCESS_REQUESTED` / `_GRANTED` / `_DENIED` | access | requester / decider |
 | `ANALYZE` | analysis | which of home/work/frequent asked; result areas + confidence |
 | `FREQUENCY_QUERY` | analysis | rank_by + all filters (area, date range, hour window, call_type) |
 | `EXPORT` | analysis | target(s) exported |
 
-### 7.2 Loggable reads become POST intents
+### 7.2 Loggable reads: POST intents + server-enforced `DATASET_OPENED` (Codex #6)
 The frequency explorer and any "record a look" endpoint change from GET to **POST** (data
-returned in the response body), so each logged row corresponds to one real question an
-operator asked — no HEAD/prefetch phantom rows. This is the export-endpoint lesson applied
-consistently. Plain records pagination stays GET and is **not** logged per page; the single
-`DATASET_OPENED` event covers "operator looked at dataset D."
+returned in the response body), so each logged row corresponds to one real question an operator
+asked — no HEAD/prefetch phantom rows. This is the export-endpoint lesson applied consistently.
+
+**Records browsing** stays a paged GET, but "one `DATASET_OPENED` per look" is **enforced by the
+server, not the UI.** The subtlety (Codex #6): a UI-only event would let a direct API caller
+`GET /records` and read raw rows with **no** audit row. Resolution: the records route **requires
+the access guard and emits `DATASET_OPENED` server-side, deduped once per `(session, dataset)`**
+(a per-session marker so pagination doesn't spam the log, but a first raw fetch — from the UI *or*
+a direct API client — always produces exactly one row). So there is no way to view a dataset's
+records without leaving the promised trail. (This makes the records GET a *committing* read for
+its first hit per session; the dedup marker keeps subsequent pages non-writing.)
 
 ### 7.3 Hash chain (honest threat model)
 - Each row stores `prev_hash` and `entry_hash = H(canonical(row fields) ‖ prev_hash)`.
@@ -241,12 +323,21 @@ consistently. Plain records pagination stays GET and is **not** logged per page;
   after it. Genesis: the chain begins at the first row written post-migration (older rows
   carry NULL chain columns); documented, not hidden.
 - SQLite `RAISE(ABORT)` triggers block `UPDATE`/`DELETE` on `audit_log` (append-only).
+- **Concurrent append must be serialized (Codex #9).** The desktop server is threaded and each
+  request opens its own connection, so two concurrent logged intents could both read the same
+  chain head and fork/break the chain. The append (read head → compute `entry_hash` → insert)
+  runs under **`BEGIN IMMEDIATE`** (write lock taken before the head read) within the route's
+  existing unit-of-work — `busy_timeout` (already 5000 ms) absorbs contention. A single-row
+  **`chain_head` table** updated in the same transaction is the alternative; either way the
+  head read and the insert are one atomic, serialized step. No two rows share a `prev_hash`.
 - **Stated plainly in the spec and UI:** this proves *ordering and integrity against naive or
-  accidental edits*, and detects a careless insider. It is **not** proof against an adversary
+  accidental edits* and detects a careless insider. It is **not** proof against an adversary
   holding the master key — they can recompute the chain — unless the chain head is anchored
-  outside the mutable store (external notarization / signed export). That external anchor is
-  **design-only** here. The value delivered is an accountability demonstrator with an
-  explicit boundary, not an overclaimed guarantee.
+  outside the mutable store (external notarization / signed export = **design-only** here). And
+  **tail truncation** (deleting the newest N rows and their head) is undetectable without that
+  external anchor. So the UI states **"the stored log verifies"** (internal consistency), **not**
+  "the history is complete." An accountability demonstrator with an explicit boundary, not an
+  overclaimed guarantee.
 
 ## 8. TLS / PKI (built app vs. operating model)
 
@@ -254,12 +345,14 @@ consistently. Plain records pagination stays GET and is **not** logged per page;
 - Serves over **HTTPS with a minimum protocol of TLS 1.3** (older versions refused); loads
   certificate + private key from **configurable secure paths** (restrictive perms, never
   committed; no self-signed assumption baked into code).
-- Supports **certificate reload for renewal** without dropping sessions (re-read cert/key on
-  signal or scheduled reload).
-- **HTTP is refused / redirected to HTTPS**; **HSTS** header set.
-- **Reverse-proxy compatible**: honors `X-Forwarded-Proto`/`-For` so TLS may instead
-  terminate at an internal proxy (the common enterprise topology) without the app
-  mis-detecting scheme or client IP.
+- **Certificate renewal via a documented restart/reload procedure** — cert/key are re-read on
+  server (re)start. *In-process hot-reload without dropping sessions is **downgraded to a
+  documented procedure / later refinement*** (Codex smaller-pushback): it is heavier than this
+  portfolio scope needs, and a planned restart on the renewal cadence is sufficient.
+- **HTTP is refused / redirected to HTTPS**; **HSTS** header set; `SESSION_COOKIE_SECURE` (§4.3).
+- **Reverse-proxy compatible, but trust is gated**: honors `X-Forwarded-Proto`/`-For` **only from
+  a configured proxy CIDR** (§4.3, Codex #10) so TLS may terminate at an internal proxy without
+  letting arbitrary LAN clients spoof scheme or client IP.
 - Private key handling documented; keyfile perms enforced at startup (warn/refuse on
   world-readable).
 
@@ -323,24 +416,32 @@ New/changed, following the CLAUDE.md "where does X go" rule and the CI-enforced 
 
 ```
 app/
+  api/
+    identity.py    NEW (SUPPORT) — per-session identity context (3.2a; NOT auth DOMAIN, Codex #3)
+    policy.py      NEW (SUPPORT) — the neutral dataset-access predicate (3.4; Codex #4)
+    guards.py      CHANGED — current_role()/role_required() (live role, §4.4);
+                             require_dataset_access() delegating to api.policy
+    system.py      CHANGED — /api/status returns locked|uninitialized|ready + user_id/role/MFA (#1,#12)
   auth/
-    session.py     NEW — per-session identity context (the de-globalization target, 3.2a)
     account.py     CHANGED — users-table-backed; multi-account; bootstrap admin (3.2b)
     totp.py        NEW — TOTP enrollment/verify + recovery codes (3.7; pyotp)
-    routes.py      CHANGED — login mints role-bearing session; rate-limit; MFA step
+    routes.py      CHANGED — login mints user_id-only session; rate-limit; MFA step;
+                             LOGIN_FAILED to encrypted log post-unlock (§4.3)
   users/           NEW domain — admin user management (__init__/repo/routes)
-  access/          NEW domain — dataset-access approval workflow (__init__/repo/routes)
-  api/guards.py    CHANGED — current_role(), role_required(), shared access-check
-  audit/log.py     CHANGED — hash chain, richer rows, new event vocabulary
-  analysis/routes.py  CHANGED — frequency + export become logged POST intents
-  datasets/*       CHANGED — owner_id; DATASET_OPENED logging
+  access/          NEW domain — dataset-access WORKFLOW only (request/decide); NOT the predicate
+  audit/log.py     CHANGED — serialized hash-chain append, richer rows, new event vocabulary
+  analysis/routes.py  CHANGED — frequency + export become logged POST intents; access-gated
+  targets/routes.py   CHANGED — access-gated; target_id -> dataset resolution re-checks (#5)
+  datasets/*       CHANGED — owner_id; server-side DATASET_OPENED; list/pickers access-filtered
   infra/
-    migrations.py  CHANGED — append migration 2+ (users, dataset_access, audit ALTERs)
-    tls.py         NEW (infra) — cert/key loading, reload, HTTPS server config
+    migrations.py  CHANGED — append migration 2+ (users, dataset_access, audit ALTERs, chain_head?)
+    tls.py         NEW (infra) — cert/key loading, HTTPS server config, trusted-proxy config
 ```
 
 - New domains `users`, `access` added to the import-linter **layers** + **independence**
-  contracts and the AST architecture scan; each gets a `tests/phase3/<domain>/` dir.
+  contracts and the AST scan; each gets a `tests/phase3/<domain>/` dir. `api.identity` and
+  `api.policy` are **SUPPORT** (like `api.guards`) — added to the layers contract there, so
+  domains may depend on them without a domain→domain edge.
 - Invariants hold: routes call repos (no SQL in routes); repos take `conn`, return dicts,
   import `infra` only, never commit; route owns the unit-of-work → `write_audit` → commit.
 - `infra/tls.py` is pure INFRA (no Flask/domain imports); added to the Phase-1 forbidden
@@ -354,13 +455,24 @@ app/
   stale/wrong one fails; a recovery code works once then is consumed; MFA is required only
   after it is enrolled (login without MFA still works for the initial admin bootstrap).
 - **Access enforcement tests hit the API directly** — an analyst with no approved access gets
-  `403` on the dataset and analysis routes even when bypassing the UI. This is the security
-  assertion, not a hidden button.
+  `403` (indistinguishable from `404`) on **records, targets, results, exports, phone pickers,
+  and `target_id` resolution** even when bypassing the UI; list endpoints return only accessible
+  datasets/targets (Codex #5). This is the security assertion, not a hidden button.
+- **Live session authority (Codex #8):** disabling an operator mid-session revokes on the next
+  request; downgrading admin→analyst mid-session loses admin routes immediately — both on a
+  pre-existing cookie.
+- **Direct-API audit coverage (Codex #6):** a direct `GET /records` (no UI) still produces exactly
+  one `DATASET_OPENED` row per session; pagination adds no further rows.
+- **Bootstrap locked state (Codex #1):** before unlock every route is `503`/locked; `/api/status`
+  reports `locked` (not `uninitialized`); `/api/setup` first-admin creation is refused off-localhost.
+- **Trusted-proxy (Codex #10):** spoofed `X-Forwarded-Proto`/`-For` from a non-proxy source is
+  ignored (scheme + rate-limit IP unaffected); honored only from the configured CIDR.
 - **Multi-session isolation:** two concurrent sessions carry distinct identities/roles; one
   operator's context never leaks into another's request.
 - **Tamper-evidence:** chain verifies on a clean log; mutating/deleting a row (via a test that
   disables the trigger) fails verification at and after that row; append-only triggers reject
-  `UPDATE`/`DELETE`.
+  `UPDATE`/`DELETE`. **Concurrent-append (Codex #9):** parallel logged intents produce a single
+  unbroken chain (no shared `prev_hash`, no fork).
 - **Migration tests:** fresh DB → migrations 1..N; a Phase-2A-shaped DB adopts cleanly; the
   ALTERs are idempotent under the runner's version gate.
 - Architecture tests + `lint-imports` stay enforcing with the two new domains. Phase 1 suite
@@ -380,12 +492,43 @@ app/
   key." Alternative (OS keyring / TPM-sealed master key) noted as a design extension.
 - **Risk — `SECRET_KEY` / master-key keyfiles** are new on-disk secrets outside the encrypted
   DB; their perms and non-commit are enforced at startup and covered by `.gitignore`.
-- **Increment 3.2 is pre-split** into 3.2a (de-globalization, behavior-frozen), 3.2b
-  (multi-account + server key), 3.2c (network + TLS baseline) — per Nadim's small-steps
-  preference (§2). 3.5 is likewise split into 3.5a (capture) / 3.5b (chain), and 3.6 may
-  split per screen. Each half is an independently reviewable, green-suite branch.
+- **Increment 3.2 is pre-split** into 3.2a (**identity-accessor de-globalization only** —
+  behavior-frozen; `DB_KEY` deliberately untouched, §4.2), 3.2b (multi-account + server key),
+  3.2c (network + TLS baseline). 3.5 splits into 3.5a (capture) / 3.5b (chain); 3.6 may split per
+  screen. Each half is an independently reviewable, green-suite branch.
+- **Cert hot-reload downgraded** to a documented restart/reload procedure (§8) — not built this
+  phase (Codex smaller-pushback).
+- **Records first-read is a committing GET** (emits `DATASET_OPENED`, §7.2). Accepted trade-off:
+  a logged look *is* a state change. The per-session dedup marker keeps later pages non-writing,
+  and HEAD/prefetch of `/records` must be handled so it does not emit a phantom open (only a real
+  first GET does) — a test pins this.
 - **MFA (3.7) is deliberately last and non-blocking** — the core value ships without it.
 - **New runtime dependency:** `pyotp` (for 3.7 only) — added under `constraints.txt`; if no
   suitable pinned wheel exists for the Python floor, TOTP slips to design-only rather than
   forcing a floor bump (the numpy-bump lesson).
+
+## 13. Review round 1 (Codex, 2026-07-04) — resolutions
+
+Codex reviewed the original spec on `codex/phase3-design-review` (`92b667d`): *sound direction,
+patch before planning 3.2+*. Every finding was verified against the current code model and
+accepted; this section maps each to its fix. Findings Codex **agreed with / kept** (trust-model
+shape, POST read intents, dataset-level approval, hash-chain honesty, internal-service mTLS N/A)
+are unchanged.
+
+| # | Codex finding | Resolution |
+|---|---|---|
+| 1 | Bootstrap/locked-state fail-closed; `/api/status` must not read locked as "no admin"; first-admin LAN race | §4.1 fail-closed locked state; `503` until unlock; `status` = locked\|uninitialized\|ready; first-admin bound to localhost/bootstrap |
+| 2 | 3.2a not a pure refactor — where does the password-derived DB key live? | §4.2 + §2: **`DB_KEY` stays process-global (server master key), not per-session**; 3.2a narrowed to identity accessors only. `phase3-surface.md` premise corrected |
+| 3 | `auth/session.py` layer inversion (SUPPORT `guards` → DOMAIN `auth`) | §4.2 + §10: identity context moves to **`app/api/identity.py` (SUPPORT)** |
+| 4 | Access predicate in `app/access` violates domain independence | §5, §6, §10: predicate in **neutral `app/api/policy.py` (SUPPORT)**; `app/access` holds only the workflow |
+| 5 | Access coverage wider than dataset+analysis | §3, §6, §11: gate/filter records, targets, results, exports, pickers, `target_id` resolution; `403`≡`404` |
+| 6 | `DATASET_OPENED` can't be UI-only | §7.2: server-side emit, deduped per `(session, dataset)`; direct-API GET still logs (test) |
+| 7 | Failed-login audit contradiction | §4.3: operator `LOGIN_FAILED` → encrypted chained log post-unlock; sidecar only pre-unlock |
+| 8 | Stale role/disabled in live sessions | §4.4: cookie carries `user_id` only; role/disabled read live per request (or session epoch); tests |
+| 9 | Hash-chain concurrency / tail truncation | §7.3: serialized append (`BEGIN IMMEDIATE`/`chain_head`); UI says "stored log verifies," not "complete" |
+| 10 | Blind `X-Forwarded-*` trust | §4.3, §8: honored only from a configured proxy CIDR; `SESSION_COOKIE_SECURE` in HTTPS mode |
+| 11 | 3.3/3.4 sequencing (predicate needs schema) | §2: predicate moves to **3.4** (with its schema); 3.3 = `role_required` + admin-action list only |
+| 12 | `/api/status` needs Phase 3 semantics | §10: status returns locked\|uninitialized\|ready + `user_id`/`role`/MFA state |
+| — | Cert hot-reload heavier than scope | §8, §12: downgraded to a documented restart/reload procedure |
+| — | Keep the no-real-telecom-ops boundary loud | §0 unchanged; reaffirmed |
 ```

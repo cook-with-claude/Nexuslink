@@ -5,6 +5,16 @@
 > place that reads or writes that global state, so Phase 3 is a mechanical swap, not a re-discovery.
 > Compiled by tracing the code pre-Phase-3; **re-grep before you start** (`DB_KEY|USERNAME|current_username|get_db|session\[|authenticated`) in case anything drifted.
 
+> **⚠️ CORRECTION (2026-07-04, after the Phase 3 design + Codex review round 1):** this map's
+> premise that **both** `DB_KEY` **and** `USERNAME` de-globalize to *per-session* context is only
+> half right for the chosen trust model. Under **server-holds-the-master-key** (see the design
+> spec `docs/superpowers/specs/2026-07-04-phase3-multiuser-platform-design.md` §4.2):
+> - **`USERNAME`/identity → per-session** ✅ (moves to a SUPPORT identity context, `app/api/identity.py`).
+> - **`DB_KEY` → stays process-global** — it is *reinterpreted* from "the logged-in user's
+>   password-derived key" to "the server's one master key, set at bootstrap." There is **no
+>   per-session DB key** to eliminate. Do **not** try to move `DB_KEY` into session context.
+> The tables below still correctly locate the call sites; only the `DB_KEY` *destination* changes.
+
 ## The global state (3 slots)
 
 | Slot | Lives in | Set by | Read by |
