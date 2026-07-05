@@ -648,3 +648,57 @@ implementer toward a SUPPORT DB read. **Fixed (§2 3.2a, §4.2):** the phasing i
 
 With this, **all 12 findings + both pushbacks are closed**, the accessor phasing matches the layer
 model everywhere, and the full 3.2+ design is internally consistent under the CI-enforced contracts.
+
+## 14. Increment 3.2b — implementation decisions (2026-07-05, pre-planning)
+
+Before writing the 3.2b plan, three implementation forks the architecture left open were resolved
+with Nadim. They refine — do not override — §4.1/§4.2/§3. Recorded here so the plan builds on
+settled ground.
+
+### 14.1 Resolved forks
+
+1. **Bootstrap unlock mechanism = env var → console prompt.** The master key is unwrapped at server
+   start from a passphrase supplied via the `LP_BOOTSTRAP_PASSPHRASE` environment variable, falling
+   back to a console `getpass` prompt. **No PyWebView bootstrap dialog** is built in 3.2b; the desktop
+   shell is documented as requiring the env var or a console at launch. (Matches §4.1 "console prompt
+   or environment" verbatim; keeps 3.2b on the key model, not UX. A desktop unlock screen, if ever
+   wanted, is later/optional UI work — not this increment.)
+2. **Legacy handling = fresh installs only.** 3.2b assumes a clean state (no `auth.json`, no
+   pre-existing DB). First run generates the server keyfile + creates the first admin. Existing dev
+   DBs are re-created — synthetic data, nothing real is lost — and the one-time reset is documented in
+   the README/handoff. **No `auth.json`→`users` legacy adapter** is built (it would add a throwaway
+   code path + tests for a disposable synthetic DB).
+3. **3.2b is sub-split into two independently reviewable branches** along the key-model / account-model
+   fault line (§14.2). Each is its own green-suite branch with its own Codex review; ADR 0003 part 2 is
+   authored in 3.2b-1 (the server-key decision) and extended by 3.2b-2 (multi-account).
+
+### 14.2 The 3.2b-1 / 3.2b-2 split
+
+- **3.2b-1 — Server master key + bootstrap unlock** (first branch; `claude/phase3-3.2b-1-server-key`):
+  - `infra/bootstrap.py` (INFRA): first run generates a random master key, wraps it under the bootstrap
+    passphrase into a **server keyfile** (restrictive perms, `.gitignore`d, never committed); every start
+    unwraps it into process memory. Reuses `crypto.derive_kek`/`wrap_key`/`unwrap_key`.
+  - `main.py` performs the bootstrap unlock before serving and sets the process-held master key;
+    `get_db()` opens the DB from it (no longer login-derived).
+  - **Fail-closed locked state:** until unlock succeeds every route returns `503 LOCKED`; `/api/status`
+    reports **`locked`**.
+  - Account store **unchanged** (single-account `auth.json`), but login is adapted to **bcrypt-verify
+    only** — the operator password **no longer unwraps the DB key** (the server already holds it). This
+    isolates the "decouple authentication from the DB key" step. Fully working + testable.
+  - **Authors ADR 0003 part 2** (server-holds-the-master-key model).
+- **3.2b-2 — Multi-account `users` table** (following branch):
+  - Migration 2 = the **`users` table only** (§3 schema). `datasets.owner_id`, `dataset_access`, and the
+    `audit_log` chain/actor columns stay with their own later increments (3.4 / 3.5b) — never bundled
+    early (append-per-increment discipline).
+  - First-admin creation bound to **localhost**; login = **bcrypt against `users`** → session carries
+    **`user_id` only** (§4.1, §4.4); `auth.json` retired.
+  - `/api/status` gains the **`uninitialized`** (unlocked, no admin) vs **`ready`** distinction.
+  - Extends ADR 0003 part 2 with the multi-account note.
+
+### 14.3 Effort (corrected)
+
+Per the difficulty read, **3.2b is a ★★★★★ carve-out: max effort on the *build*, not just the plan**
+(the "plan-high / build-low" guidance belongs to 3.2a, the prior increment). Keep Opus on any
+implementers and lean on adversarial / whole-branch + Codex review harder — a plausible-but-wrong
+master-key or fail-closed-unlock implementation is a security bug, not a cosmetic one. This applies to
+**both** halves of the split.
