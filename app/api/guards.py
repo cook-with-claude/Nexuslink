@@ -1,8 +1,9 @@
 """Request guards, per-request DB access, and the identity accessor (SUPPORT layer).
 
 current_username() is the single read accessor for the unlocked account's identity.
-Phase 3 replaces process-global auth state with a per-session context by swapping
-the body of this one function (ADR 0001, invariant 6) rather than every call site.
+Phase 3 increment 3.2a swapped its body to read the per-session identity context
+(app.api.identity) instead of process-global app.config, without touching any of
+the ~7 call sites (ADR 0001, invariant 6). The DB key stays process-global.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import functools
 
 from flask import current_app, g, request, session
 
+from app.api import identity
 from app.api.responses import err
 from app.infra import migrations, storage
 
@@ -37,8 +39,9 @@ def get_db():
 
 
 def current_username() -> str | None:
-    """The currently-unlocked account's username (process-global today; per-session in Phase 3)."""
-    return current_app.config["USERNAME"]
+    """The currently-unlocked account's username, read from the per-session identity
+    context (app.api.identity). Callers never change (ADR 0001 invariant 6)."""
+    return identity.current_username()
 
 
 def login_required(view):

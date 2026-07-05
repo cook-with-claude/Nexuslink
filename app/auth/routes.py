@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, session
 
+from app.api import identity
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, json_body, ok
 from app.audit import log as audit
@@ -13,15 +14,14 @@ bp = Blueprint("auth", __name__, url_prefix="/api")
 
 
 def _unlock(username: str, db_key: bytes) -> None:
-    current_app.config["DB_KEY"] = db_key
-    current_app.config["USERNAME"] = username
+    current_app.config["DB_KEY"] = db_key   # server master key (stays process-global)
+    identity.set_identity(username)          # identity -> this session's cookie (3.2a)
     session["authenticated"] = True
 
 
 def _lock() -> None:
     current_app.config["DB_KEY"] = None
-    current_app.config["USERNAME"] = None
-    session.clear()
+    session.clear()   # removes both "authenticated" and the identity ("username")
 
 
 def _audit(username: str, event: str, detail=None) -> None:

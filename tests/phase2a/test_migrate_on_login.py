@@ -1,8 +1,8 @@
 """Increment 3.1: get_db() runs migrations on every login (ADR 0002 activation).
 
 Driven through the real app factory + /api/setup, which leaves the client
-authenticated with DB_KEY/USERNAME populated in app.config, exactly like the
-transaction-semantics tests.
+authenticated with the server DB_KEY in app.config (identity moved to the
+per-session cookie in 3.2a), exactly like the transaction-semantics tests.
 """
 
 import pytest

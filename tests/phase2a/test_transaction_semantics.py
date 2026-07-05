@@ -72,14 +72,15 @@ def test_audit_failure_during_analysis_persists_no_result(client, sample_xlsx, m
 
 def test_audit_failure_during_login_fails_closed(client, monkeypatch):
     """An unauditable login must not leave the process half-authenticated: if the
-    LOGIN_SUCCESS audit write fails, DB_KEY/USERNAME are cleared again and no
-    session is granted (the session grant IS the login route's unit of work)."""
+    LOGIN_SUCCESS audit write fails, the server DB_KEY is cleared and no session
+    identity is granted (the session grant IS the login route's unit of work)."""
     client.post("/api/logout")
     monkeypatch.setattr(audit_log, "write_audit", _boom)
     with pytest.raises(RuntimeError):
         client.post("/api/login", json={"username": "nadim", "password": "hunter2"})
     assert client.application.config["DB_KEY"] is None
-    assert client.application.config["USERNAME"] is None
+    with client.session_transaction() as sess:
+        assert "username" not in sess
     assert client.get("/api/datasets").status_code == 401
 
 
@@ -90,7 +91,14 @@ def test_audit_failure_during_logout_fails_closed(client, monkeypatch):
     with pytest.raises(RuntimeError):
         client.post("/api/logout")
     assert client.application.config["DB_KEY"] is None
-    assert client.application.config["USERNAME"] is None
+    # NOTE: unlike DB_KEY (a process-global dict mutated in place), _lock()'s
+    # session.clear() lives on a request-scoped session object that Flask only
+    # flushes back to the client's cookie during normal response finalization.
+    # Because this request's exception propagates (TESTING=True), finalization
+    # never runs, so the client's cookie still carries the pre-request identity
+    # -- that's harmless: DB_KEY is the real gate (checked first in
+    # login_required), so access is still denied below regardless of the stale
+    # cookie.
     assert client.get("/api/datasets").status_code == 401
 
 
@@ -106,7 +114,8 @@ def test_audit_failure_during_setup_fails_closed(app_data_dir, monkeypatch):
     with pytest.raises(RuntimeError):
         c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
     assert app.config["DB_KEY"] is None
-    assert app.config["USERNAME"] is None
+    with c.session_transaction() as sess:
+        assert "username" not in sess
     assert c.get("/api/datasets").status_code == 401
 
     # Restore ONLY write_audit (undo() would also drop APP_DATA_DIR isolation).

@@ -25,8 +25,7 @@ def create_app() -> Flask:
         # Cap upload size so a huge/malicious .xlsx can't OOM the process; the
         # import pipeline reads the whole file into a DataFrame.
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50 MiB
-        DB_KEY=None,
-        USERNAME=None,
+        DB_KEY=None,                # server master key, set at unlock (process-global)
     )
 
     @app.teardown_appcontext
