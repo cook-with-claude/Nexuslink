@@ -4,7 +4,17 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-05 - Claude: Phase 3 increment 3.2a (identity de-globalization) built — FOR REVIEW on `claude/phase3-3.2a-identity-deglobalization`
+## 2026-07-05 - Claude: Phase 3 increment 3.2a (identity de-globalization) ✅ MERGED to `main` (`0e90bdb`, pushed to origin)
+
+**MERGED** with Nadim's explicit permission after **Codex CLEAR**: fast-forward `a17c4c2..0e90bdb`,
+pushed to `origin/main`, branch `claude/phase3-3.2a-identity-deglobalization` deleted local + origin
+(only `main` remains). 195 passed on merged main. Codex verified independently: `app/api/identity.py`
+is a data-free SUPPORT leaf, `DB_KEY` never enters the session, auth gate intact, logout test deviation
+sound; `lint-imports` 4 contracts kept (WSL), ruff clean, phase1 frozen. **Next pickup = increment 3.2b**
+(server master key + multi-account `users` table, appends to ADR 0003 as part 2). Codex non-blocking
+follow-up to fold into 3.2b: refresh `docs/reference/api.md` + `docs/phase3-surface.md` (still describe
+the pre-3.2a auth shape). Details of the increment below.
+
 
 Moved the operator username out of process-global `app.config["USERNAME"]` into a
 new leaf SUPPORT module `app/api/identity.py` backed by the signed session cookie.
