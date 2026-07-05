@@ -20,9 +20,13 @@ single-account desktop app (one session).
   to this same ADR in 3.2b, no new number.
 - New tests: `tests/phase2a/test_identity_context.py` (module round-trip + identity
   in session not config + cleared on logout) and `tests/architecture/` guard
-  `test_identity_context_is_data_free` (no SQL, no `app.*` import — Codex #3). The
-  three `config["USERNAME"]` fail-closed assertions in `test_transaction_semantics.py`
-  re-pointed at the session identity; `DB_KEY` assertions unchanged. Suite **195
+  `test_identity_context_is_data_free` (no SQL, no `app.*` import — Codex #3). Of the
+  three `config["USERNAME"]` fail-closed assertions in `test_transaction_semantics.py`,
+  the login + setup cases re-point to a `session_transaction()` "no identity" check;
+  the **audit-failure logout case keeps its `DB_KEY is None` + 401 assertions** (a
+  session-cookie assertion can't hold there — under `TESTING` Flask discards the
+  `session.clear()` mutation when the view raises, so `_lock()` still runs and the
+  real gate is `DB_KEY`). `DB_KEY` assertions unchanged throughout. Suite **195
   passed** (was 191).
 - Boundaries: `app.api.identity` added to the import-linter layers contract (bottom
   SUPPORT tier). `lint-imports` validated in CI/WSL only (no grimp win_arm64 wheel).
