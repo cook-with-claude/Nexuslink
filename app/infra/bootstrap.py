@@ -84,7 +84,7 @@ def _unlock_existing(passphrase: str) -> bytes:
         with open(keyfile_path(), "r", encoding="utf-8") as fh:
             rec = json.load(fh)
         salt, nonce, wrapped = _b64d(rec["kdf_salt"]), _b64d(rec["nonce"]), _b64d(rec["wrapped_key"])
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, binascii.Error) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, binascii.Error, AttributeError) as exc:
         raise BootstrapError("corrupt or unreadable keyfile") from exc
     try:
         kek = crypto.derive_kek(passphrase, salt)

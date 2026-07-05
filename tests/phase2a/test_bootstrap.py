@@ -50,3 +50,12 @@ def test_keyfile_permissions_are_owner_only(app_data_dir):
     bootstrap.unlock("pw")
     mode = stat.S_IMODE(bootstrap.keyfile_path().stat().st_mode)
     assert mode == 0o600
+
+
+def test_corrupt_keyfile_nonstring_fields_raise_bootstrap_error(app_data_dir):
+    bootstrap.unlock("pw")
+    import json as _json
+    bootstrap.keyfile_path().write_text(
+        _json.dumps({"kdf_salt": 1, "nonce": 2, "wrapped_key": 3}), encoding="utf-8")
+    with pytest.raises(bootstrap.BootstrapError):
+        bootstrap.unlock("pw")
