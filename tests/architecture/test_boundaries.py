@@ -13,6 +13,7 @@ import ast
 import pathlib
 
 APP = pathlib.Path(__file__).resolve().parents[2] / "app"
+_IDENTITY = APP / "api" / "identity.py"
 
 _SQL_CALLS = {"execute", "executemany", "executescript"}
 _TXN_CALLS = {"commit", "rollback"}
@@ -80,3 +81,26 @@ def test_no_flask_import_in_repos():
             if _is_flask_import(node):
                 offenders.append(f"{f.relative_to(APP)}:{node.lineno}")
     assert not offenders, f"repos must not import flask: {offenders}"
+
+
+def test_identity_context_is_data_free():
+    """The SUPPORT per-session identity context (app/api/identity.py) must never
+    touch the DB: no SQL execution, and no app.* import at all (it is a leaf that
+    reads only flask.session). DB-backed identity/role accessors are authz-tier
+    (arrive with multi-account), not here -- a SUPPORT DB read inverts the layer
+    rule (ADR 0001; ADR 0003; spec Codex #3)."""
+    tree = ast.parse(_IDENTITY.read_text(encoding="utf-8"))
+
+    sql = [n.lineno for n in ast.walk(tree)
+           if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+           and n.func.attr in _SQL_CALLS]
+    assert not sql, f"identity.py must issue no SQL: lines {sql}"
+
+    app_imports = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "app":
+            app_imports.append((node.lineno, node.module))
+        elif isinstance(node, ast.Import):
+            app_imports += [(node.lineno, n.name) for n in node.names
+                            if n.name.split(".")[0] == "app"]
+    assert not app_imports, f"identity.py must not import app.* (data-free leaf): {app_imports}"

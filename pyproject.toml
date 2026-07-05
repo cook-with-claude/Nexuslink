@@ -41,7 +41,7 @@ layers = [
     "app.auth.account | app.datasets.repo | app.datasets.validation | app.targets.repo | app.analysis.repo | app.analysis.bridge | app.analysis.export",
     "app.audit",
     "app.api.guards | app.api.errors",
-    "app.api.responses",
+    "app.api.responses | app.api.identity",
     "app.infra",
 ]
 
