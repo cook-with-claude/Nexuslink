@@ -4,6 +4,32 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-05 - Claude: Phase 3 increment 3.2a (identity de-globalization) built — FOR REVIEW on `claude/phase3-3.2a-identity-deglobalization`
+
+Moved the operator username out of process-global `app.config["USERNAME"]` into a
+new leaf SUPPORT module `app/api/identity.py` backed by the signed session cookie.
+`api.guards.current_username()` swaps its body to delegate (ADR 0001 invariant 6);
+the ~7 read-only call sites are **untouched**. `_unlock`/`_lock` write/clear the
+session identity; the `USERNAME` config default is removed. **`DB_KEY` deliberately
+stays process-global** (server master key, reinterpreted at bootstrap in 3.2b) —
+only identity de-globalizes (spec §4.2, Codex #2/#3). Behavior-frozen for the
+single-account desktop app (one session).
+
+- New ADR `docs/adr/0003-server-key-and-identity.md` (accepted) — **part 1** of the
+  server-key/auth decision; part 2 (server master key + `users` table) will *append*
+  to this same ADR in 3.2b, no new number.
+- New tests: `tests/phase2a/test_identity_context.py` (module round-trip + identity
+  in session not config + cleared on logout) and `tests/architecture/` guard
+  `test_identity_context_is_data_free` (no SQL, no `app.*` import — Codex #3). The
+  three `config["USERNAME"]` fail-closed assertions in `test_transaction_semantics.py`
+  re-pointed at the session identity; `DB_KEY` assertions unchanged. Suite **195
+  passed** (was 191).
+- Boundaries: `app.api.identity` added to the import-linter layers contract (bottom
+  SUPPORT tier). `lint-imports` validated in CI/WSL only (no grimp win_arm64 wheel).
+- Plan: `docs/superpowers/plans/2026-07-05-phase3-3.2a-identity-deglobalization.md`.
+  Phase 1 byte-frozen. Next increment: 3.2b (server master key + multi-account
+  `users` table, ADR 0003 part 2). Not merged — Nadim merges.
+
 ## 2026-07-05 - Claude: Phase 3 increment 3.1 (migrate-on-login) ✅ MERGED to `main` (`dd2857e`, pushed to origin)
 
 **MERGED** with Nadim's explicit permission after Codex CLEAR: fast-forward `4d942b6..dd2857e`,
