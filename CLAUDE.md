@@ -61,7 +61,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **187 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **191 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
   every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's
@@ -75,7 +75,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   `README.md`). Import `sample_cdr_data.xlsx` (repo root) to seed data for manual testing.
 - **Local testing:** as of 2026-07-04 native Windows **runs the full suite** (`.venv` Python 3.11.9,
   pandas 3.0.3 — the earlier Smart App Control / `tslib` block is gone): `.venv\Scripts\python.exe -m
-  pytest tests/phase2a tests/architecture phase1_cdr/tests` → 187 passed (~58s). **WSL2** (Ubuntu, venv
+  pytest tests/phase2a tests/architecture phase1_cdr/tests` → 191 passed (~65s). **WSL2** (Ubuntu, venv
   at `/root/lp-venv`) still works as a fallback; CI (Ubuntu) is the canonical gate. See the
   `local-testing-wsl` auto-memory.
 
@@ -89,6 +89,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   design** (brainstormed 2026-07-04): LAN multi-user server, server-holds-master-key, browser
   clients, admin/analyst RBAC, dataset-access approval, tamper-evident activity log, CA-issued
   HTTPS, TOTP MFA. Decomposed into small increments 3.1→3.7. Read this before writing any Phase 3 plan.
-- `docs/adr/` — Architecture Decision Records (start at `0001-modular-monolith.md`; ADRs 0002
-  migrate-on-login, 0003 server-key/auth, 0004 approval to be authored per Phase 3 increment).
+- `docs/adr/` — Architecture Decision Records (start at `0001-modular-monolith.md`; ADR 0002
+  `db-migration-seam`, **activated by increment 3.1** — `migrations.migrate()` now runs in
+  `get_db()` on login; ADRs 0003 server-key/auth, 0004 approval to be authored per Phase 3 increment).
 - `EXPERT_BRIEF.md` — the domain/method brief (the algorithm and its assumptions).

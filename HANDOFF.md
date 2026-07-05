@@ -4,7 +4,13 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-05 - Claude: Phase 3 increment 3.1 (migrate-on-login) built — FOR REVIEW on `claude/phase3-3.1-migrate-on-login`
+## 2026-07-05 - Claude: Phase 3 increment 3.1 (migrate-on-login) ✅ MERGED to `main` (`dd2857e`, pushed to origin)
+
+**MERGED** with Nadim's explicit permission after Codex CLEAR: fast-forward `4d942b6..dd2857e`,
+pushed to `origin/main`, branch `claude/phase3-3.1-migrate-on-login` deleted (only `main` remains).
+191 passed on merged main. **Next pickup = increment 3.2a** (identity-accessor de-globalization,
+ADR 0003 part 1) in a fresh session. Details of the increment below.
+
 
 Wired `migrations.migrate(conn)` into `app/api/guards.py:get_db()` (after `storage.connect`,
 before caching `g.db`; closes the conn if migrate raises). Activates ADR 0002's deferred flip —
