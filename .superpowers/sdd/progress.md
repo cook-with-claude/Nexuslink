@@ -24,3 +24,6 @@ No Critical/Important. Two Minor, both DEFER (do not block):
 2. No direct test for SchemaMismatchError (drifted-v0) propagation or the close-on-raise leak guard
    (both traverse the same except path the too-new test already exercises). Optional.
 STATUS: all tasks done+reviewed; branch ready for Codex review + Nadim merge. Suite 190 passed. Phase1 frozen.
+
+POST-CODEX: added test_get_db_closes_connection_when_migrate_raises (close-on-raise leak guard,
+Codex prioritized suggestion, Nadim requested). Suite 191 passed, ruff clean, phase1 empty. Codex CLEAR.

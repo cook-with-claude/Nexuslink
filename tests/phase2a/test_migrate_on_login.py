@@ -6,8 +6,10 @@ transaction-semantics tests.
 """
 
 import pytest
+from flask import g
 
 from app import create_app
+from app.api import guards
 from app.infra import migrations, storage
 
 _LATEST = migrations.MIGRATIONS[-1][0]
@@ -64,3 +66,28 @@ def test_login_against_too_new_db_fails_closed(client):
     # get_db() -> migrate() raises SchemaTooNewError; TESTING=True surfaces it.
     with pytest.raises(migrations.SchemaTooNewError):
         client.get("/api/datasets")
+
+
+def test_get_db_closes_connection_when_migrate_raises(client, monkeypatch):
+    """If migrate() raises, get_db() must close the just-opened connection (no leak)
+    and not cache it in g. Regression guard for the try/except in get_db()."""
+    closed = []
+
+    class _FakeConn:
+        def close(self):
+            closed.append(True)
+
+    def _raise(conn):
+        raise migrations.SchemaTooNewError("boom")
+
+    # guards holds the infra modules by reference, so patching the attributes
+    # is what get_db() resolves at call time.
+    monkeypatch.setattr(guards.storage, "connect", lambda key: _FakeConn())
+    monkeypatch.setattr(guards.migrations, "migrate", _raise)
+
+    app = client.application  # DB_KEY was populated by /api/setup in the fixture
+    with app.app_context():
+        with pytest.raises(migrations.SchemaTooNewError):
+            guards.get_db()
+        assert closed == [True]   # the opened connection was closed on the raise path
+        assert "db" not in g      # nothing was cached for the request
