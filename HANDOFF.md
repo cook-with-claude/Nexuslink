@@ -4,6 +4,46 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-05 - Claude: Phase 3 increment 3.2b PLANNED (sub-split); build is NEXT SESSION (subagent-driven)
+
+**Not built yet — planning only.** Branch **`claude/phase3-3.2b-1-server-key`** (renamed from
+`...-server-key-users`), 4 doc commits, tip `0245369`. Suite still 195 (no code touched). **Next session:
+execute the 3.2b-1 plan subagent-driven (fresh subagent per task, two-stage review, KEEP OPUS on
+implementers — ★★★★★ carve-out, not a cheap build).**
+
+**What happened this session (all decided + recorded; don't re-derive):**
+1. **Prep docs refreshed** (`6556a0b`): `docs/reference/api.md` + `docs/phase3-surface.md` were stale
+   (pre-3.2a auth shape) — fixed to post-3.2a (identity in `session["username"]`, `DB_KEY` the only
+   process-global). This was Codex's non-blocking 3.2a follow-up. Re-grep confirmed no other drift.
+2. **Brainstormed the 3.2b implementation forks** → recorded as **spec §14** (`77a94fd`, appended to
+   `docs/superpowers/specs/2026-07-04-phase3-multiuser-platform-design.md`). Three decisions:
+   - **Bootstrap unlock = `LP_BOOTSTRAP_PASSPHRASE` env → console `getpass` fallback.** No PyWebView
+     dialog this increment (desktop documented as needing the env/console).
+   - **Fresh installs only** — no `auth.json`→`users` legacy adapter (synthetic data; document a
+     one-time reset of `cdr.db`+`auth.json`).
+   - **3.2b sub-split into two branches** along the key-model / account-model fault line:
+     **3.2b-1** = server master key + bootstrap unlock + fail-closed `503 LOCKED` + `/api/status.locked`
+     (single-account `auth.json` login adapted so the password no longer unwraps the DB key; authors
+     ADR 0003 **part 2**). **3.2b-2** = `users` table (migration 2) + multi-account bcrypt login +
+     `session["user_id"]` + retire `auth.json` + `uninitialized`/`ready` status split (extends ADR pt2).
+   - **Effort correction:** 3.2b is ★★★★★ = **max effort on the BUILD too** (Opus implementers, heavy
+     Codex). The "plan-high/build-low" line belongs to **3.2a**, not 3.2b (I'd mis-said this; the
+     difficulty memory was always right). Memory index fixed.
+3. **Wrote the 3.2b-1 plan** (`0245369`):
+   `docs/superpowers/plans/2026-07-05-phase3-3.2b-1-server-key.md` — 7 TDD tasks, ordered so the suite
+   stays green at every commit: (1) `app/infra/bootstrap.py` keyfile init/unlock + INFRA-leaf guard +
+   gitignore/import-linter; (2) test-harness `bootstrap_key` fixture across all integration fixtures
+   (inert until task 4); (3) fail-closed lock gate + `status.locked`; (4) `account.py` drops the DB key
+   (`auth.json` → `{username,bcrypt_hash,created_at}`, `authenticate` = bcrypt-only); (5) `auth/routes.py`
+   login establishes a session WITHOUT unlocking + logout does NOT lock the server + rewrite the 3
+   fail-closed tests (their guarantee moves from `DB_KEY is None` to "no session identity granted");
+   (6) `main.py` startup unlock (env→getpass, serve locked on failure); (7) docs (ADR 0003 pt2 +
+   api/surface/README/HANDOFF). Highest-risk edit = task 5 fail-closed semantics (flagged for Codex).
+
+**Resume checklist next session:** `git checkout claude/phase3-3.2b-1-server-key` → open the 3.2b-1 plan
+→ invoke **superpowers:subagent-driven-development** → execute task 1→7. `lint-imports` runs WSL/CI only
+(no grimp win_arm64 wheel). Phase 1 byte-frozen. Not merged — Nadim merges.
+
 ## 2026-07-05 - Claude: Phase 3 increment 3.2a (identity de-globalization) ✅ MERGED to `main` (`0e90bdb`, pushed to origin)
 
 **MERGED** with Nadim's explicit permission after **Codex CLEAR**: fast-forward `a17c4c2..0e90bdb`,
