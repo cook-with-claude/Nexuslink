@@ -16,6 +16,15 @@ the alternative was a new ADR 0005 — flagged in the plan.
   current DB (behavior-frozen), fail-closed on a too-new DB. Suite **190 passed** (was 187).
 - Behavior-frozen for existing installs: every API test setups to `_LATEST`, so migrate is a
   no-op; invariant 2 intact (no commit on the up-to-date path). Phase 1 byte-frozen.
+- **Internal SDD review done** (per-task + opus whole-branch): verdict **ready-to-merge**, no
+  Critical/Important. Two Minors, both deferred (agree): (1) a `SchemaTooNewError`/`SchemaMismatchError`
+  now reachable from any authed request falls to the global `INTERNAL` 500 handler — fine & fail-closed
+  for 3.1 (no migration shipped yet, so only reachable via manual DB tamper/downgrade); tie a friendly
+  "DB from newer app version" message to the FIRST shipped migration (3.2+). (2) no direct test for the
+  drifted-v0 `SchemaMismatchError` path or the close-on-raise leak guard (both traverse the same
+  `except` the too-new test exercises). Open question for Codex: concur, or fix either now?
+- Branch commits (base `main` @ `4d942b6`): `070ac38` plan · `f3d77d8` code+tests · `f125182` docs ·
+  ledger chore on tip. `git diff --stat main -- phase1_cdr/` empty. Suite 190 passed locally (py3.11.9).
 - Plan: `docs/superpowers/plans/2026-07-05-phase3-3.1-migrate-on-login.md`. Next increment: 3.2a
   (identity-accessor de-globalization, ADR 0003 part 1). Not merged — Nadim merges.
 
