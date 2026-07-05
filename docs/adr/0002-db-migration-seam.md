@@ -60,6 +60,17 @@ Add `app/infra/migrations.py`, a minimal versioned-migration runner. Rules for a
   `storage.connect(key)` and before storing `g.db`. Left unwired now to keep this change
   behavior-frozen.
 
+## Activation (2026-07-05 — Phase 3 increment 3.1)
+
+The "Defers — migrate-on-login" consequence above is now **done**. `app/api/guards.py:get_db()`
+runs `migrations.migrate(conn)` on each per-request connection (immediately after
+`storage.connect`, before caching in `g.db`; the connection is closed if `migrate` raises so a
+too-new/mismatched DB does not leak connections). This is behavior-frozen for up-to-date
+databases — `migrate()` is a `PRAGMA user_version` read plus comparisons and issues no write or
+commit when there is nothing pending — and it de-risks every later Phase 3 increment, each of
+which appends a migration. No new ADR was minted: 3.1 activates this decision in place rather
+than duplicating it. Plan: `docs/superpowers/plans/2026-07-05-phase3-3.1-migrate-on-login.md`.
+
 ## Alternatives considered
 
 - **`schema_migrations` table instead of `user_version`** — heavier; SQLite already reserves

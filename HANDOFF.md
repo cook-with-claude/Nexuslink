@@ -4,6 +4,21 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-05 - Claude: Phase 3 increment 3.1 (migrate-on-login) built — FOR REVIEW on `claude/phase3-3.1-migrate-on-login`
+
+Wired `migrations.migrate(conn)` into `app/api/guards.py:get_db()` (after `storage.connect`,
+before caching `g.db`; closes the conn if migrate raises). Activates ADR 0002's deferred flip —
+**no new ADR minted** (0002 already documented this exact change); appended an "Activation"
+note to `docs/adr/0002-db-migration-seam.md` instead. If Codex/Nadim want a standalone record,
+the alternative was a new ADR 0005 — flagged in the plan.
+
+- New tests: `tests/phase2a/test_migrate_on_login.py` — v0 auto-upgrade on login, no-op on a
+  current DB (behavior-frozen), fail-closed on a too-new DB. Suite **190 passed** (was 187).
+- Behavior-frozen for existing installs: every API test setups to `_LATEST`, so migrate is a
+  no-op; invariant 2 intact (no commit on the up-to-date path). Phase 1 byte-frozen.
+- Plan: `docs/superpowers/plans/2026-07-05-phase3-3.1-migrate-on-login.md`. Next increment: 3.2a
+  (identity-accessor de-globalization, ADR 0003 part 1). Not merged — Nadim merges.
+
 ## 2026-07-04 - Claude: SESSION CLOSE — Phase 3 DESIGN merged to main after 4 Codex rounds; pickup = plan 3.1
 
 Phase 3 design is **fully brainstormed, Codex-reviewed (4 rounds), and MERGED to `main` (`040e3b6`)**.
