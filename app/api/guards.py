@@ -12,16 +12,27 @@ import functools
 from flask import current_app, g, request, session
 
 from app.api.responses import err
-from app.infra import storage
+from app.infra import migrations, storage
 
 
 def get_db():
-    """A per-request SQLCipher connection opened from the in-memory db_key."""
+    """A per-request SQLCipher connection opened from the in-memory db_key.
+
+    The connection is run through the migration seam (ADR 0002) before it is
+    cached, so an existing database is auto-upgraded on login. On an up-to-date
+    database migrate() is a no-op (one PRAGMA read), so behavior is frozen.
+    """
     if "db" not in g:
         key = current_app.config.get("DB_KEY")
         if key is None:
             raise RuntimeError("no database key in session")
-        g.db = storage.connect(key)
+        conn = storage.connect(key)
+        try:
+            migrations.migrate(conn)
+        except Exception:
+            conn.close()
+            raise
+        g.db = conn
     return g.db
 
 
