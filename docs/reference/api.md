@@ -25,11 +25,18 @@ never has to parse an HTML error page.
 ## Authentication model
 
 - **Single account.** One username/password per install (`app/auth/account.py`). No multi-user — that
-  is Phase 3.
+  is Phase 3 (multi-account `users` table lands in increment 3.2b).
 - **Session:** a signed Flask cookie (`SESSION_COOKIE_HTTPONLY`, `SameSite=Strict`, per-launch
-  `SECRET_KEY`). `session["authenticated"]` gates protected routes.
-- **Unlock state is process-global today** (`current_app.config["DB_KEY"|"USERNAME"]`) — see
-  `docs/phase3-surface.md` for the de-globalization inventory.
+  `SECRET_KEY`). `session["authenticated"]` gates protected routes; `session["username"]` carries the
+  operator identity (see below).
+- **Identity is per-session** (Phase 3 increment 3.2a, ADR 0003 pt 1): the unlocked account's username
+  lives in the signed session cookie via `app/api/identity.py` (SUPPORT), read through the single
+  accessor `api.guards.current_username()`. It is **no longer** in `current_app.config["USERNAME"]`
+  (that slot was removed).
+- **The DB key stays process-global** (`current_app.config["DB_KEY"]`) — set at unlock, cleared at
+  logout. It is the server master key that opens the SQLCipher DB, and is *reinterpreted* (not
+  de-globalized) as multi-account arrives. See `docs/phase3-surface.md` for the full de-globalization
+  inventory and what still moves in 3.2b.
 - **`@login_required`** (`app/api/guards.py`) returns `401 UNAUTHENTICATED` if not logged in, and
   `415 BAD_CONTENT_TYPE` if a state-changing request has a body that isn't JSON or multipart.
 
