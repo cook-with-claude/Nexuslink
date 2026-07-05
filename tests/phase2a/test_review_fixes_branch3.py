@@ -20,9 +20,9 @@ from app.infra import config, storage
 
 
 @pytest.fixture()
-def client(app_data_dir):
+def client(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     c = app.test_client()
     c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
     return c
@@ -76,8 +76,10 @@ def test_connection_sets_busy_timeout(app_data_dir):
 # Fix #3 - a non-object JSON body (array/scalar) returns 400, not 500.
 # ---------------------------------------------------------------------------
 
-def test_setup_non_object_body_is_400(app_data_dir):
-    c = create_app().test_client()
+def test_setup_non_object_body_is_400(app_data_dir, bootstrap_key):
+    app = create_app()
+    app.config.update(DB_KEY=bootstrap_key)
+    c = app.test_client()
     assert c.post("/api/setup", json=[1, 2, 3]).status_code == 400
 
 
@@ -99,8 +101,10 @@ def test_create_target_non_object_body_is_400(client):
 # reach the auth path that would otherwise lock the account out).
 # ---------------------------------------------------------------------------
 
-def test_setup_non_string_username_is_400(app_data_dir):
-    c = create_app().test_client()
+def test_setup_non_string_username_is_400(app_data_dir, bootstrap_key):
+    app = create_app()
+    app.config.update(DB_KEY=bootstrap_key)
+    c = app.test_client()
     r = c.post("/api/setup", json={"username": 123, "password": "hunter2"})
     assert r.status_code == 400
     # Nothing was created -> a valid setup still succeeds afterward.

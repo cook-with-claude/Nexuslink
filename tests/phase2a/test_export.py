@@ -16,9 +16,9 @@ from app.analysis.export import AREAS_HEADERS, CONTACTS_HEADERS, HEADERS, XLSX_M
 
 
 @pytest.fixture()
-def client(app_data_dir):
+def client(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     c = app.test_client()
     c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
     return c

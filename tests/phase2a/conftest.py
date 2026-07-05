@@ -3,13 +3,25 @@ import pathlib
 import pandas as pd
 import pytest
 
+BOOTSTRAP_PASSPHRASE = "test-bootstrap-passphrase"
+
 
 @pytest.fixture()
 def app_data_dir(tmp_path, monkeypatch):
     """Point all app-data at an isolated temp dir for every test."""
     d = tmp_path / "appdata"
     monkeypatch.setenv("APP_DATA_DIR", str(d))
+    monkeypatch.setenv("LP_BOOTSTRAP_PASSPHRASE", BOOTSTRAP_PASSPHRASE)
     return pathlib.Path(d)
+
+
+@pytest.fixture()
+def bootstrap_key(app_data_dir):
+    """The server master key from a first-run bootstrap unlock (keyfile in the temp
+    app-data dir). Fixtures assign it to app.config['DB_KEY'] to emulate main.py's
+    startup unlock (ADR 0003 part 2)."""
+    from app.infra import bootstrap
+    return bootstrap.unlock(BOOTSTRAP_PASSPHRASE)
 
 
 @pytest.fixture()

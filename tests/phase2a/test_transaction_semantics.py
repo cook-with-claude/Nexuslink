@@ -22,9 +22,9 @@ from app.audit import log as audit_log
 
 
 @pytest.fixture()
-def client(app_data_dir):
+def client(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     c = app.test_client()
     c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
     return c
@@ -102,11 +102,11 @@ def test_audit_failure_during_logout_fails_closed(client, monkeypatch):
     assert client.get("/api/datasets").status_code == 401
 
 
-def test_audit_failure_during_setup_fails_closed(app_data_dir, monkeypatch):
+def test_audit_failure_during_setup_fails_closed(app_data_dir, bootstrap_key, monkeypatch):
     """Same contract as login. The on-disk account survives (it was created before
     the audit write), so a later login succeeds once auditing is healthy again."""
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     c = app.test_client()
 
     real_write = audit_log.write_audit

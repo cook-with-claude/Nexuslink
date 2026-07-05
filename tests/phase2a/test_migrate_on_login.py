@@ -16,11 +16,12 @@ _LATEST = migrations.MIGRATIONS[-1][0]
 
 
 @pytest.fixture()
-def client(app_data_dir):
+def client(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     c = app.test_client()
     c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
+    c.get("/api/datasets")   # first get_db() builds the schema to _LATEST (was setup's job)
     return c
 
 
