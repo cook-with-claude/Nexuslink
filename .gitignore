@@ -12,6 +12,7 @@ env/
 data/
 *.db
 auth.json
+server.key
 
 # Local tooling & scratch — not part of the repo
 .claude/
