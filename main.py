@@ -35,7 +35,9 @@ Phase 2B summary (the desktop UI layer; backend Phase 2A is byte-untouched):
 
 from __future__ import annotations
 
+import getpass
 import json
+import logging
 import os
 import platform
 import sys
@@ -47,7 +49,24 @@ import urllib.request
 from werkzeug.serving import make_server
 
 from app import create_app
+from app.infra import bootstrap
 from app.ui import bp as ui_bp
+
+
+def resolve_and_unlock():
+    """Unwrap the server master key at startup. Passphrase from LP_BOOTSTRAP_PASSPHRASE,
+    else a console prompt. Returns the key, or None (server starts locked) on failure."""
+    passphrase = os.environ.get("LP_BOOTSTRAP_PASSPHRASE")
+    if not passphrase:
+        try:
+            passphrase = getpass.getpass("Bootstrap passphrase: ")
+        except (EOFError, KeyboardInterrupt):
+            passphrase = ""
+    try:
+        return bootstrap.unlock(passphrase)
+    except bootstrap.BootstrapError as exc:
+        logging.getLogger(__name__).error("server locked: %s", exc)
+        return None
 
 _DOTNET_MISSING_MSG = (
     "La Passion's desktop window needs the .NET Desktop Runtime, which was not "
@@ -287,6 +306,7 @@ def main() -> None:  # pragma: no cover - requires a display
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     app = create_app()
+    app.config["DB_KEY"] = resolve_and_unlock()  # None -> server serves 503 LOCKED
     app.register_blueprint(ui_bp)  # additive UI layer; Phase 2A factory untouched
     server, thread, port = start_server(app, port=0)
     wait_until_ready(port)
