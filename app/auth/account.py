@@ -40,6 +40,7 @@ class PasswordTooLongError(Exception):
 # this layer so the routes can return a clean 400 rather than a 500, independent
 # of the installed bcrypt version.
 MAX_PASSWORD_BYTES = 72
+AUTH_RECORD_KEYS = {"username", "bcrypt_hash", "created_at"}
 
 
 def _check_password_length(password: str) -> None:
@@ -56,6 +57,19 @@ def account_exists() -> bool:
 def _load() -> dict:
     with open(config.auth_path(), "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def _load_auth_record() -> dict:
+    """Load the credential sidecar and enforce the server-key schema exactly."""
+    try:
+        rec = _load()
+    except (OSError, json.JSONDecodeError):
+        raise AuthError("bad credentials") from None
+    if not isinstance(rec, dict) or set(rec) != AUTH_RECORD_KEYS:
+        raise AuthError("bad credentials")
+    if not all(isinstance(rec[k], str) for k in AUTH_RECORD_KEYS):
+        raise AuthError("bad credentials")
+    return rec
 
 
 def _save(record: dict) -> None:
@@ -101,12 +115,9 @@ def authenticate(username: str, password: str) -> None:
     No DB key is derived -- the server already holds the master key."""
     if not account_exists():
         raise AuthError("no account")
-    try:
-        rec = _load()
-        stored_username = rec["username"]
-        bcrypt_hash = rec["bcrypt_hash"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        raise AuthError("bad credentials") from None
+    rec = _load_auth_record()
+    stored_username = rec["username"]
+    bcrypt_hash = rec["bcrypt_hash"]
     try:
         username_ok = hmac.compare_digest(
             username.encode("utf-8"), stored_username.encode("utf-8"))
@@ -121,11 +132,8 @@ def change_password(old_password: str, new_password: str) -> None:
     if not account_exists():
         raise AuthError("no account")
     _check_password_length(new_password)
-    try:
-        rec = _load()
-        username = rec["username"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        raise AuthError("bad credentials") from None
+    rec = _load_auth_record()
+    username = rec["username"]
     authenticate(username, old_password)  # raises AuthError if wrong
     rec["bcrypt_hash"] = crypto.hash_password(new_password)
     _save(rec)

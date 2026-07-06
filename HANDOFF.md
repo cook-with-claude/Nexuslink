@@ -4,6 +4,26 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-06 - Codex: review fix branch for Phase 3 increment 3.2b-1 auth sidecar schema
+
+**Built, not merged.** Branch **`codex/phase3-3.2b-1-server-key-review`**, based on Claude tip
+`ce29ee4`, applies the one Important review finding from Codex's security-spine review.
+
+**Fix:** `app/auth/account.py` now rejects any `auth.json` sidecar whose keys are not exactly
+`{username,bcrypt_hash,created_at}` with string values. This closes the legacy/tamper path where
+old key-material fields (`kdf_salt`, `db_key_nonce`, `wrapped_db_key`) could be accepted by
+`authenticate()` and preserved by `change_password()`. Normal create/change-password writes remain
+exact. Regression coverage in `tests/phase2a/test_account.py` checks change-password preserves the
+exact schema and that a legacy key-material record is rejected for both authenticate and
+change-password.
+
+**Verification here:** syntax compile passed with bundled Python:
+`python -m py_compile app/auth/account.py tests/phase2a/test_account.py`. Full pytest/ruff/import-linter
+could not run in this Codex environment: the repo `.venv` points at a missing base interpreter,
+system Python is absent, WSL has no installed distro, and the bundled Python lacks project deps /
+cannot load the repo venv's compiled `bcrypt` wheel. Claude/Nadim should run the normal suite gate
+before merging. Phase 1 remains untouched.
+
 ## 2026-07-06 - Claude: Phase 3 increment 3.2b-1 (server master key + fail-closed lock) BUILT — FOR REVIEW
 
 **Built, not merged.** Branch **`claude/phase3-3.2b-1-server-key`** (base `main`), subagent-driven per

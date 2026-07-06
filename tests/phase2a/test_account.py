@@ -48,6 +48,8 @@ def test_authenticate_rejects_malformed_auth_record(app_data_dir):
 def test_change_password_rehashes(app_data_dir):
     account.create_account("nadim", "hunter2")
     account.change_password("hunter2", "newpass9")
+    rec = json.loads(config.auth_path().read_text(encoding="utf-8"))
+    assert set(rec) == {"username", "bcrypt_hash", "created_at"}
     # The new password now authenticates; the old one no longer does.
     with pytest.raises(account.AuthError):
         account.authenticate("nadim", "hunter2")
@@ -131,6 +133,23 @@ def test_auth_json_holds_no_key_material(app_data_dir):
     import json
     rec = json.loads(account.config.auth_path().read_text(encoding="utf-8"))
     assert set(rec) == {"username", "bcrypt_hash", "created_at"}
+
+
+def test_authenticate_rejects_legacy_auth_record_with_key_material(app_data_dir):
+    account.create_account("nadim", "hunter2")
+    auth_path = config.auth_path()
+    rec = json.loads(auth_path.read_text(encoding="utf-8"))
+    rec.update({
+        "kdf_salt": "old-salt",
+        "db_key_nonce": "old-nonce",
+        "wrapped_db_key": "old-wrapped-key",
+    })
+    auth_path.write_text(json.dumps(rec), encoding="utf-8")
+
+    with pytest.raises(account.AuthError):
+        account.authenticate("nadim", "hunter2")
+    with pytest.raises(account.AuthError):
+        account.change_password("hunter2", "newpass9")
 
 
 def test_authenticate_returns_none_and_raises_on_bad_password(app_data_dir):
