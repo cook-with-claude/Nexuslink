@@ -70,22 +70,26 @@ def test_audit_failure_during_analysis_persists_no_result(client, sample_xlsx, m
     assert client.get(f"/api/targets/{tid}/result").status_code == 404
 
 
-def test_audit_failure_during_login_fails_closed(client, monkeypatch):
+def test_audit_failure_during_login_fails_closed(app_data_dir, bootstrap_key, monkeypatch):
     """An unauditable login must not leave THIS session authenticated: if the
-    LOGIN_SUCCESS audit write fails, no session identity is granted (the session
-    grant IS the login route's unit of work). Under server-holds-key the process
-    master key stays set -- locking the whole server on one operator's bad audit
-    write would be fail-OPEN for availability; the real guarantee is 'no session
-    identity -> access denied.'"""
-    client.post("/api/logout")
+    LOGIN_SUCCESS audit write fails, login's `except: _lock()` revokes the session
+    it just granted. Under server-holds-key the process master key stays set --
+    locking the whole server on one operator's bad audit write would be fail-OPEN
+    for availability; the real guarantee is 'no session identity -> access denied.'
+    Driven via the PRODUCTION (non-TESTING) path so the failed request becomes a 500
+    and the session is FLUSHED -- making the GET==401 below load-bearing on _lock()
+    (under TESTING the grant is silently discarded, so the assertion would hold even
+    if login never called _lock())."""
+    app = create_app()
+    app.config.update(DB_KEY=bootstrap_key)   # NOT TESTING
+    c = app.test_client()
+    c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
+    c.post("/api/logout")   # start from an unauthenticated client
     monkeypatch.setattr(audit_log, "write_audit", _boom)
-    with pytest.raises(RuntimeError):
-        client.post("/api/login", json={"username": "nadim", "password": "hunter2"})
-    # Server stays unlocked (master key is process-wide); the LOGIN grant is what fails closed.
-    assert client.application.config["DB_KEY"] is not None
-    with client.session_transaction() as sess:
-        assert "username" not in sess
-    assert client.get("/api/datasets").status_code == 401   # not authenticated -> denied
+    r = c.post("/api/login", json={"username": "nadim", "password": "hunter2"})
+    assert r.status_code == 500                        # audit failure surfaces as 500
+    assert app.config["DB_KEY"] is not None            # server stays unlocked (master key is process-wide)
+    assert c.get("/api/datasets").status_code == 401   # login's grant was revoked -> fail closed
 
 
 def test_audit_failure_during_logout_fails_closed(app_data_dir, bootstrap_key, monkeypatch):
@@ -105,20 +109,21 @@ def test_audit_failure_during_logout_fails_closed(app_data_dir, bootstrap_key, m
 
 
 def test_audit_failure_during_setup_fails_closed(app_data_dir, bootstrap_key, monkeypatch):
-    """Same contract as login. The on-disk account survives (it was created before
-    the audit write), so a later login succeeds once auditing is healthy again."""
+    """Same contract as login: setup's `except: _lock()` revokes the session it
+    granted when the SETUP audit write fails. The on-disk account survives (created
+    before the audit write), so a later login succeeds once auditing is healthy.
+    Driven via the PRODUCTION (non-TESTING) path so the failed request becomes a 500
+    and the session is FLUSHED -- making the GET==401 load-bearing on _lock()."""
     app = create_app()
-    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
+    app.config.update(DB_KEY=bootstrap_key)   # NOT TESTING
     c = app.test_client()
 
     real_write = audit_log.write_audit
     monkeypatch.setattr(audit_log, "write_audit", _boom)
-    with pytest.raises(RuntimeError):
-        c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
+    r = c.post("/api/setup", json={"username": "nadim", "password": "hunter2"})
+    assert r.status_code == 500                         # audit failure surfaces as 500
     assert app.config["DB_KEY"] is not None
-    with c.session_transaction() as sess:
-        assert "username" not in sess
-    assert c.get("/api/datasets").status_code == 401
+    assert c.get("/api/datasets").status_code == 401    # setup's session grant revoked -> fail closed
 
     # Restore ONLY write_audit (undo() would also drop APP_DATA_DIR isolation).
     monkeypatch.setattr(audit_log, "write_audit", real_write)
