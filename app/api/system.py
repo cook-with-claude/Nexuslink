@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, session
+from flask import Blueprint, current_app, session
 
 from app.api.responses import ok
 from app.auth import account
@@ -18,6 +18,7 @@ def health():
 @bp.get("/status")
 def status():
     return ok({
+        "locked": current_app.config.get("DB_KEY") is None,
         "account_exists": account.account_exists(),
         "authenticated": bool(session.get("authenticated")),
     })

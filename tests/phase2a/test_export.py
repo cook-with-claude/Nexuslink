@@ -43,9 +43,9 @@ def _sheet(res):
     return load_workbook(io.BytesIO(res.data)).active
 
 
-def test_export_requires_auth(app_data_dir):
+def test_export_requires_auth(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     assert app.test_client().post("/api/export/results.xlsx").status_code == 401
 
 
@@ -134,14 +134,13 @@ def test_export_bad_target_id_400(client, two_targets):
     assert client.post("/api/export/results.xlsx?target_id=abc").status_code == 400
 
 
-def test_export_writes_audit_row(client, two_targets):
+def test_export_writes_audit_row(client, two_targets, bootstrap_key):
     client.post("/api/export/results.xlsx")
     # The audit trail is the point of auditing EXPORT: data leaving the
-    # encrypted store. Read it back through the app's own DB.
-    from app.auth import account
+    # encrypted store. Read it back through the app's own DB (opened from the
+    # server master key, since authenticate() no longer returns a key).
     from app.infra import storage
-    key = account.authenticate("nadim", "hunter2")
-    conn = storage.connect(key)
+    conn = storage.connect(bootstrap_key)
     row = conn.execute(
         "SELECT username, detail FROM audit_log WHERE event_type = 'EXPORT'").fetchone()
     conn.close()

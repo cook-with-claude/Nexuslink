@@ -1,15 +1,16 @@
 """Single-account lifecycle: setup, authenticate, change-password.
 
-Stores only non-secret material in the auth.json sidecar:
-  { username, bcrypt_hash, kdf_salt, db_key_nonce, wrapped_db_key, created_at }
-All binary fields are base64-encoded. The raw db_key is returned in-memory to
-the caller (the Flask app holds it for the session) but never written to disk.
+Under the server-holds-key model (ADR 0003 part 2) the DB key is the server
+master key, unlocked once at process start -- it is never derived from the user's
+password and never written to disk. So the auth.json sidecar records only the
+credential and holds NO key material:
+  { username, bcrypt_hash, created_at }
+Setup records the credential; the encrypted DB is built lazily by the first
+get_db() via the migration seam. authenticate() verifies the credential only.
 """
 
 from __future__ import annotations
 
-import base64
-import binascii
 import hmac
 import json
 import logging
@@ -17,9 +18,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from cryptography.exceptions import InvalidTag
-
-from app.infra import config, crypto, storage
+from app.infra import config, crypto
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +47,6 @@ def _check_password_length(password: str) -> None:
         raise PasswordTooLongError(
             f"password must be at most {MAX_PASSWORD_BYTES} bytes"
         )
-
-
-def _b64e(b: bytes) -> str:
-    return base64.b64encode(b).decode("ascii")
-
-
-def _b64d(s: str) -> bytes:
-    return base64.b64decode(s.encode("ascii"), validate=True)
 
 
 def account_exists() -> bool:
@@ -91,42 +82,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def create_account(username: str, password: str) -> bytes:
+def create_account(username: str, password: str) -> None:
+    """Create the single local account. The DB key is the server master key
+    (bootstrap, ADR 0003 pt2), so setup only records the credential; the DB itself
+    is built lazily by the first get_db() via the migration seam."""
     if account_exists():
         raise AccountExistsError("an account already exists")
     _check_password_length(password)
-    salt = os.urandom(config.SCRYPT_SALT_BYTES)
-    db_key = os.urandom(config.DB_KEY_BYTES)
-    kek = crypto.derive_kek(password, salt)
-    nonce, wrapped = crypto.wrap_key(kek, db_key)
-    # Build + initialize the encrypted DB FIRST, then persist auth.json. If this
-    # fails (disk error, or a stale cdr.db left from a prior account that the new
-    # random key can't open), auth.json is never written -- so account_exists()
-    # stays False and /setup can be retried -- rather than leaving an "openable"
-    # account stranded over a schema-less or unreadable database.
-    conn = storage.connect(db_key)
-    try:
-        storage.init_schema(conn)
-    except Exception:
-        conn.close()
-        try:
-            config.db_path().unlink()
-        except OSError:
-            logger.warning("could not remove stale cdr.db after failed schema init")
-        raise
-    conn.close()
     _save({
         "username": username,
         "bcrypt_hash": crypto.hash_password(password),
-        "kdf_salt": _b64e(salt),
-        "db_key_nonce": _b64e(nonce),
-        "wrapped_db_key": _b64e(wrapped),
         "created_at": _now(),
     })
-    return db_key
 
 
-def authenticate(username: str, password: str) -> bytes:
+def authenticate(username: str, password: str) -> None:
+    """Verify credentials against auth.json. Raises AuthError on any mismatch.
+    No DB key is derived -- the server already holds the master key."""
     if not account_exists():
         raise AuthError("no account")
     try:
@@ -135,31 +107,14 @@ def authenticate(username: str, password: str) -> bytes:
         bcrypt_hash = rec["bcrypt_hash"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         raise AuthError("bad credentials") from None
-
     try:
         username_ok = hmac.compare_digest(
-            username.encode("utf-8"),
-            stored_username.encode("utf-8"),
-        )
+            username.encode("utf-8"), stored_username.encode("utf-8"))
         password_ok = crypto.verify_password(password, bcrypt_hash)
     except (AttributeError, TypeError, ValueError):
         raise AuthError("bad credentials") from None
-
     if not (username_ok and password_ok):
         raise AuthError("bad credentials")
-
-    try:
-        kek = crypto.derive_kek(password, _b64d(rec["kdf_salt"]))
-        db_key = crypto.unwrap_key(
-            kek,
-            _b64d(rec["db_key_nonce"]),
-            _b64d(rec["wrapped_db_key"]),
-        )
-    except (InvalidTag, KeyError, TypeError, ValueError, binascii.Error):
-        raise AuthError("bad credentials") from None
-    if len(db_key) != config.DB_KEY_BYTES:
-        raise AuthError("bad credentials")
-    return db_key
 
 
 def change_password(old_password: str, new_password: str) -> None:
@@ -171,14 +126,6 @@ def change_password(old_password: str, new_password: str) -> None:
         username = rec["username"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         raise AuthError("bad credentials") from None
-    db_key = authenticate(username, old_password)  # raises AuthError if wrong
-    salt = os.urandom(config.SCRYPT_SALT_BYTES)
-    kek = crypto.derive_kek(new_password, salt)
-    nonce, wrapped = crypto.wrap_key(kek, db_key)
-    rec.update({
-        "bcrypt_hash": crypto.hash_password(new_password),
-        "kdf_salt": _b64e(salt),
-        "db_key_nonce": _b64e(nonce),
-        "wrapped_db_key": _b64e(wrapped),
-    })
+    authenticate(username, old_password)  # raises AuthError if wrong
+    rec["bcrypt_hash"] = crypto.hash_password(new_password)
     _save(rec)

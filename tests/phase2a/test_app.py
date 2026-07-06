@@ -4,9 +4,9 @@ from app import create_app
 
 
 @pytest.fixture()
-def client(app_data_dir):
+def client(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     return app.test_client()
 
 
@@ -17,10 +17,10 @@ def test_health_is_public(client):
 
 
 def test_status_reports_no_account_initially(client):
-    r = client.get("/api/status")
-    body = r.get_json()
-    assert body["data"]["account_exists"] is False
-    assert body["data"]["authenticated"] is False
+    body = client.get("/api/status").get_json()["data"]
+    assert body["locked"] is False        # unlocked server, ...
+    assert body["account_exists"] is False  # ...but no account yet
+    assert body["authenticated"] is False
 
 
 def test_unknown_route_returns_json_envelope(client):

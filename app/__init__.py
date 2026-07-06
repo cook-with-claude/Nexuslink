@@ -36,6 +36,9 @@ def create_app() -> Flask:
 
     register_error_handlers(app)
 
+    from app.api.guards import install_lock_gate
+    install_lock_gate(app)
+
     from app.api.system import bp as system_bp
     app.register_blueprint(system_bp)
     from app.auth.routes import bp as auth_bp

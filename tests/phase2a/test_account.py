@@ -4,20 +4,15 @@ import os
 import pytest
 
 from app.auth import account
-from app.infra import config, storage
+from app.infra import config
 
 
-def test_setup_creates_account_and_encrypted_db(app_data_dir):
+def test_create_account_records_credential(app_data_dir):
+    """Under the server-holds-key model, setup only records the credential; it does
+    NOT build the encrypted DB (that is lazy, on the first get_db) and returns None."""
     assert account.account_exists() is False
-    db_key = account.create_account("nadim", "hunter2")
+    assert account.create_account("nadim", "hunter2") is None
     assert account.account_exists() is True
-    assert isinstance(db_key, bytes) and len(db_key) == 32
-    # The returned key opens the DB and the schema is present.
-    conn = storage.connect(db_key)
-    names = {r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-    assert "datasets" in names
-    conn.close()
 
 
 def test_second_setup_raises(app_data_dir):
@@ -26,10 +21,9 @@ def test_second_setup_raises(app_data_dir):
         account.create_account("other", "x")
 
 
-def test_authenticate_returns_same_key(app_data_dir):
-    created = account.create_account("nadim", "hunter2")
-    got = account.authenticate("nadim", "hunter2")
-    assert got == created
+def test_authenticate_accepts_correct_credentials(app_data_dir):
+    account.create_account("nadim", "hunter2")
+    assert account.authenticate("nadim", "hunter2") is None
 
 
 def test_authenticate_rejects_bad_password_and_user(app_data_dir):
@@ -38,17 +32,6 @@ def test_authenticate_rejects_bad_password_and_user(app_data_dir):
         account.authenticate("nadim", "WRONG")
     with pytest.raises(account.AuthError):
         account.authenticate("someoneelse", "hunter2")
-
-
-def test_authenticate_rejects_tampered_wrapped_key(app_data_dir):
-    account.create_account("nadim", "hunter2")
-    auth_path = config.auth_path()
-    rec = json.loads(auth_path.read_text(encoding="utf-8"))
-    rec["wrapped_db_key"] = rec["wrapped_db_key"][:-2] + "AA"
-    auth_path.write_text(json.dumps(rec), encoding="utf-8")
-
-    with pytest.raises(account.AuthError):
-        account.authenticate("nadim", "hunter2")
 
 
 def test_authenticate_rejects_malformed_auth_record(app_data_dir):
@@ -62,12 +45,13 @@ def test_authenticate_rejects_malformed_auth_record(app_data_dir):
         account.authenticate("nadim", "hunter2")
 
 
-def test_change_password_preserves_db_key(app_data_dir):
-    original = account.create_account("nadim", "hunter2")
+def test_change_password_rehashes(app_data_dir):
+    account.create_account("nadim", "hunter2")
     account.change_password("hunter2", "newpass9")
+    # The new password now authenticates; the old one no longer does.
     with pytest.raises(account.AuthError):
         account.authenticate("nadim", "hunter2")
-    assert account.authenticate("nadim", "newpass9") == original
+    assert account.authenticate("nadim", "newpass9") is None
 
 
 def test_change_password_wrong_old_raises(app_data_dir):
@@ -93,7 +77,7 @@ def test_change_password_rejects_overlong_new_password(app_data_dir):
     with pytest.raises(account.PasswordTooLongError):
         account.change_password("hunter2", "y" * 73)
     # The old password is untouched.
-    assert isinstance(account.authenticate("nadim", "hunter2"), bytes)
+    assert account.authenticate("nadim", "hunter2") is None
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +93,7 @@ def test_save_roundtrip_no_temp_files(app_data_dir):
     # No leftover .tmp files
     assert not any(f.endswith(".tmp") for f in files_after)
     # Round-trip check via authenticate (which calls _load internally)
-    key = account.authenticate("nadim", "hunter2")
-    assert isinstance(key, bytes) and len(key) == 32
+    assert account.authenticate("nadim", "hunter2") is None
 
 
 def test_failed_atomic_write_preserves_original(app_data_dir, monkeypatch):
@@ -136,3 +119,23 @@ def test_failed_atomic_write_preserves_original(app_data_dir, monkeypatch):
     # No temp files left behind.
     auth_dir = auth_path.parent
     assert not any(f.endswith(".tmp") for f in os.listdir(auth_dir))
+
+
+# ---------------------------------------------------------------------------
+# Server-holds-key model: auth.json carries no key material
+# ---------------------------------------------------------------------------
+
+def test_auth_json_holds_no_key_material(app_data_dir):
+    from app.auth import account
+    account.create_account("nadim", "hunter2")
+    import json
+    rec = json.loads(account.config.auth_path().read_text(encoding="utf-8"))
+    assert set(rec) == {"username", "bcrypt_hash", "created_at"}
+
+
+def test_authenticate_returns_none_and_raises_on_bad_password(app_data_dir):
+    from app.auth import account
+    account.create_account("nadim", "hunter2")
+    assert account.authenticate("nadim", "hunter2") is None
+    with pytest.raises(account.AuthError):
+        account.authenticate("nadim", "WRONG")

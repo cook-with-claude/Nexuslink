@@ -79,10 +79,9 @@ def test_login_failure_recorded_without_any_success(client):
     assert all(datetime.fromisoformat(r["ts"]) for r in records)
 
 
-def test_successful_login_does_not_write_login_fail_to_db(client):
+def test_successful_login_does_not_write_login_fail_to_db(client, bootstrap_key):
     """The encrypted audit_log no longer carries LOGIN_FAIL rows (they live in the
     sidecar); a clean login records only SETUP + LOGIN_SUCCESS."""
-    from app.auth import account
     from app.infra import storage
 
     _setup(client)
@@ -90,8 +89,9 @@ def test_successful_login_does_not_write_login_fail_to_db(client):
     client.post("/api/login", json={"username": "nadim", "password": "no"})
     client.post("/api/login", json={"username": "nadim", "password": "hunter2"})
 
-    key = account.authenticate("nadim", "hunter2")
-    conn = storage.connect(key)
+    # authenticate() no longer returns a key (the server holds the master key);
+    # open the same DB the app built from the bootstrap key.
+    conn = storage.connect(bootstrap_key)
     events = [r["event_type"] for r in conn.execute("SELECT event_type FROM audit_log").fetchall()]
     conn.close()
     assert "SETUP" in events

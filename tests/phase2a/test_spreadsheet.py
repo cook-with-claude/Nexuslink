@@ -59,9 +59,9 @@ def target_id(client, dataset_id):
 
 # ---- records page ----
 
-def test_records_requires_auth(app_data_dir):
+def test_records_requires_auth(app_data_dir, bootstrap_key):
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
     assert app.test_client().get("/api/datasets/1/records").status_code == 401
 
 

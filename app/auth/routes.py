@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, session
+from flask import Blueprint, session
 
 from app.api import identity
 from app.api.guards import current_username, get_db, login_required
@@ -13,14 +13,16 @@ from app.auth import account
 bp = Blueprint("auth", __name__, url_prefix="/api")
 
 
-def _unlock(username: str, db_key: bytes) -> None:
-    current_app.config["DB_KEY"] = db_key   # server master key (stays process-global)
+def _unlock(username: str) -> None:
+    # The server already holds the master DB key (bootstrap, ADR 0003 pt2). Login
+    # only establishes THIS session's identity; it does not touch DB_KEY.
     identity.set_identity(username)          # identity -> this session's cookie (3.2a)
     session["authenticated"] = True
 
 
 def _lock() -> None:
-    current_app.config["DB_KEY"] = None
+    # Per-session logout: clear the session only. It must NOT clear the process
+    # master key -- that would lock the whole server for every other operator.
     session.clear()   # removes both "authenticated" and the identity ("username")
 
 
@@ -38,16 +40,16 @@ def setup():
     if not isinstance(username, str) or not isinstance(password, str) or not username or not password:
         return err("BAD_REQUEST", "username and password required", 400)
     try:
-        db_key = account.create_account(username, password)
+        account.create_account(username, password)
     except account.AccountExistsError:
         return err("ACCOUNT_EXISTS", "an account already exists", 409)
     except account.PasswordTooLongError as exc:
         return err("BAD_REQUEST", str(exc), 400)
     # Granting the session is this route's unit of work: if the SETUP audit row
-    # can't be written, fail closed -- no half-authenticated process/session state
-    # behind the 500. (The on-disk account itself stays; login works once the
-    # audit trail is writable again.)
-    _unlock(username, db_key)
+    # can't be written, fail closed -- this session gets no identity behind the
+    # 500. (The on-disk account itself stays; login works once the audit trail is
+    # writable again. The server master key is process-wide and is NOT cleared.)
+    _unlock(username)
     try:
         _audit(username, audit.SETUP)
     except Exception:
@@ -63,7 +65,7 @@ def login():
     if not isinstance(username, str) or not isinstance(password, str) or not username or not password:
         return err("BAD_REQUEST", "username and password required", 400)
     try:
-        db_key = account.authenticate(username, password)
+        account.authenticate(username, password)
     except account.AuthError:
         # The audit_log table lives inside the encrypted DB, which can't be
         # opened without a successful unlock. So a failed login is recorded to a
@@ -73,7 +75,7 @@ def login():
         audit.write_failed_login(username)
         return err("UNAUTHENTICATED", "bad credentials", 401)
     # Same fail-closed contract as /setup: an unauditable login grants no session.
-    _unlock(username, db_key)
+    _unlock(username)
     try:
         _audit(username, audit.LOGIN_SUCCESS)
     except Exception:

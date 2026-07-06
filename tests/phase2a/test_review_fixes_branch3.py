@@ -14,9 +14,8 @@ import pytest
 
 from app import create_app
 from app.analysis import bridge as detection_bridge
-from app.auth import account
 from app.datasets import validation
-from app.infra import config, storage
+from app.infra import storage
 
 
 @pytest.fixture()
@@ -29,44 +28,12 @@ def client(app_data_dir, bootstrap_key):
 
 
 # ---------------------------------------------------------------------------
-# Fix #1 - account.create_account builds the DB before writing auth.json, and
-# cleans up on init failure so /setup stays retryable.
-# ---------------------------------------------------------------------------
-
-def test_create_account_init_failure_is_retryable(app_data_dir, monkeypatch):
-    def boom(conn):
-        raise RuntimeError("simulated schema init failure")
-
-    real_init = storage.init_schema
-    monkeypatch.setattr(storage, "init_schema", boom)
-    with pytest.raises(RuntimeError, match="simulated schema init failure"):
-        account.create_account("nadim", "hunter2")
-
-    # auth.json was never written and the half-built DB was removed -> no stranded
-    # "openable" account, and setup can be retried cleanly.
-    assert account.account_exists() is False
-    assert not config.db_path().exists()
-
-    # Restore ONLY init_schema (monkeypatch.undo() would also drop the fixture's
-    # APP_DATA_DIR isolation and leak to the real app-data dir).
-    monkeypatch.setattr(storage, "init_schema", real_init)
-    key = account.create_account("nadim", "hunter2")
-    assert account.account_exists() is True
-    conn = storage.connect(key)
-    names = {r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-    conn.close()
-    assert "datasets" in names
-
-
-# ---------------------------------------------------------------------------
 # Fix #2 - storage.connect sets a busy_timeout so a second concurrent writer
 # waits instead of instantly raising "database is locked".
 # ---------------------------------------------------------------------------
 
-def test_connection_sets_busy_timeout(app_data_dir):
-    key = account.create_account("nadim", "hunter2")
-    conn = storage.connect(key)
+def test_connection_sets_busy_timeout(app_data_dir, bootstrap_key):
+    conn = storage.connect(bootstrap_key)
     (timeout,) = conn.execute("PRAGMA busy_timeout").fetchone()
     conn.close()
     assert timeout == 5000
@@ -219,7 +186,7 @@ def test_large_fractional_string_still_falls_through_to_float_path():
 # state-changing endpoint.
 # ---------------------------------------------------------------------------
 
-def test_delete_dataset_writes_audit_row(client, sample_xlsx):
+def test_delete_dataset_writes_audit_row(client, sample_xlsx, bootstrap_key):
     import io
 
     with open(sample_xlsx, "rb") as fh:
@@ -228,8 +195,8 @@ def test_delete_dataset_writes_audit_row(client, sample_xlsx):
                         content_type="multipart/form-data").get_json()["data"]["dataset_id"]
     assert client.delete(f"/api/datasets/{ds_id}").status_code == 200
 
-    key = account.authenticate("nadim", "hunter2")
-    conn = storage.connect(key)
+    # The client fixture built the DB from the server master key; open the same DB.
+    conn = storage.connect(bootstrap_key)
     rows = conn.execute(
         "SELECT event_type, detail FROM audit_log WHERE event_type = 'DATASET_DELETE'").fetchall()
     conn.close()

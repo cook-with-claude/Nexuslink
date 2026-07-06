@@ -56,3 +56,24 @@ def login_required(view):
         return view(*args, **kwargs)
 
     return wrapped
+
+
+def install_lock_gate(app):
+    """Return 503 LOCKED for every /api/* route until the server master key is set.
+
+    /api/health and /api/status stay reachable so a client can observe the locked
+    state (ADR 0003 part 2). This is the server-wide unlock gate -- distinct from
+    login_required, which gates a per-session login once the server is unlocked.
+    Non-/api paths (the SPA shell/assets) are never gated, so a locked LAN server
+    can still serve the page that reports it is locked.
+    """
+    _exempt = {"/api/health", "/api/status"}
+
+    @app.before_request
+    def _require_unlocked():
+        path = request.path
+        if not path.startswith("/api/") or path in _exempt:
+            return None
+        if current_app.config.get("DB_KEY") is None:
+            return err("LOCKED", "server is locked", 503)
+        return None
