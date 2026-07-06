@@ -4,6 +4,17 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-06 - Claude: Phase 3 increment 3.2b-1 (server master key) ✅ MERGED to `main`
+
+**MERGED** with Nadim's explicit permission: fast-forward `338d918..82ff74e`, pushed to `origin/main`;
+branches `claude/phase3-3.2b-1-server-key` + `codex/phase3-3.2b-1-server-key-review` pruned (only `main`
+remains). Suite **209 passed / 1 skipped**, ruff clean, phase1 byte-frozen. Server-holds-key model shipped
+(bootstrap keyfile → `DB_KEY` at startup, fail-closed `503 LOCKED` gate, login/logout session-only,
+`auth.json` = `{username,bcrypt_hash,created_at}`) + Codex's read-time auth-sidecar schema hardening
+(`_load_auth_record` rejects legacy key-material records; Claude verified 209 green — closed Codex's
+"couldn't run tests" gap). ADR 0003 part 2 authored. **Next increment = 3.2b-2** (users table /
+multi-account login / `session["user_id"]` / retire `auth.json`).
+
 ## 2026-07-06 - Codex: review fix branch for Phase 3 increment 3.2b-1 auth sidecar schema
 
 **Built, not merged.** Branch **`codex/phase3-3.2b-1-server-key-review`**, based on Claude tip
