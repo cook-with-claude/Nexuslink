@@ -50,6 +50,22 @@ See [`docs/superpowers/specs/2026-06-24-phase2a-backend-design.md`](docs/superpo
 > on x64 Windows the default path is used. macOS/Linux render via WebKit and need
 > no .NET. The Flask API and SPA themselves run in any browser regardless.
 
+> **Server bootstrap (Phase 3, increment 3.2b-1).** The server holds one master key
+> that encrypts the database, unwrapped at **startup** from a bootstrap passphrase.
+> Set `LP_BOOTSTRAP_PASSPHRASE` in the environment, or answer the `Bootstrap
+> passphrase:` console prompt when you launch `main.py`. On the **first** run the
+> master key is generated and stored — wrapped under your passphrase — in a
+> `server.key` keyfile in the app data dir; **never commit `server.key`** (it is
+> gitignored). If unlock fails (wrong/missing passphrase), the server starts
+> **LOCKED** and every API call returns `503` until you relaunch with the right
+> passphrase — it never crashes.
+>
+> **One-time reset for an existing dev install.** Installs that predate this
+> increment encrypted `cdr.db` under a password-derived key, which the new bootstrap
+> key cannot open. Before your first 3.2b-1 launch, delete the old `cdr.db` **and**
+> `auth.json` from the app data dir, then set up the account again. The data is
+> synthetic, so nothing real is lost.
+
 ### The four-gate confidence model (Phase 1 in one table)
 
 The winner is always the area with the most calls; confidence only says how much to

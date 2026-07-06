@@ -24,8 +24,18 @@ never has to parse an HTML error page.
 
 ## Authentication model
 
-- **Single account.** One username/password per install (`app/auth/account.py`). No multi-user — that
-  is Phase 3 (multi-account `users` table lands in increment 3.2b).
+- **Single account.** One username/password per install (`app/auth/account.py`). `auth.json` holds
+  exactly `{username, bcrypt_hash, created_at}` — **no key material** (the server master key is a
+  process concern, not password-derived; see below). `authenticate()` is a bcrypt-only credential
+  check. No multi-user yet — the multi-account `users` table replacing `auth.json` lands in increment
+  3.2b-2.
+- **Server master key + fail-closed lock (Phase 3 increment 3.2b-1, ADR 0003 pt 2).** The server holds
+  one SQLCipher master key for the whole process, unwrapped at **startup** from a bootstrap passphrase
+  (`LP_BOOTSTRAP_PASSPHRASE` env or console prompt) into `app.config["DB_KEY"]` — see the README "Server
+  bootstrap" note. Until it is set, the server is **LOCKED:** every `/api/*` route returns **`503 LOCKED`**
+  **except `/api/health` and `/api/status`** (so a client can observe the locked state). A bad passphrase
+  never crashes the server; it starts locked. This server-wide gate (`api.guards.install_lock_gate`) is
+  distinct from `@login_required`, which gates a per-session login once the server is unlocked.
 - **Session:** a signed Flask cookie (`SESSION_COOKIE_HTTPONLY`, `SameSite=Strict`, per-launch
   `SECRET_KEY`). `session["authenticated"]` gates protected routes; `session["username"]` carries the
   operator identity (see below).
@@ -33,10 +43,13 @@ never has to parse an HTML error page.
   lives in the signed session cookie via `app/api/identity.py` (SUPPORT), read through the single
   accessor `api.guards.current_username()`. It is **no longer** in `current_app.config["USERNAME"]`
   (that slot was removed).
-- **The DB key stays process-global** (`current_app.config["DB_KEY"]`) — set at unlock, cleared at
-  logout. It is the server master key that opens the SQLCipher DB, and is *reinterpreted* (not
-  de-globalized) as multi-account arrives. See `docs/phase3-surface.md` for the full de-globalization
-  inventory and what still moves in 3.2b.
+- **The DB key stays process-global** (`current_app.config["DB_KEY"]`) — since 3.2b-1 it is set **once
+  at server startup** from the bootstrap passphrase and is **not** cleared at logout (the master key is
+  process-wide, so locking it would lock the server for every operator). **Login/logout no longer
+  unlock/lock the DB** — `login` only establishes the session identity + `authenticated` flag, and
+  `logout` only clears the session. The fail-closed guarantee is therefore "no session identity is
+  granted" (an unauditable login/setup grants no session behind its 500), not "DB_KEY is cleared." See
+  `docs/phase3-surface.md` for the full de-globalization inventory and what still moves in 3.2b-2.
 - **`@login_required`** (`app/api/guards.py`) returns `401 UNAUTHENTICATED` if not logged in, and
   `415 BAD_CONTENT_TYPE` if a state-changing request has a body that isn't JSON or multipart.
 
@@ -46,8 +59,11 @@ never has to parse an HTML error page.
 
 | Method | Path | Body | Success | Notes |
 |---|---|---|---|---|
-| GET | `/api/health` | — | `200 {"status":"ok"}` | Liveness probe (used by `wait_until_ready`). |
-| GET | `/api/status` | — | `200 {"account_exists":bool,"authenticated":bool}` | Drives first-run vs login UI. |
+| GET | `/api/health` | — | `200 {"status":"ok"}` | Liveness probe (used by `wait_until_ready`). Reachable while LOCKED. |
+| GET | `/api/status` | — | `200 {"locked":bool,"account_exists":bool,"authenticated":bool}` | Drives locked/first-run/login UI. `locked` = master key not yet unwrapped. Reachable while LOCKED. |
+
+Both System routes stay reachable while the server is LOCKED; every other `/api/*` route returns
+`503 LOCKED` until the master key is unwrapped (see Authentication model).
 
 ### Auth
 
@@ -59,6 +75,11 @@ never has to parse an HTML error page.
 | POST | `/api/change-password` | required | `{old_password, new_password}` | `200 {}` | `400 BAD_REQUEST` (missing, or >72 bytes), `401 UNAUTHENTICATED` (old wrong) |
 
 Password length cap is bcrypt's 72-byte hard limit (`account.MAX_PASSWORD_BYTES`).
+
+`setup` no longer builds the encrypted DB — since 3.2b-1 `create_account` only writes `auth.json`, and the
+encrypted `cdr.db` is built lazily by the first `get_db()` (the migration seam, ADR 0002). If that first
+build fails during the SETUP audit, `auth.json` already exists so `/api/setup` returns `409` on retry, but
+the account is recoverable via `/api/login` (whose audit write builds the DB).
 
 ### Datasets & import
 

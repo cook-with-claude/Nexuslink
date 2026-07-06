@@ -4,6 +4,51 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-06 - Claude: Phase 3 increment 3.2b-1 (server master key + fail-closed lock) BUILT — FOR REVIEW
+
+**Built, not merged.** Branch **`claude/phase3-3.2b-1-server-key`** (base `main`), subagent-driven per
+the 3.2b-1 plan. Suite **208 passed / 1 skipped** (was 195), ruff clean, `git diff --stat main --
+phase1_cdr/` empty (Phase 1 byte-frozen). Not merged — **Nadim merges** after Codex review. Next
+increment = **3.2b-2** (multi-account `users` table, migration 2, `session["user_id"]`, retire
+`auth.json`). ADR 0003 part 2 authored (3.2b-1 section).
+
+**What shipped (the server-holds-key model):**
+- **`app/infra/bootstrap.py` (INFRA leaf)** — a random 256-bit master key wrapped under a bootstrap
+  passphrase in a gitignored keyfile `server.key` (`{kdf_salt,nonce,wrapped_key}` b64, `0600`
+  best-effort). `unlock(passphrase)` generates+persists on first run, else unwraps; `BootstrapError` on
+  empty/wrong passphrase or corrupt keyfile. Opens no DB, imports no Flask.
+- **`main.py:resolve_and_unlock()`** unwraps at startup from `LP_BOOTSTRAP_PASSPHRASE` (env) →
+  `getpass` console fallback into `app.config["DB_KEY"]`; on failure the server starts **LOCKED**
+  (`DB_KEY=None`), never crashes.
+- **Fail-closed lock gate** (`api.guards.install_lock_gate`): every `/api/*` route → **`503 LOCKED`**
+  until `DB_KEY` is set, EXCEPT `/api/health` + `/api/status`. `/api/status` now returns `locked`
+  alongside `account_exists`/`authenticated`.
+- **Login/logout are session-only:** `_unlock` establishes the session identity but does NOT set
+  `DB_KEY`; `_lock`/logout clear the session but do NOT clear the process-wide master key. `auth.json`
+  now holds EXACTLY `{username,bcrypt_hash,created_at}` — no key material; `authenticate()` is
+  bcrypt-only.
+- **Behavior change:** `create_account` no longer builds the DB — it only writes `auth.json`; the
+  encrypted `cdr.db` is built **lazily** by the first `get_db()` (migration seam, ADR 0002). So if the
+  SETUP audit's lazy build fails, `/api/setup` returns 409 on retry but the account is recoverable via
+  `/api/login`. The old "setup builds+cleans the DB, retryable" behavior + its test were intentionally
+  removed. Fresh installs only (no `auth.json`→keyfile adapter; README documents the one-time
+  `cdr.db`+`auth.json` reset).
+
+**Commits (base `main`):** `de50af0`+`1eefb43` (bootstrap keyfile + corrupt-keyfile→BootstrapError) ·
+`5515a76` (fixtures bootstrap-unlock the key) · **`57aba3f` (Tasks 3+4+5 BUNDLED into one
+"server-holds-key model" commit** — the plan's 3-way split couldn't stay green per-commit because the
+gate keys off `DB_KEY`, which only the routes-decouple stops nulling; splitting would have left an
+intermediate red commit) · `f2117d4` (**fail-closed-test hardening** — an adversarial review found the
+login/setup fail-closed tests **vacuous under `TESTING`**; rewrote them to drive the production 500
+path, **mutation-proven** they now fail if the `_lock()`-on-audit-failure is removed) · `20d7fce`
+(Task 6 startup unlock) · this docs commit (Task 7).
+
+**Highest-risk edit (flag for Codex):** the fail-closed **semantics shift** — the guarantee moved from
+"`DB_KEY is None` after a failed audit" to "**no session identity granted**" (login/setup/logout no
+longer null `DB_KEY`). Verify no path leaves a session authenticated after a failed audit write, and
+the lock gate can't be bypassed for any subject-data `/api/*` route. `lint-imports` runs WSL/CI only
+(no grimp win_arm64 wheel) — `bootstrap` is in the Phase-1-forbidden set; no new layer violations.
+
 ## 2026-07-05 - Claude: Phase 3 increment 3.2b PLANNED (sub-split); build is NEXT SESSION (subagent-driven)
 
 **Not built yet — planning only.** Branch **`claude/phase3-3.2b-1-server-key`** (renamed from

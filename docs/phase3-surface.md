@@ -5,6 +5,16 @@
 > place that reads or writes that global state, so Phase 3 is a mechanical swap, not a re-discovery.
 > Compiled by tracing the code pre-Phase-3; **re-grep before you start** (`DB_KEY|USERNAME|current_username|get_db|session\[|authenticated`) in case anything drifted.
 
+> **✅ STATUS (2026-07-06, after increment 3.2b-1 built — branch `claude/phase3-3.2b-1-server-key`):**
+> the **key-model** half is now **done too**. `DB_KEY` is unwrapped **once at server startup** from a
+> bootstrap passphrase (`app/infra/bootstrap.py`, keyfile `server.key`) into `app.config["DB_KEY"]`;
+> `main.py:resolve_and_unlock()` supplies it, and every `/api/*` route returns **`503 LOCKED`** until it
+> is set (except `/api/health` + `/api/status`; `/api/status` now reports `locked`). Login/logout no
+> longer set/clear `DB_KEY` — they only establish/clear the session; `auth.json` holds no key material
+> (ADR 0003 pt 2). **What remains for 3.2b-2:** the multi-account `users` table replacing `auth.json`,
+> `session["user_id"]`, and DB-backed role/`disabled` resolution. Rows below are annotated
+> **[3.2a DONE]** / **[3.2b-1 DONE]** / **[3.2b-2 TODO]**.
+
 > **✅ STATUS (2026-07-05, after increment 3.2a merged — `0e90bdb`):** the **identity** half of this
 > map is **done**. `USERNAME` no longer exists as a process-global — the operator username now lives in
 > the signed session cookie via `app/api/identity.py` (SUPPORT), read through `current_username()`
@@ -27,12 +37,13 @@
 
 | Slot | Lives in | Set by | Read by | Status |
 |---|---|---|---|---|
-| `current_app.config["DB_KEY"]` | Flask app config (process-global) | `auth/routes.py:_unlock` (login/setup), cleared in `_lock`/`logout` | `api/guards.py:get_db` (opens the SQLCipher conn), `api/guards.py:login_required` (gate) | **[3.2b TODO]** stays process-global; *reinterpreted* as the server master key set at bootstrap |
+| `current_app.config["DB_KEY"]` | Flask app config (process-global) | `main.py:resolve_and_unlock` (server startup, from the bootstrap passphrase via `infra/bootstrap.py`) | `api/guards.py:get_db` (opens the SQLCipher conn), `api/guards.py:login_required` + `install_lock_gate` (gates) | **[3.2b-1 DONE]** stays process-global; now the server master key set **at bootstrap**, no longer at login; not cleared at logout |
 | `session["username"]` | signed cookie (per-client) | `api/identity.py:set_identity` via `_unlock`, cleared by `clear_identity`/`session.clear()` | `api/guards.py:current_username` → `identity.current_username` | **[3.2a DONE]** was `config["USERNAME"]`; now per-session |
 | `session["authenticated"]` | signed cookie (already per-client) | `auth/routes.py:_unlock`, cleared in `_lock`/`logout` | `login_required`, `api/system.py:status` | unchanged |
 
 The identity slot is now per-session (3.2a). **`DB_KEY` is the only remaining `config[...]` global**, and
-it does **not** get eliminated — it is repurposed as the server's one master key (3.2b, spec §4.2).
+it is **not** eliminated — as of 3.2b-1 it is the server's one master key, set **at bootstrap** (not at
+login) and read by `get_db` + the lock gate (spec §4.2).
 
 ## The seam (identity swap done in 3.2a)
 
@@ -44,25 +55,32 @@ it does **not** get eliminated — it is repurposed as the server's one master k
   context (`app/api/identity.py`, SUPPORT — design spec §4.2). The ~7 call sites were untouched, exactly
   as the seam intended. **3.2b** adds `current_role()` alongside it (DB-backed, resolved from the
   `users` row — an `authz`-tier concern, not this data-free SUPPORT module).
-- `get_db()` — the single per-request connection factory. **CORRECTED (see banner + spec §4.2):**
-  under server-holds-the-master-key, `get_db()` opens the connection from the **process-held
-  server master key** set once at bootstrap — *not* a per-session key. `config["DB_KEY"]` is
-  **reinterpreted** as "the server's master key," **not** de-globalized. This is still where
-  **migrate-on-login** wires in (ADR 0002): `migrations.migrate(g.db)` right after
-  `storage.connect(key)`.
+- `get_db()` — the single per-request connection factory. **[3.2b-1 DONE]** it opens the connection
+  from the **process-held server master key** set once at bootstrap (`main.py:resolve_and_unlock` →
+  `config["DB_KEY"]`) — *not* a per-session key. `config["DB_KEY"]` is **reinterpreted** as "the
+  server's master key," **not** de-globalized. This is still where **migrate-on-login** wires in
+  (ADR 0002): `migrations.migrate(g.db)` right after `storage.connect(key)` — and since the DB is now
+  built **lazily** here (setup no longer builds it), the first authed request creates `cdr.db`.
 
 ## Exact call sites
 
-### Writers (set/clear the globals) — `app/auth/routes.py` **[updated 3.2a]**
-- `_unlock(username, db_key)` (L16): sets `config["DB_KEY"]`, calls `identity.set_identity(username)`
-  (→ `session["username"]`), sets `session["authenticated"]=True`.
-- `_lock()` (L22): sets `config["DB_KEY"]=None`, `session.clear()` (clears `authenticated` + `username`).
+### Writers — `app/auth/routes.py` **[updated 3.2b-1]** + `main.py`
+- `_unlock(username)` (L16): **session-only now** — calls `identity.set_identity(username)`
+  (→ `session["username"]`) and sets `session["authenticated"]=True`. It **no longer touches
+  `config["DB_KEY"]`** (the server master key is set at bootstrap, not at login).
+- `_lock()` (L23): `session.clear()` only (clears `authenticated` + `username`). It **must not** clear
+  `config["DB_KEY"]` — the master key is process-wide, so locking it would lock the server for every
+  operator.
+- `main.py:resolve_and_unlock` (**[3.2b-1 DONE]**): the sole writer of `config["DB_KEY"]` — sets it once
+  at server startup from the bootstrap passphrase (or `None` → server serves `503 LOCKED`).
 - Default declared in `app/__init__.py` (`DB_KEY=None` only; the `USERNAME=None` default was removed).
 
 ### The accessors — `app/api/guards.py` **[current]**
-- `get_db` (L20) → `config.get("DB_KEY")`, then runs the migration seam before caching `g.db`.
-- `current_username` (L41) → delegates to `identity.current_username()` (session-backed).
-- `login_required` (L47) → `session.get("authenticated")` **and** `config.get("DB_KEY")`.
+- `get_db` → `config.get("DB_KEY")`, then runs the migration seam before caching `g.db`.
+- `current_username` → delegates to `identity.current_username()` (session-backed).
+- `login_required` → `session.get("authenticated")` **and** `config.get("DB_KEY")`.
+- `install_lock_gate(app)` (**[3.2b-1 DONE]**) → a `before_request` hook returning `503 LOCKED` for
+  every `/api/*` route while `DB_KEY is None`, except `/api/health` + `/api/status` and non-`/api` paths.
 
 ### Read-only consumers (call the accessors, **no change needed** — the accessor swap held)
 - `current_username()` callers: `auth/routes.py` (L88, L110), `datasets/routes.py` (L66, L144),
@@ -82,11 +100,15 @@ trust model. Progress against the corrected plan:
    **not** rewritten to be per-session — it keeps using the process-held master key. The ~7 call sites
    were untouched.
 3. ✅ **[3.1 DONE]** `migrations.migrate()` wired into `get_db()` (ADR 0002) — still correct.
-4. **[3.2b TODO]** `DB_KEY` is **not** removed from config — repurpose it as the server master-key slot,
-   set at bootstrap (not at login). Add the multi-account `users` table (new migration; append to
-   `MIGRATIONS`, never edit migration 1) + `user_id` in the session context + a DB-backed `current_role()`
-   / `disabled` resolution. `login_required` reads live role/disabled from the `users` row (spec §4.4),
-   not the cookie. Appends **ADR 0003 part 2**.
+4. ✅ **[3.2b-1 DONE]** `DB_KEY` is **not** removed from config — it is repurposed as the server
+   master-key slot, set at **bootstrap** (not at login) by `main.py:resolve_and_unlock` from a
+   passphrase, wrapped in the `server.key` keyfile (`app/infra/bootstrap.py`). Fail-closed `503 LOCKED`
+   gate (`install_lock_gate`) + `/api/status.locked`; login/logout decoupled from the key. Authored
+   **ADR 0003 part 2** (3.2b-1 section).
+4b. **[3.2b-2 TODO]** Add the multi-account `users` table (new migration 2; append to `MIGRATIONS`,
+   never edit migration 1) replacing `auth.json` + `user_id` in the session context + a DB-backed
+   `current_role()` / `disabled` resolution. `login_required` reads live role/disabled from the `users`
+   row (spec §4.4), not the cookie. Extends **ADR 0003 part 2**.
 5. Everything in "read-only consumers" needed **zero** edits in 3.2a (the seam held); the same should
    hold in 3.2b — if it doesn't, the accessor seam leaked; fix at the accessor, not the call site.
 
