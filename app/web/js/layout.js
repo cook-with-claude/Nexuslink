@@ -68,8 +68,8 @@ export function shell(app) {
 
   const rail = el("nav", { class: "rail", "aria-label": "Primary" }, [
     el("div", { class: "rail-brand" }, [
-      el("span", { class: "brand-mark" }, "LP"),
-      el("span", { class: "label brand-name" }, "LA PASSION"),
+      el("span", { class: "brand-mark" }, "NL"),
+      el("span", { class: "label brand-name" }, "Nexuslink"),
     ]),
     el("div", { class: "rail-nav" }, NAV.map(([h, l, i]) => navItem(h, l, i))),
     el("div", { class: "rail-spacer" }),

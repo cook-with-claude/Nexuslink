@@ -13,7 +13,7 @@ export async function loginScreen(app) {
   const wrap = el("div", { class: "center-wrap" });
   const stack = el("div", { class: "auth-card" });
   const card = el("div", { class: "card" });
-  stack.appendChild(el("div", { class: "auth-brand" }, "LA PASSION"));
+  stack.appendChild(el("div", { class: "auth-brand" }, "Nexuslink"));
   stack.appendChild(card);
   wrap.appendChild(stack);
   app.appendChild(wrap);

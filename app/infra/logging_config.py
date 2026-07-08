@@ -6,7 +6,7 @@ warnings, and the errors the app deliberately swallows so a user gets a clean re
 
 Domain/route modules do **not** import this — they just call `logging.getLogger(__name__)`
 (stdlib) and log. This module only *configures* the handler/format for the `app` logger tree,
-once, from `create_app()`. Level is read from `LA_PASSION_LOG_LEVEL` (default INFO).
+once, from `create_app()`. Level is read from `NEXUSLINK_LOG_LEVEL` (default INFO).
 
 Pure INFRA: imports the stdlib only; no Flask, no domain, no higher layer.
 """
@@ -29,17 +29,17 @@ def configure_logging() -> logging.Logger:
     """
     logger = logging.getLogger(_ROOT_LOGGER_NAME)
 
-    level_name = os.environ.get("LA_PASSION_LOG_LEVEL", _DEFAULT_LEVEL).upper()
+    level_name = os.environ.get("NEXUSLINK_LOG_LEVEL", _DEFAULT_LEVEL).upper()
     logger.setLevel(getattr(logging, level_name, logging.INFO))
 
     # Don't bubble into the root logger's default handler (avoids double lines when a host
     # process — e.g. pytest, or a future server wrapper — also configures the root).
     logger.propagate = False
 
-    if not any(getattr(h, "_lapassion", False) for h in logger.handlers):
+    if not any(getattr(h, "_nexuslink", False) for h in logger.handlers):
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter(_FORMAT))
-        handler._lapassion = True  # tag so re-configuration is a no-op  # type: ignore[attr-defined]
+        handler._nexuslink = True  # tag so re-configuration is a no-op  # type: ignore[attr-defined]
         logger.addHandler(handler)
 
     return logger

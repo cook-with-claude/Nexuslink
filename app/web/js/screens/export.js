@@ -35,7 +35,7 @@ export async function exportScreen(app) {
         el("option", { value: String(t.id) }, `${t.name} — ${t.phone_number}`))));
 
   const nameInput = el("input", {
-    type: "text", id: "ex-name", value: "lapassion_results", spellcheck: "false",
+    type: "text", id: "ex-name", value: "nexuslink_results", spellcheck: "false",
   });
 
   // Filesystem-illegal characters stripped; ".xlsx" is always appended (typing
@@ -44,7 +44,7 @@ export async function exportScreen(app) {
   const chosenFilename = () => {
     const clean = nameInput.value
       .replace(/[\\/:*?"<>|]/g, "").trim().replace(/(\.xlsx)+$/i, "").trim();
-    return (clean || "lapassion_results") + ".xlsx";
+    return (clean || "nexuslink_results") + ".xlsx";
   };
 
   const btn = el("button", { class: "btn btn-primary" }, [icon("download"), "Download .xlsx"]);

@@ -50,7 +50,7 @@ from app import create_app
 from app.ui import bp as ui_bp
 
 _DOTNET_MISSING_MSG = (
-    "La Passion's desktop window needs the .NET Desktop Runtime, which was not "
+    "Nexuslink's desktop window needs the .NET Desktop Runtime, which was not "
     "found on this machine.\n"
     "Install it once and relaunch:\n"
     "  winget install --id Microsoft.DotNet.DesktopRuntime.8.arm64 "
@@ -104,7 +104,7 @@ def _ensure_arm64_dotnet_runtime() -> None:
             "framework": {"name": "Microsoft.WindowsDesktop.App", "version": version},
         }
     }
-    fd, config_path = tempfile.mkstemp(suffix=".runtimeconfig.json", prefix="lapassion-")
+    fd, config_path = tempfile.mkstemp(suffix=".runtimeconfig.json", prefix="nexuslink-")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(config, f)
 
@@ -160,7 +160,7 @@ def _redirect_webview2_interop_to_netcore() -> None:
     }
     if not all(os.path.exists(p) for p in overrides.values()):
         raise SystemExit(
-            "La Passion's desktop window needs the vendored .NET Core WebView2 "
+            "Nexuslink's desktop window needs the vendored .NET Core WebView2 "
             f"interop DLLs, which are missing from:\n  {vendor_dir}\n"
             "Restore them from the repository (vendor/webview2/netcoreapp3.0/)."
         )
@@ -291,7 +291,7 @@ def main() -> None:  # pragma: no cover - requires a display
     server, thread, port = start_server(app, port=0)
     wait_until_ready(port)
     try:
-        webview.create_window("La Passion — CDR Analysis", f"http://127.0.0.1:{port}/")
+        webview.create_window("Nexuslink — CDR Analysis", f"http://127.0.0.1:{port}/")
         webview.start()
     finally:
         server.shutdown()
