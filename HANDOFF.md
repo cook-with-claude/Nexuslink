@@ -29,6 +29,11 @@ name, so a `grep -i "la passion"` still hits those intentionally.
 `git diff --stat main -- phase1_cdr/` empty, and a live demo launch served "Nexuslink" (title + rail +
 login). Both branches pushed. **Open question for Nadim:** merge order / whether the Phase-2 demo branch
 stays a permanent parallel line or gets folded once Phase 3 continues.
+**Follow-up (Codex review):** Codex caught a stale-brand leftover my grep missed — env var
+`LP_BOOTSTRAP_PASSPHRASE` (LP = La Passion). Renamed → `NEXUSLINK_BOOTSTRAP_PASSPHRASE` in active
+code/tests (`main.py`, `tests/phase2a/conftest.py`, `test_main.py`) + canonical docs (README,
+`docs/reference/api.md`, ADR 0003). Dated logs left as archival. Re-verified 209 passed / 1 skipped,
+ruff clean. Phase-3-only fix — not on the Phase-2 demo branch (bootstrap postdates `6f36f96`).
 
 ## 2026-07-06 - Claude: Phase 3 increment 3.2b-1 (server master key) ✅ MERGED to `main`
 

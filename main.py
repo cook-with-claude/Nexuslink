@@ -54,9 +54,9 @@ from app.ui import bp as ui_bp
 
 
 def resolve_and_unlock():
-    """Unwrap the server master key at startup. Passphrase from LP_BOOTSTRAP_PASSPHRASE,
+    """Unwrap the server master key at startup. Passphrase from NEXUSLINK_BOOTSTRAP_PASSPHRASE,
     else a console prompt. Returns the key, or None (server starts locked) on failure."""
-    passphrase = os.environ.get("LP_BOOTSTRAP_PASSPHRASE")
+    passphrase = os.environ.get("NEXUSLINK_BOOTSTRAP_PASSPHRASE")
     if not passphrase:
         try:
             passphrase = getpass.getpass("Bootstrap passphrase: ")

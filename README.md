@@ -52,7 +52,7 @@ See [`docs/superpowers/specs/2026-06-24-phase2a-backend-design.md`](docs/superpo
 
 > **Server bootstrap (Phase 3, increment 3.2b-1).** The server holds one master key
 > that encrypts the database, unwrapped at **startup** from a bootstrap passphrase.
-> Set `LP_BOOTSTRAP_PASSPHRASE` in the environment, or answer the `Bootstrap
+> Set `NEXUSLINK_BOOTSTRAP_PASSPHRASE` in the environment, or answer the `Bootstrap
 > passphrase:` console prompt when you launch `main.py`. On the **first** run the
 > master key is generated and stored — wrapped under your passphrase — in a
 > `server.key` keyfile in the app data dir; **never commit `server.key`** (it is

@@ -31,7 +31,7 @@ never has to parse an HTML error page.
   3.2b-2.
 - **Server master key + fail-closed lock (Phase 3 increment 3.2b-1, ADR 0003 pt 2).** The server holds
   one SQLCipher master key for the whole process, unwrapped at **startup** from a bootstrap passphrase
-  (`LP_BOOTSTRAP_PASSPHRASE` env or console prompt) into `app.config["DB_KEY"]` — see the README "Server
+  (`NEXUSLINK_BOOTSTRAP_PASSPHRASE` env or console prompt) into `app.config["DB_KEY"]` — see the README "Server
   bootstrap" note. Until it is set, the server is **LOCKED:** every `/api/*` route returns **`503 LOCKED`**
   **except `/api/health` and `/api/status`** (so a client can observe the locked state). A bad passphrase
   never crashes the server; it starts locked. This server-wide gate (`api.guards.install_lock_gate`) is

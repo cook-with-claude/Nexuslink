@@ -112,7 +112,7 @@ established **before any login**, so login becomes pure authentication.
   `BootstrapError` on an empty/wrong passphrase or a corrupt keyfile. The module
   manages the keyfile and returns bytes — it never opens the DB and imports no Flask.
 - **Startup unlock (`main.py`).** `resolve_and_unlock()` reads the passphrase from
-  `LP_BOOTSTRAP_PASSPHRASE` (env), else a `getpass` console prompt, and sets
+  `NEXUSLINK_BOOTSTRAP_PASSPHRASE` (env), else a `getpass` console prompt, and sets
   `app.config["DB_KEY"]` to the unwrapped key — or to `None` if unlock fails. **The
   server never crashes on a bad passphrase; it starts LOCKED.**
 - **Fail-closed lock gate (`api.guards.install_lock_gate`).** A `before_request`

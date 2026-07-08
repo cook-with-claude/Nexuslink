@@ -11,7 +11,7 @@ def app_data_dir(tmp_path, monkeypatch):
     """Point all app-data at an isolated temp dir for every test."""
     d = tmp_path / "appdata"
     monkeypatch.setenv("APP_DATA_DIR", str(d))
-    monkeypatch.setenv("LP_BOOTSTRAP_PASSPHRASE", BOOTSTRAP_PASSPHRASE)
+    monkeypatch.setenv("NEXUSLINK_BOOTSTRAP_PASSPHRASE", BOOTSTRAP_PASSPHRASE)
     return pathlib.Path(d)
 
 
