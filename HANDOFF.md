@@ -4,6 +4,32 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-08 - Claude: rebrand La Passion → Nexuslink — BUILT, two branches, NOT merged
+
+**Built, not merged** (Nadim to merge). Nadim renamed the project **La Passion → Nexuslink**
+(spelling "Nexuslink", not all-caps) ahead of a Phase-2 demo to his professors. Behavior-preserving
+except the intended on-disk data-folder rename.
+
+- **Main-line branch `claude/rebrand-nexuslink`** (base `main` `8ab6f39`, tip `27a1ba9`): UI/title/brand
+  (`LP`→`NL`, wordmark "Nexuslink"), export filename `lapassion_results`→`nexuslink_results`
+  (`app/web/js/api.js`, `screens/export.js`, `app/analysis/routes.py:146`), `app/infra/config.py`
+  app-data dir `LaPassionCDR`→`NexuslinkCDR` (+ `~/.nexuslinkcdr`; ORPHANS old-folder data — was fresh),
+  `app/infra/logging_config.py` env `LA_PASSION_LOG_LEVEL`→`NEXUSLINK_LOG_LEVEL` + internal tag,
+  `main.py` title/.NET-msgs/tempfile-prefix, docs (README incl. CI-badge URLs, CLAUDE.md,
+  docs/reference/schema.md).
+- **Demo branch `claude/rebrand-nexuslink-phase2`** (base `6f36f96` end-of-Phase-2, cherry-pick `a36674a`):
+  same rebrand, drives the professor-demo worktree at `..\la-passion-phase2` + desktop shortcut.
+- **GitHub repo renamed** `cook-with-claude/La-Passion`→`/Nexuslink` (origin updated; old URLs redirect).
+
+**NOT touched (by design):** frozen `phase1_cdr/` (its badge URL redirects) and dated historical logs
+(`HANDOFF.md` older entries, `docs/superpowers/specs`+`plans`) — kept as archival record under the old
+name, so a `grep -i "la passion"` still hits those intentionally.
+
+**Verified:** pytest **209 passed / 1 skipped**, ruff clean, JS `node --check` + `node --test` 10/10,
+`git diff --stat main -- phase1_cdr/` empty, and a live demo launch served "Nexuslink" (title + rail +
+login). Both branches pushed. **Open question for Nadim:** merge order / whether the Phase-2 demo branch
+stays a permanent parallel line or gets folded once Phase 3 continues.
+
 ## 2026-07-06 - Claude: Phase 3 increment 3.2b-1 (server master key) ✅ MERGED to `main`
 
 **MERGED** with Nadim's explicit permission: fast-forward `338d918..82ff74e`, pushed to `origin/main`;
