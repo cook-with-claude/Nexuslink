@@ -143,7 +143,7 @@ def export_results():
                       {"target_id": target_id, "targets": len(rows)})
     db.commit()
     return Response(body, mimetype=export.XLSX_MIMETYPE, headers={
-        "Content-Disposition": 'attachment; filename="lapassion_results.xlsx"',
+        "Content-Disposition": 'attachment; filename="nexuslink_results.xlsx"',
     })
 
 

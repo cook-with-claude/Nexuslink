@@ -1,8 +1,8 @@
 """Filesystem locations and crypto tunables for the Phase 2A backend.
 
 No secrets live here. The encrypted DB and the (non-secret) auth.json sidecar
-live under APP_DATA_DIR, which defaults to %LOCALAPPDATA%\\LaPassionCDR on
-Windows and ~/.lapassioncdr elsewhere, and is overridable via the APP_DATA_DIR
+live under APP_DATA_DIR, which defaults to %LOCALAPPDATA%\\NexuslinkCDR on
+Windows and ~/.nexuslinkcdr elsewhere, and is overridable via the APP_DATA_DIR
 environment variable (tests point it at a temp dir).
 """
 
@@ -27,9 +27,9 @@ def app_data_dir() -> pathlib.Path:
     if override:
         base = pathlib.Path(override)
     elif os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-        base = pathlib.Path(os.environ["LOCALAPPDATA"]) / "LaPassionCDR"
+        base = pathlib.Path(os.environ["LOCALAPPDATA"]) / "NexuslinkCDR"
     else:
-        base = pathlib.Path.home() / ".lapassioncdr"
+        base = pathlib.Path.home() / ".nexuslinkcdr"
     base.mkdir(parents=True, exist_ok=True)
     return base
 

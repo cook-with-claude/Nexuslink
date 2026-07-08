@@ -13,7 +13,7 @@
   The DB key is stored only in AES-GCM-wrapped form here (`app/auth/account.py`).
 - **`login_failures.log` sidecar** — plaintext, append-only, best-effort failed-login trail (the
   encrypted `audit_log` is unreachable before a successful unlock).
-- Location: `%LOCALAPPDATA%\LaPassionCDR` (Windows) or `~/.lapassioncdr` (else), overridable via
+- Location: `%LOCALAPPDATA%\NexuslinkCDR` (Windows) or `~/.nexuslinkcdr` (else), overridable via
   `APP_DATA_DIR` (`app/infra/config.py`).
 
 Connection pragmas on every open (`storage.connect`): `PRAGMA key`, `busy_timeout = 5000`,

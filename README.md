@@ -1,6 +1,6 @@
-# La Passion — CDR Pattern Detection
+# Nexuslink — CDR Pattern Detection
 
-[![CI](https://github.com/cook-with-claude/La-Passion/actions/workflows/ci.yml/badge.svg)](https://github.com/cook-with-claude/La-Passion/actions/workflows/ci.yml)
+[![CI](https://github.com/cook-with-claude/Nexuslink/actions/workflows/ci.yml/badge.svg)](https://github.com/cook-with-claude/Nexuslink/actions/workflows/ci.yml)
 
 A multi-phase CS portfolio project that infers a person's likely **home**, **work**,
 and **frequent** areas from Call Detail Records (CDRs), with the algorithm proven

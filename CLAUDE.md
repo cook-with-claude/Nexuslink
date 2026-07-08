@@ -1,6 +1,6 @@
 # CLAUDE.md — project guidance
 
-La Passion infers a subscriber's likely **home / work / frequent** areas from Call Detail Records.
+Nexuslink infers a subscriber's likely **home / work / frequent** areas from Call Detail Records.
 It is a **synthetic-data CS portfolio project** — no real telecom data, no network access, no
 operational/surveillance use. A Flask + PyWebView desktop app over a SQLCipher-encrypted DB, with a
 vanilla no-build SPA frontend.

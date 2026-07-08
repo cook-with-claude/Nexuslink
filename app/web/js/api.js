@@ -146,7 +146,7 @@ export async function downloadResultsXlsx(targetId, filename) {
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = filename || "lapassion_results.xlsx";
+  a.download = filename || "nexuslink_results.xlsx";
   document.body.appendChild(a);
   a.click();
   a.remove();
