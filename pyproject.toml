@@ -37,8 +37,9 @@ include_external_packages = true
 name = "Layered architecture"
 type = "layers"
 layers = [
-    "app.api.system | app.auth.routes | app.datasets.routes | app.targets.routes | app.analysis.routes | app.ui",
-    "app.auth.account | app.datasets.repo | app.datasets.validation | app.targets.repo | app.analysis.repo | app.analysis.bridge | app.analysis.export",
+    "app.api.system | app.auth.routes | app.datasets.routes | app.targets.routes | app.analysis.routes | app.matching.routes | app.reporting.routes | app.ui",
+    "app.matching.service",
+    "app.auth.account | app.datasets.repo | app.datasets.validation | app.targets.repo | app.analysis.repo | app.analysis.bridge | app.matching.repo | app.matching.gates | app.reporting.export",
     "app.audit",
     "app.api.guards | app.api.errors",
     "app.api.responses | app.api.identity",
@@ -46,7 +47,9 @@ layers = [
 ]
 
 # 2) Domains may not import one another's internals (cross-domain needs go through
-#    a shared module). auth is a domain too.
+#    a shared module). auth is a domain too. app.reporting is deliberately ABSENT:
+#    it is the cross-domain report-composition surface (its routes read analysis
+#    and matching public repo functions to build the export workbook).
 [[tool.importlinter.contracts]]
 name = "Domains are independent"
 type = "independence"
@@ -55,6 +58,7 @@ modules = [
     "app.datasets",
     "app.targets",
     "app.analysis",
+    "app.matching",
 ]
 
 # 3) Phase 1 is reached ONLY through app.infra.phase1. Every app module except that
@@ -71,6 +75,8 @@ source_modules = [
     "app.datasets",
     "app.targets",
     "app.analysis",
+    "app.matching",
+    "app.reporting",
     "app.ui",
     "app.infra.config",
     "app.infra.crypto",
@@ -94,6 +100,7 @@ source_modules = [
     "app.datasets.repo",
     "app.targets.repo",
     "app.analysis.repo",
+    "app.matching.repo",
 ]
 forbidden_modules = [
     "app.audit",

@@ -11,8 +11,15 @@ import pytest
 from openpyxl import load_workbook
 
 from app import create_app
-from app.analysis import export
-from app.analysis.export import AREAS_HEADERS, CONTACTS_HEADERS, HEADERS, XLSX_MIMETYPE
+from app.reporting import export
+from app.reporting.export import (
+    AREAS_HEADERS,
+    CONTACTS_HEADERS,
+    HEADERS,
+    MATCHES_HEADERS,
+    TALLIES_HEADERS,
+    XLSX_MIMETYPE,
+)
 
 
 @pytest.fixture()
@@ -103,7 +110,8 @@ def test_export_has_no_confidence_on_tallies(client, two_targets):
 def test_export_detail_sheets(client, two_targets):
     res = client.post("/api/export/results.xlsx")
     wb = load_workbook(io.BytesIO(res.data))
-    assert wb.sheetnames == ["Summary", "Frequent areas", "Frequent contacts"]
+    assert wb.sheetnames == ["Summary", "Frequent areas", "Frequent contacts",
+                             "Contact matches", "Frequency counts"]
 
     areas = list(wb["Frequent areas"].iter_rows(values_only=True))
     assert list(areas[0]) == AREAS_HEADERS
@@ -116,6 +124,19 @@ def test_export_detail_sheets(client, two_targets):
     contacts = list(wb["Frequent contacts"].iter_rows(values_only=True))
     assert list(contacts[0]) == CONTACTS_HEADERS
     assert all(r[1] == "A" for r in contacts[1:])
+
+
+def test_export_saved_sheets_placeholder_when_nothing_saved(client, two_targets):
+    """The two click-to-save sheets are always present so the workbook shape is
+    predictable; with nothing saved they carry an explicit placeholder row."""
+    res = client.post("/api/export/results.xlsx")
+    wb = load_workbook(io.BytesIO(res.data))
+    matches = list(wb["Contact matches"].iter_rows(values_only=True))
+    tallies = list(wb["Frequency counts"].iter_rows(values_only=True))
+    assert list(matches[0]) == MATCHES_HEADERS
+    assert list(tallies[0]) == TALLIES_HEADERS
+    assert matches[1][0] == "none saved"
+    assert tallies[1][0] == "none saved"
 
 
 def test_export_single_target_scope(client, two_targets):

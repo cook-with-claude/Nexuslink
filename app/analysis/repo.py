@@ -101,6 +101,35 @@ def frequency(conn, dataset_id, phone_number, rank_by, *, call_type=None, area=N
     return {"total": total, "top": [dict(r) for r in rows]}
 
 
+# ---- saved tallies (click-to-save export staging for the frequency explorer) ----
+
+def save_tally(conn, target_id, created_at, filters_json, filter_label,
+               tally_json) -> int:
+    cur = conn.execute(
+        "INSERT INTO saved_tallies "
+        "(target_id, created_at, filters_json, filter_label, tally_json) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (target_id, created_at, filters_json, filter_label, tally_json),
+    )
+    return cur.lastrowid
+
+
+def saved_tallies(conn) -> list[dict]:
+    rows = conn.execute(
+        "SELECT s.id, s.target_id, s.created_at, s.filters_json, s.filter_label, "
+        "s.tally_json, t.name AS target_name, t.phone_number, "
+        "d.name AS dataset_name "
+        "FROM saved_tallies s JOIN targets t ON t.id = s.target_id "
+        "JOIN datasets d ON d.id = t.dataset_id ORDER BY s.id",
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_tally(conn, tally_id) -> bool:
+    cur = conn.execute("DELETE FROM saved_tallies WHERE id = ?", (tally_id,))
+    return cur.rowcount > 0
+
+
 def targets_with_latest_result(conn, target_id=None) -> list[dict]:
     """Every target (or one) with its latest stored result_json (NULL if never analyzed)."""
     cond = "" if target_id is None else "WHERE t.id = ? "
