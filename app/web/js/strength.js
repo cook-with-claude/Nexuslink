@@ -214,6 +214,12 @@ export function strengthMeter(inputEl) {
       document.removeEventListener("click", onClick);
     }
   };
+  // Clicking the info button must NOT blur the password field. WebView2/Edge
+  // draws a native password-reveal "eye" inside type=password inputs and removes
+  // it the moment the field loses focus, never restoring it on refocus — so a
+  // plain button click makes the eye vanish (GitHub: pw-reveal bug). preventDefault
+  // on mousedown keeps focus on whatever held it; the click still fires and toggles.
+  infoBtn.addEventListener("mousedown", (e) => e.preventDefault());
   infoBtn.addEventListener("click", () => setOpen(!open));
 
   // --- live update ---
