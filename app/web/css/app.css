@@ -562,6 +562,11 @@ details.gate[open] > summary { border-bottom: 1px solid var(--border); }
 .pw-crit-mark { display: inline-flex; color: var(--fg-dim); transition: color 150ms ease-out; }
 .pw-crit.met { color: var(--fg); }
 .pw-crit.met .pw-crit-mark { color: var(--good); }
+.pw-criteria-note {
+  margin: var(--s3) 0 0; padding-top: var(--s2);
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted); font-size: var(--fs-sm); font-style: italic;
+}
 
 /* ---- spreadsheet screen ---- */
 /* date/number inputs (explorer filters) get the same chrome as text inputs */

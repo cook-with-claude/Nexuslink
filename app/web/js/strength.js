@@ -188,6 +188,8 @@ export function strengthMeter(inputEl) {
   }, [
     el("p", { class: "pw-criteria-tip" }, "Longer is stronger — aim for a long passphrase."),
     el("ul", { class: "pw-criteria-list" }, rows),
+    el("p", { class: "pw-criteria-note" },
+      "A strong password shouldn't include any personal information."),
   ]);
 
   const wrap = el("div", { class: "pw-meter" }, [head, track, popover]);
