@@ -4,6 +4,39 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-12 - Claude: password/setup UI polish — ✅ MERGED to `main` + pushed
+
+Three small frontend-only fixes to the account-setup screen, prompted by Nadim testing the
+professor demo. Applied to **both** the main line and the demo branch; the main line is **MERGED
+to `origin/main`** (fast-forward `ccdade8..38573f1`, pushed) with Nadim's explicit permission.
+No backend/Phase-1 touch — `git diff --stat -- phase1_cdr/` empty. Verified green on main:
+`tests/phase2a/test_ui.py` 8 passed, `node --test components.test.mjs` 10/0, `node --check` clean.
+
+1. **Native password-reveal "eye" vanished on info-button click** (`app/web/js/strength.js`).
+   Root cause (confirmed by Nadim's screenshots): the field's eye is WebView2/Edge's *native*
+   `type=password` reveal control (we have no custom toggle). The strength info button is a real
+   `<button>`, so clicking it blurred the password input; Edge removes its native reveal on blur and
+   never restores it on refocus. Fix: `infoBtn.addEventListener("mousedown", e => e.preventDefault())`
+   keeps focus put; the `click` still fires and toggles the popover. Nadim verified the eye now stays.
+   (Caveat noted to Nadim: other blurs — e.g. clicking Username — still drop the native eye; that's
+   Edge behaviour, not ours. A fully custom toggle was offered and declined.)
+2. **New footnote in the strength popover** (`strength.js` + `app/web/css/app.css` `.pw-criteria-note`):
+   "A strong password shouldn't include any personal information." — muted italic under a subtle
+   top divider, distinct from the checklist and the length tip.
+3. **Dropped the redundant first-run banner** (`app/web/js/screens/login.js`): removed the
+   "No account exists yet. Set the administrator username and password." `msg-info` box (setup mode
+   only) — the heading, labeled fields, and "Create account" button already say it. No test greps
+   that copy.
+
+**Merge / branches:** work branch `claude/fix-pw-reveal-eye` fast-forwarded into main and pruned
+(local-only, never pushed). The **demo branch `claude/rebrand-nexuslink-phase2`** got the *same three
+fixes* (commits `22b9a5b`, `59736a7`, `a4881b9`) but was **NOT merged to main** — its merge-base is
+end-of-Phase-2 `6f36f96` and it carries no Phase-3 work, so folding it in would conflict / risk
+Phase-3 regressions. Kept as the parallel frozen professor-demo line (already current with these
+fixes). **Open note:** main and the demo branch now hold equivalent-but-separate copies of these
+fixes; don't expect a clean merge between the two later — rebuild the demo off main if it's ever
+retired.
+
 ## 2026-07-08 - Claude: rebrand La Passion → Nexuslink — BUILT, two branches, NOT merged
 
 **Built, not merged** (Nadim to merge). Nadim renamed the project **La Passion → Nexuslink**
