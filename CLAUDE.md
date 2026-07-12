@@ -32,6 +32,9 @@ app/
   datasets/     repo.py, validation.py (DOMAIN); routes.py (APPLICATION)
   targets/      repo.py (DOMAIN); routes.py (APPLICATION)
   analysis/     repo.py, bridge.py (DOMAIN); routes.py (APPLICATION)
+  matching/     repo.py, gates.py (DOMAIN, gates is pure); service.py; routes.py (APPLICATION)
+  reporting/    export.py (DOMAIN); routes.py (APPLICATION) — cross-domain report composition,
+                deliberately OUTSIDE the domain-independence contract (it reads analysis+matching)
   audit/        log.py
   infra/        config.py, crypto.py, storage.py, phase1.py  (no domain logic, no Flask)
   ui.py / web/  SPA shell + assets (UNCHANGED; ui registered in main.py, not create_app)
@@ -61,7 +64,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **191 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **241 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
   every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's

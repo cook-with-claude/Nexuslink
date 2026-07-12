@@ -4,6 +4,51 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-12 - Claude: Contact matcher + saved exports — BUILT on `claude/contact-matcher`, NOT merged
+
+**Built, not merged** (Nadim decides whether to merge). Brainstormed with Khaled this session; spec at
+`docs/superpowers/specs/2026-07-12-contact-matcher-design.md`. Branch `claude/contact-matcher`
+(base `main` `ccdade8`). Suite **241 passed / 1 skipped**, ruff clean, `node --check` all modules +
+`node --test` 15/15, `git diff --stat main -- phase1_cdr/` empty (Phase 1 byte-frozen).
+`lint-imports` NOT run locally (grimp has no win_arm64 wheel — CI ubuntu is the canonical gate).
+
+**What shipped:**
+- **New `app/matching/` domain** — `repo.py` (fact-gathering SQL: per-side contact tallies, direct
+  A↔B scan, co-presence pairing with a 60-min **inclusive** window deduped per (area, day), observation
+  spans, dataset-wide commonality), `gates.py` (**pure** weakest-link engine, no I/O — typed findings
+  `direct_contact`/`mutual_contacts`/`co_presence`, per-finding `min()` gates, `bound_by` transparency),
+  `service.py` (fact→findings orchestration). Direct contact is positive evidence rated by its own
+  volume — deliberately NOT folded into a `min()` with the doubt gates (test proves two heavy callers
+  who share nothing else still rate High, instead of the absurd "Low").
+- **Routes:** `POST /api/match` (pure read, unaudited like `frequency`), `POST /api/match/save`
+  (**recomputes server-side**, order-normalized replace-on-same-pair), `GET`/`DELETE /api/match/saved`;
+  and on the analysis blueprint `POST /api/frequency/save` (recompute from filters + human-readable
+  label), `GET`/`DELETE /api/frequency/saved`. Saves/deletes audited (`PAIR_MATCH_*`/`TALLY_*`).
+- **Migration 2** (`saved_pair_matches` + `saved_tallies`) — the ADR-0002 seam's **first real use**;
+  existing installs upgrade in place on next login. The v0-adoption tests now assert
+  adopt-then-upgrade-to-latest (they previously asserted a stop at v1).
+- **`app/reporting/`** — export moved out of `app/analysis/` because the workbook now composes rows
+  from two domains. It is the cross-domain composition surface, **deliberately outside** the
+  import-linter domain-independence set (its routes read both domains' public repo fns; the domains
+  still can't import each other). Workbook gains always-present `Contact matches` + `Frequency counts`
+  sheets fed from stored JSON only (placeholder row when nothing saved).
+- **Frontend:** 4th Spreadsheet card "Contact matcher" (inference styling), shared `matchFindingsBlock`
+  renderer, `Save to export` on both a pair comparison and an explorer tally, Export-screen
+  "Saved for export" curation card (list + inline-confirm Remove).
+
+**Decisions worth flagging:**
+- **Click-to-save on BOTH surfaces** (Khaled's call): nothing enters the export without an explicit
+  click, and the save endpoints **recompute server-side** so a client-authored payload can never enter
+  a report.
+- **Gate thresholds are PROPOSALS** (`app/matching/gates.py` top constants), flagged for Nadim/domain
+  review exactly like the Phase-1 thresholds (N reuses 50/15). Distinctiveness uses a
+  20%-of-other-subscribers "common" cutoff; the co-presence window is 60 min inclusive.
+- **Cross-dataset pairs rejected** for now (API shape doesn't preclude relaxing it later).
+
+**Open questions for Codex/Nadim:** (1) are the gate thresholds + the 60-min / 20% constants sensible
+on the real generator's distributions? (2) `app/reporting` sitting outside the independence set is a new
+architectural precedent — is that the right home for cross-domain composition, or should it be an ADR?
+
 ## 2026-07-08 - Claude: rebrand La Passion → Nexuslink — BUILT, two branches, NOT merged
 
 **Built, not merged** (Nadim to merge). Nadim renamed the project **La Passion → Nexuslink**

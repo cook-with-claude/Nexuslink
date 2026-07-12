@@ -262,6 +262,23 @@ function kvRows(pairs) {
   ]));
 }
 
+// Evidence tables are capped: a real pair can produce hundreds of co-presence
+// events (Phase-1's 6-month sample yields ~100 for two users), and dumping them
+// all makes the card scroll for pages. The count is already in the headline; the
+// table is a sample, so say so rather than pretending it's the whole list.
+const EVIDENCE_ROW_CAP = 20;
+
+function capped(rows) {
+  return { shown: rows.slice(0, EVIDENCE_ROW_CAP), hidden: Math.max(0, rows.length - EVIDENCE_ROW_CAP) };
+}
+
+function moreNote(hidden) {
+  if (!hidden) return null;
+  // Deliberately does NOT say "see the export" — the export's evidence cell is a
+  // digest too. The headline carries the complete count; this table is a sample.
+  return el("p", { class: "hint" }, `… and ${hidden} more (the headline count is the total).`);
+}
+
 function findingEvidence(f, pair) {
   const ev = f.evidence || {};
   const nameA = pair.target_a.name;
@@ -274,6 +291,7 @@ function findingEvidence(f, pair) {
     ])];
   }
   if (f.type === "mutual_contacts") {
+    const { shown, hidden } = capped(ev.shared_contacts || []);
     return [
       kvRows(Object.entries(ev.gates || {}).map(([k, v]) => ["gate: " + k, v])),
       el("table", {}, [
@@ -282,7 +300,7 @@ function findingEvidence(f, pair) {
           el("th", { class: "num" }, nameB + " ×"),
           el("th", { class: "num" }, "Others with it"), el("th", {}, "Distinctive"),
         ])),
-        el("tbody", {}, (ev.shared_contacts || []).map((c) => el("tr", {}, [
+        el("tbody", {}, shown.map((c) => el("tr", {}, [
           el("td", { class: "data" }, c.party),
           el("td", { class: "num" }, String(c.count_a)),
           el("td", { class: "num" }, String(c.count_b)),
@@ -290,9 +308,11 @@ function findingEvidence(f, pair) {
           el("td", { class: "dim" }, c.distinctive ? "yes" : "no (common)"),
         ]))),
       ]),
+      moreNote(hidden),
     ];
   }
   if (f.type === "co_presence") {
+    const { shown, hidden } = capped(ev.events || []);
     return [
       kvRows(Object.entries(ev.gates || {}).map(([k, v]) => ["gate: " + k, v])),
       el("table", {}, [
@@ -300,12 +320,13 @@ function findingEvidence(f, pair) {
           el("th", {}, "Area"), el("th", {}, "Day"),
           el("th", { class: "num" }, "Others seen there"),
         ])),
-        el("tbody", {}, (ev.events || []).map((e) => el("tr", {}, [
+        el("tbody", {}, shown.map((e) => el("tr", {}, [
           el("td", { class: "data" }, e.area),
           el("td", { class: "data dim" }, e.day),
           el("td", { class: "num dim" }, String(e.other_users_with)),
         ]))),
       ]),
+      moreNote(hidden),
     ];
   }
   return [];
@@ -335,7 +356,9 @@ export function matchFindingsBlock(payload, wrapClass = "det-block") {
       d.appendChild(el("p", { class: "binding-note" },
         `Held at ${f.strength} by: ${f.bound_by.join(", ")}.`));
     }
-    findingEvidence(f, payload.pair).forEach((node) => d.appendChild(node));
+    findingEvidence(f, payload.pair)
+      .filter((node) => node !== null)   // moreNote() is null when nothing is capped
+      .forEach((node) => d.appendChild(node));
     block.appendChild(d);
   }
   const alone = (payload.details || {}).shared_areas_no_time_overlap || [];

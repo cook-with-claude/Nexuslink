@@ -176,6 +176,43 @@ test("matchFindingsBlock: a bound finding names its binding gates", () => {
   assert.match(block.textContent, /yes/);      // distinctive column
 });
 
+test("matchFindingsBlock: long evidence lists are capped with a '… and N more' note", () => {
+  // A real 6-month pair yields ~100 co-presence events; rendering all of them
+  // made the card scroll for pages. Cap at 20 and say how many were withheld —
+  // and do NOT point at the export, whose evidence cell is a digest too.
+  const events = Array.from({ length: 100 }, (_, i) => ({
+    area: "Hamra", day: `2026-01-${String((i % 28) + 1).padStart(2, "0")}`,
+    other_users_with: 3,
+  }));
+  const block = matchFindingsBlock({
+    pair: PAIR, caveats: [], no_link: false, details: {},
+    findings: [FINDING({
+      type: "co_presence", label: "Meeting up", strength: "Low",
+      bound_by: ["location distinctiveness"], headline: "100 co-located event(s)",
+      evidence: { gates: { "event count": "High" }, events },
+    })],
+  });
+  const rows = (block.textContent.match(/Hamra/g) || []).length;
+  assert.equal(rows, 20);                                  // capped, not 100
+  assert.match(block.textContent, /… and 80 more/);
+  assert.doesNotMatch(block.textContent, /in the export/); // no false promise
+});
+
+test("matchFindingsBlock: a short evidence list gets no '…more' note", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, caveats: [], no_link: false, details: {},
+    findings: [FINDING({
+      type: "co_presence", label: "Meeting up", strength: "High", bound_by: [],
+      headline: "2 events",
+      evidence: { gates: {}, events: [
+        { area: "Cafe", day: "2026-01-03", other_users_with: 0 },
+        { area: "Edge", day: "2026-01-06", other_users_with: 0 },
+      ] },
+    })],
+  });
+  assert.doesNotMatch(block.textContent, /more/);
+});
+
 test("matchFindingsBlock: shared areas without time overlap are a detail line", () => {
   const block = matchFindingsBlock({
     pair: PAIR, findings: [FINDING()], caveats: [], no_link: false,
