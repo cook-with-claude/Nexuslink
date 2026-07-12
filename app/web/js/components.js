@@ -244,6 +244,109 @@ export function frequentAreasBlock(areas, conf, wrapClass = "card") {
   return block;
 }
 
+// --- contact-matcher renderers ---
+// Typed findings, each an expandable <details>: the summary row is label +
+// strength pill + headline, the body is which gate(s) bound the weakest-link
+// rating plus the evidence for that finding type. Strength reuses the
+// confidence-pill classes deliberately: the matcher IS a gated inference
+// (unlike the tallies, which carry no pill anywhere).
+
+export function strengthPill(strength) {
+  const cls = PILL_CLASS[strength] || "pill-insufficient";
+  return el("span", { class: "pill " + cls }, strength || "n/a");
+}
+
+function kvRows(pairs) {
+  return el("div", { class: "gate-rows" }, pairs.flatMap(([k, v]) => [
+    el("span", { class: "k" }, k), el("span", { class: "v" }, String(v ?? "—")),
+  ]));
+}
+
+function findingEvidence(f, pair) {
+  const ev = f.evidence || {};
+  const nameA = pair.target_a.name;
+  const nameB = pair.target_b.name;
+  if (f.type === "direct_contact") {
+    return [kvRows([
+      ["Total", ev.total], ["Calls", ev.calls], ["SMS", ev.sms],
+      [`${nameA} → ${nameB}`, ev.a_to_b], [`${nameB} → ${nameA}`, ev.b_to_a],
+      ["First", ev.first || "—"], ["Last", ev.last || "—"],
+    ])];
+  }
+  if (f.type === "mutual_contacts") {
+    return [
+      kvRows(Object.entries(ev.gates || {}).map(([k, v]) => ["gate: " + k, v])),
+      el("table", {}, [
+        el("thead", {}, el("tr", {}, [
+          el("th", {}, "Contact"), el("th", { class: "num" }, nameA + " ×"),
+          el("th", { class: "num" }, nameB + " ×"),
+          el("th", { class: "num" }, "Others with it"), el("th", {}, "Distinctive"),
+        ])),
+        el("tbody", {}, (ev.shared_contacts || []).map((c) => el("tr", {}, [
+          el("td", { class: "data" }, c.party),
+          el("td", { class: "num" }, String(c.count_a)),
+          el("td", { class: "num" }, String(c.count_b)),
+          el("td", { class: "num dim" }, String(c.other_users_with)),
+          el("td", { class: "dim" }, c.distinctive ? "yes" : "no (common)"),
+        ]))),
+      ]),
+    ];
+  }
+  if (f.type === "co_presence") {
+    return [
+      kvRows(Object.entries(ev.gates || {}).map(([k, v]) => ["gate: " + k, v])),
+      el("table", {}, [
+        el("thead", {}, el("tr", {}, [
+          el("th", {}, "Area"), el("th", {}, "Day"),
+          el("th", { class: "num" }, "Others seen there"),
+        ])),
+        el("tbody", {}, (ev.events || []).map((e) => el("tr", {}, [
+          el("td", { class: "data" }, e.area),
+          el("td", { class: "data dim" }, e.day),
+          el("td", { class: "num dim" }, String(e.other_users_with)),
+        ]))),
+      ]),
+    ];
+  }
+  return [];
+}
+
+// The full findings block for one pair-match payload (the /api/match response
+// or a saved result_json). Used by the Spreadsheet matcher card; the export
+// sheet carries the same stored content.
+export function matchFindingsBlock(payload, wrapClass = "det-block") {
+  const block = el("div", { class: wrapClass });
+  for (const c of payload.caveats || []) {
+    block.appendChild(el("p", { class: "hint" }, "⚠ " + c));
+  }
+  if (!payload.findings || payload.findings.length === 0) {
+    block.appendChild(el("div", { class: "empty" },
+      "No link found between these targets."));
+    return block;
+  }
+  for (const f of payload.findings) {
+    const d = el("details", { class: "gate finding" }, [
+      el("summary", {}, [
+        el("strong", {}, f.label), " ", strengthPill(f.strength),
+        " ", el("span", { class: "dim" }, f.headline),
+      ]),
+    ]);
+    if (f.strength !== "High" && f.bound_by && f.bound_by.length) {
+      d.appendChild(el("p", { class: "binding-note" },
+        `Held at ${f.strength} by: ${f.bound_by.join(", ")}.`));
+    }
+    findingEvidence(f, payload.pair).forEach((node) => d.appendChild(node));
+    block.appendChild(d);
+  }
+  const alone = (payload.details || {}).shared_areas_no_time_overlap || [];
+  if (alone.length) {
+    block.appendChild(el("p", { class: "hint" },
+      `Also share ${alone.length} area(s) without time overlap ` +
+      `(too weak to be a finding): ${alone.join(", ")}`));
+  }
+  return block;
+}
+
 // --- inline confirm for destructive actions (no native confirm/alert) ---
 export function confirmInline(triggerBtn, onConfirm, label = "Delete?") {
   const parent = triggerBtn.parentElement;

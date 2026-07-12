@@ -29,8 +29,8 @@ globalThis.document = {
   }),
 };
 
-const { bindingGates, bindingNote, detectionBlock, frequentAreasBlock } =
-  await import("./components.js");
+const { bindingGates, bindingNote, detectionBlock, frequentAreasBlock,
+        strengthPill, matchFindingsBlock } = await import("./components.js");
 
 const noteText = (result) => {
   const p = bindingNote(result);
@@ -112,4 +112,75 @@ test("frequentAreasBlock: empty vs ranked, and wrapper class", () => {
   assert.equal(block.className, "det-block");
   assert.match(block.textContent, /Hamra/);
   assert.match(block.textContent, /50\.0%/);   // pct() formatting
+});
+
+// --- contact-matcher renderers ---
+// matchFindingsBlock renders the /api/match payload (and saved result_json —
+// same shape). The rules locked here: strength reuses the confidence-pill
+// classes; a bound_by note appears only below High; no-link and the
+// shared-areas-without-time-overlap DETAIL line render as text, not findings.
+
+const PAIR = {
+  dataset_id: 1,
+  target_a: { id: 1, name: "A", phone_number: "100" },
+  target_b: { id: 2, name: "B", phone_number: "200" },
+};
+
+const FINDING = (over = {}) => ({
+  type: "direct_contact", label: "Direct contact", strength: "High",
+  bound_by: ["direct volume"], headline: "4× (2 calls, 2 SMS, both directions)",
+  evidence: { total: 4, calls: 2, sms: 2, a_to_b: 2, b_to_a: 2,
+              first: "2026-01-01T09:00:00", last: "2026-01-04T10:00:00" },
+  ...over,
+});
+
+test("strengthPill maps strengths onto the confidence pill classes", () => {
+  assert.equal(strengthPill("High").className, "pill pill-high");
+  assert.equal(strengthPill("Low").className, "pill pill-low");
+  assert.equal(strengthPill(undefined).className, "pill pill-insufficient");
+});
+
+test("matchFindingsBlock: no findings renders the no-link message + caveats", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [], no_link: true,
+    caveats: ["The two observation windows overlap only 4%; absence of overlap is not meaningful."],
+    details: { shared_areas_no_time_overlap: [] },
+  });
+  assert.match(block.textContent, /No link found between these targets\./);
+  assert.match(block.textContent, /overlap only 4%/);
+});
+
+test("matchFindingsBlock: a High finding carries no bound_by note", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], details: {}, no_link: false,
+  });
+  assert.match(block.textContent, /Direct contact/);
+  assert.match(block.textContent, /both directions/);
+  assert.doesNotMatch(block.textContent, /Held at/);
+});
+
+test("matchFindingsBlock: a bound finding names its binding gates", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, caveats: [], no_link: false, details: {},
+    findings: [FINDING({
+      type: "mutual_contacts", label: "Mutual relationship", strength: "Low",
+      bound_by: ["sample", "window overlap"],
+      headline: "3 shared contacts",
+      evidence: { gates: { sample: "Low" }, shared_contacts: [
+        { party: "P1", count_a: 2, count_b: 1, other_users_with: 0, distinctive: true },
+      ] },
+    })],
+  });
+  assert.match(block.textContent, /Held at Low by: sample, window overlap\./);
+  assert.match(block.textContent, /P1/);
+  assert.match(block.textContent, /yes/);      // distinctive column
+});
+
+test("matchFindingsBlock: shared areas without time overlap are a detail line", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], no_link: false,
+    details: { shared_areas_no_time_overlap: ["Far", "Airport"] },
+  });
+  assert.match(block.textContent, /too weak to be a finding/);
+  assert.match(block.textContent, /Far, Airport/);
 });

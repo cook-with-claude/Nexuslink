@@ -606,6 +606,23 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
 .det-block { margin-top: var(--s4); }
 .det-block h3 { margin: 0; font-size: var(--fs-h3); }
 
+/* contact-matcher findings: each is a <details> whose summary reads as a row
+   (label + strength pill + headline); reuses the .gate collapse styling. */
+.finding { margin-top: var(--s3); }
+.finding summary .dim { margin-left: var(--s2); }
+.finding table { margin-top: var(--s2); }
+
+/* Export screen: click-to-save staging list (saved matches + counts). */
+.saved-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.saved-item:last-child { border-bottom: 0; }
+
 /* header-row column filters (Spreadsheet records). The filter row sticks just
    below the header row (28px = the th height rule above). */
 .filter-row th {

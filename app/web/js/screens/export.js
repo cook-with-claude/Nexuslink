@@ -4,7 +4,7 @@
 
 import { api, downloadResultsXlsx } from "../api.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, msg, toast, icon } from "../components.js";
+import { el, loading, clear, msg, toast, icon, confirmInline } from "../components.js";
 
 export async function exportScreen(app) {
   const { page, setCrumb } = shell(app);
@@ -69,4 +69,96 @@ export async function exportScreen(app) {
   card.appendChild(errSlot);
   card.appendChild(el("div", { class: "form-actions" }, [btn]));
   body.appendChild(card);
+
+  body.appendChild(await savedItemsCard());
+}
+
+// Curation list for the click-to-save export staging: everything saved from the
+// Spreadsheet tab (pair matches + explorer counts) with a remove button each, so
+// a mis-saved item doesn't haunt every future export. The workbook's "Contact
+// matches" / "Frequency counts" sheets carry exactly what is listed here.
+async function savedItemsCard() {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("div", { class: "card-head" }, [
+    el("h3", {}, "Saved for export"),
+    el("span", { class: "kicker" }, "click-to-save staging"),
+  ]));
+  card.appendChild(el("p", { class: "hint" },
+    "Pair matches and explorer counts saved from the Spreadsheet tab. " +
+    "These fill the “Contact matches” and “Frequency counts” sheets of the workbook."));
+
+  const slot = el("div");
+  card.appendChild(slot);
+
+  const load = async () => {
+    clear(slot);
+    slot.appendChild(loading());
+    let matches;
+    let tallies;
+    try {
+      [matches, tallies] = await Promise.all([api.savedMatches(), api.savedTallies()]);
+    } catch (e) {
+      clear(slot);
+      slot.appendChild(msg(e.message));
+      return;
+    }
+    clear(slot);
+    if (matches.length === 0 && tallies.length === 0) {
+      slot.appendChild(el("div", { class: "empty" },
+        "Nothing saved yet. Use “Save to export” on a pair comparison or a count " +
+        "in the Spreadsheet tab."));
+      return;
+    }
+
+    const row = (text, dimText, onDelete) => {
+      const del = el("button", { class: "btn btn-sm btn-danger" }, "Remove");
+      del.addEventListener("click", () => confirmInline(del, onDelete, "Remove?"));
+      return el("div", { class: "saved-item" }, [
+        el("div", {}, [
+          el("div", { class: "data" }, text),
+          el("div", { class: "dim" }, dimText),
+        ]),
+        el("div", { class: "form-actions" }, [del]),
+      ]);
+    };
+
+    if (matches.length) {
+      slot.appendChild(el("h4", {}, `Pair matches (${matches.length})`));
+      for (const m of matches) {
+        const pair = m.result.pair;
+        const summary = m.result.findings.length === 0
+          ? "no link found"
+          : m.result.findings.map((f) => `${f.label}: ${f.strength}`).join(" · ");
+        slot.appendChild(row(
+          `${pair.target_a.name} (${pair.target_a.phone_number}) ↔ ` +
+          `${pair.target_b.name} (${pair.target_b.phone_number}) — ${m.dataset_name}`,
+          summary,
+          async () => {
+            try {
+              await api.deleteSavedMatch(m.id);
+              toast("Saved pair match removed");
+            } catch (e) { toast(e.message, "error"); }
+            load();
+          }));
+      }
+    }
+    if (tallies.length) {
+      slot.appendChild(el("h4", {}, `Frequency counts (${tallies.length})`));
+      for (const t of tallies) {
+        slot.appendChild(row(
+          t.filter_label,
+          `${t.tally.total_records} record(s) · saved ${(t.created_at || "").slice(0, 16).replace("T", " ")}`,
+          async () => {
+            try {
+              await api.deleteSavedTally(t.id);
+              toast("Saved count removed");
+            } catch (e) { toast(e.message, "error"); }
+            load();
+          }));
+      }
+    }
+  };
+
+  await load();
+  return card;
 }

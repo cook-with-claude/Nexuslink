@@ -39,6 +39,9 @@ def test_serves_spa_shell_at_root(client):
         ("/js/store.js", "javascript", "authenticated"),
         # nested path-converter route must resolve screen modules too
         ("/js/screens/results.js", "javascript", "resultsScreen"),
+        # contact matcher card + its shared renderer must stay served
+        ("/js/screens/spreadsheet.js", "javascript", "matcherCard"),
+        ("/js/components.js", "javascript", "matchFindingsBlock"),
     ],
 )
 def test_serves_static_assets(client, path, content_type, needle):
