@@ -21,10 +21,6 @@ export async function loginScreen(app) {
   const render = () => {
     clear(card);
     card.appendChild(el("h3", {}, isSetup ? "Create administrator account" : "Sign in"));
-    if (isSetup) {
-      card.appendChild(el("div", { class: "msg msg-info" },
-        "No account exists yet. Set the administrator username and password."));
-    }
 
     const u = el("input", { type: "text", id: "u", autocomplete: "username", placeholder: "username" });
     const p = el("input", { type: "password", id: "p", autocomplete: isSetup ? "new-password" : "current-password", placeholder: "password" });
