@@ -75,10 +75,36 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 """
 
+# --- Migration 2: saved report items (contact matcher + explorer tallies) ---
+# Click-to-save export staging: the export workbook copies these stored rows and
+# never recomputes. Pair identity is order-normalized by the writing repo
+# (target_a_id < target_b_id) so A<->B and B<->A hit the same UNIQUE slot.
+_SAVED_EXPORTS = """
+CREATE TABLE IF NOT EXISTS saved_pair_matches (
+  id          INTEGER PRIMARY KEY,
+  dataset_id  INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  target_a_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  target_b_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  UNIQUE(target_a_id, target_b_id)
+);
+
+CREATE TABLE IF NOT EXISTS saved_tallies (
+  id           INTEGER PRIMARY KEY,
+  target_id    INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  created_at   TEXT NOT NULL,
+  filters_json TEXT NOT NULL,
+  filter_label TEXT NOT NULL,
+  tally_json   TEXT NOT NULL
+);
+"""
+
 # Ordered (version, ddl) pairs, contiguous from 1. Append new migrations; never edit
 # or reorder a released one (it may already be applied to installed databases).
 MIGRATIONS: list[tuple[int, str]] = [
     (1, _BASELINE),
+    (2, _SAVED_EXPORTS),
 ]
 
 class MigrationError(RuntimeError):

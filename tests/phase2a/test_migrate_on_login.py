@@ -34,7 +34,11 @@ def _open_raw(client):
 
 def test_login_auto_upgrades_a_v0_database(client):
     # Simulate a pre-versioning install: valid baseline schema, version reset to 0.
+    # A real v0 install predates migration 2, so its tables must not be present or
+    # the adoption fingerprint (rightly) refuses the database.
     conn = _open_raw(client)
+    conn.execute("DROP TABLE IF EXISTS saved_pair_matches")
+    conn.execute("DROP TABLE IF EXISTS saved_tallies")
     conn.execute("PRAGMA user_version = 0")
     conn.commit()
     conn.close()
@@ -67,6 +71,32 @@ def test_login_against_too_new_db_fails_closed(client):
     # get_db() -> migrate() raises SchemaTooNewError; TESTING=True surfaces it.
     with pytest.raises(migrations.SchemaTooNewError):
         client.get("/api/datasets")
+
+
+def test_v1_database_upgrades_in_place_to_v2(client):
+    """Migration 2 (saved_pair_matches + saved_tallies) applies to an existing v1
+    install without touching its data — the first real use of the ADR 0002 seam."""
+    conn = _open_raw(client)
+    # Rewind to a genuine v1 state: drop migration 2's tables, restamp version 1.
+    conn.execute("DROP TABLE IF EXISTS saved_pair_matches")
+    conn.execute("DROP TABLE IF EXISTS saved_tallies")
+    conn.execute("PRAGMA user_version = 1")
+    conn.execute(
+        "INSERT INTO datasets (name, filename, imported_at, row_count, skipped_count) "
+        "VALUES ('keep-me', 'k.xlsx', '2026-07-12T00:00:00+00:00', 0, 0)")
+    conn.commit()
+    conn.close()
+
+    assert client.get("/api/datasets").status_code == 200  # get_db() migrates
+
+    conn = _open_raw(client)
+    assert migrations.current_version(conn) == 2
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert {"saved_pair_matches", "saved_tallies"} <= tables
+    kept = conn.execute("SELECT name FROM datasets WHERE name='keep-me'").fetchone()
+    assert kept is not None  # existing data survived the upgrade
+    conn.close()
 
 
 def test_get_db_closes_connection_when_migrate_raises(client, monkeypatch):
