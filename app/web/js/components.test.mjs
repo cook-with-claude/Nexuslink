@@ -228,12 +228,17 @@ test("matchFindingsBlock: a short evidence list gets no '…more' note", () => {
       type: "co_presence", label: "Meeting up", strength: "High", bound_by: [],
       headline: "2 events",
       evidence: { gates: {}, events: [
-        { area: "Cafe", day: "2026-01-03", other_users_with: 0 },
-        { area: "Edge", day: "2026-01-06", other_users_with: 0 },
+        { area: "Cafe", day: "2026-01-03", other_users_with: 0,
+          a_time: "2026-01-03T10:00:00", b_time: "2026-01-03T10:30:00" },
+        { area: "Edge", day: "2026-01-06", other_users_with: 0,
+          a_time: "2026-01-06T12:00:00", b_time: "2026-01-06T13:00:00" },
       ] },
     })],
   });
   assert.doesNotMatch(block.textContent, /more/);
+  assert.match(block.textContent, /A timeB time/);
+  assert.match(block.textContent, /2026-01-03 10:00:00/);
+  assert.match(block.textContent, /2026-01-03 10:30:00/);
 });
 
 test("matchFindingsBlock: shared areas without time overlap are a detail line", () => {
@@ -442,12 +447,14 @@ test("ledgerTable: the date and duration headers are clickable sort toggles", ()
   const firstCellTime = () =>
     findAll(block, (n) => n.tag === "td")[2].textContent;   // 3rd column
   const [whenBtn] = links;
-  whenBtn.click();                                     // ascending
-  assert.match(firstCellTime(), /2026-01-01/);
+  assert.match(firstCellTime(), /2026-01-01/);         // chronological by default
   assert.match(whenBtn.textContent, /↑/);
   whenBtn.click();                                     // toggles to descending
   assert.match(firstCellTime(), /2026-03-01/);
   assert.match(whenBtn.textContent, /↓/);
+  whenBtn.click();                                     // back to ascending
+  assert.match(firstCellTime(), /2026-01-01/);
+  assert.match(whenBtn.textContent, /↑/);
 });
 
 test("ledgerTable: no strength pill anywhere — a record is not a verdict", () => {

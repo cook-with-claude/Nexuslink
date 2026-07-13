@@ -4,6 +4,23 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Codex: contact-matcher mechanical review fixes — on `claude/contact-matcher`, NOT merged
+
+Applied only the mechanical items authorized after the independent review: picker saves now use the
+IDs captured when the result was run; ledger records are deduplicated across overlapping categories;
+co-presence evidence exposes each side's record time; the scenario generator reaches Phase 1 constants
+through `app.infra.phase1`; ledger rows initially sort oldest-first by timestamp; generator output paths
+are real `Path` values under the repository root; and export saved timestamps use the shared local-time
+`fmtDate` formatter. Added focused Python/Node/architecture regressions for each relevant behavior.
+
+No matcher method, threshold, or gate behavior changed. Findings 1/6/7/8/9/10 remain pending Nadim's
+decision; proposed changes and tradeoffs are recorded in
+`docs/superpowers/specs/2026-07-13-contact-matcher-method-decision-memo.md`.
+
+Verification after the final mechanical fix: **272 passed / 1 skipped**, Node **35/35**, Ruff clean
+(including `tools/`), import-linter **4 kept / 0 broken**, and
+`git diff --stat main...claude/contact-matcher -- phase1_cdr/` empty.
+
 ## 2026-07-13 - Claude: pair record ledger — on `claude/contact-matcher`, NOT merged
 
 Brainstormed with Khaled. Spec `docs/superpowers/specs/2026-07-13-pair-record-ledger-design.md`.

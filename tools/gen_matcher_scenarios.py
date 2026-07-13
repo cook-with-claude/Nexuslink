@@ -24,12 +24,15 @@ import pathlib
 import sqlite3
 import sys
 
-REPO = str(pathlib.Path(__file__).resolve().parents[1])
-sys.path.insert(0, REPO)
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+STRANGERS_OUTPUT = REPO_ROOT / "sample_matcher_scenarios.xlsx"
+CLOSEKNIT_OUTPUT = REPO_ROOT / "sample_matcher_closeknit.xlsx"
 
 from app.datasets.validation import validate_row  # noqa: E402
+from app.infra.phase1 import REQUIRED_COLUMNS  # noqa: E402
 from app.matching import service  # noqa: E402
-from phase1_cdr.loader import REQUIRED_COLUMNS  # noqa: E402
 
 
 class Dataset:
@@ -360,7 +363,7 @@ def verify(ds: Dataset, pairs, expect, expect_mode,
         sys.exit(1)
 
 
-def write_xlsx(ds: Dataset, path: str):
+def write_xlsx(ds: Dataset, path: str | pathlib.Path):
     from openpyxl import Workbook
 
     wb = Workbook()
@@ -379,6 +382,6 @@ if __name__ == "__main__":
            STRANGERS_CAVEAT, STRANGERS_SHARED_AREA)
     closeknit = build_closeknit()
     verify(closeknit, CLOSEKNIT_PAIRS, CLOSEKNIT_EXPECT, "close-knit")
-    write_xlsx(strangers, REPO + r"\sample_matcher_scenarios.xlsx")
-    write_xlsx(closeknit, REPO + r"\sample_matcher_closeknit.xlsx")
+    write_xlsx(strangers, STRANGERS_OUTPUT)
+    write_xlsx(closeknit, CLOSEKNIT_OUTPUT)
     print("OK")

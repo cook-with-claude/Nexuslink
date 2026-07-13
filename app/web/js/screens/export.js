@@ -4,7 +4,7 @@
 
 import { api, downloadResultsXlsx } from "../api.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, msg, toast, icon, confirmInline } from "../components.js";
+import { el, loading, clear, msg, toast, icon, confirmInline, fmtDate } from "../components.js";
 
 export async function exportScreen(app) {
   const { page, setCrumb } = shell(app);
@@ -152,8 +152,7 @@ async function savedItemsCard() {
         slot.appendChild(row(
           `${p.target_a.name} (${p.target_a.phone_number}) ↔ ` +
           `${p.target_b.name} (${p.target_b.phone_number}) — ${l.dataset_name}`,
-          `${l.row_count} record(s) · saved ` +
-          `${(l.created_at || "").slice(0, 16).replace("T", " ")}`,
+          `${l.row_count} record(s) · saved ${fmtDate(l.created_at)}`,
           async () => {
             try {
               await api.deleteSavedLedger(l.id);
@@ -168,7 +167,7 @@ async function savedItemsCard() {
       for (const t of tallies) {
         slot.appendChild(row(
           t.filter_label,
-          `${t.tally.total_records} record(s) · saved ${(t.created_at || "").slice(0, 16).replace("T", " ")}`,
+          `${t.tally.total_records} record(s) · saved ${fmtDate(t.created_at)}`,
           async () => {
             try {
               await api.deleteSavedTally(t.id);

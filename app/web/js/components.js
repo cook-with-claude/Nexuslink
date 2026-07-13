@@ -320,11 +320,14 @@ function findingEvidence(f, pair) {
       el("table", {}, [
         el("thead", {}, el("tr", {}, [
           el("th", {}, "Area"), el("th", {}, "Day"),
+          el("th", {}, nameA + " time"), el("th", {}, nameB + " time"),
           el("th", { class: "num" }, "Others seen there"),
         ])),
         el("tbody", {}, shown.map((e) => el("tr", {}, [
           el("td", { class: "data" }, e.area),
           el("td", { class: "data dim" }, e.day),
+          el("td", { class: "data dim" }, String(e.a_time || "—").replace("T", " ")),
+          el("td", { class: "data dim" }, String(e.b_time || "—").replace("T", " ")),
           el("td", { class: "num dim" }, String(e.other_users_with)),
         ]))),
       ]),
@@ -526,7 +529,7 @@ export function ledgerTable(payload) {
 
   // Sortable headers (the records sheet's affordance): click toggles
   // oldest/newest and shortest/longest; the arrow marks the active column.
-  let sortCol = null;
+  let sortCol = "timestamp";
   let sortDir = "asc";
   const whenBtn = el("button", { class: "link", title: "Sort by time" }, "Date & time");
   const durBtn = el("button", { class: "link", title: "Sort by duration" }, "Duration");

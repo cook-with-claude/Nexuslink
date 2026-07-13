@@ -55,6 +55,23 @@ def test_missing_asset_404s(client):
     assert client.get("/js/does-not-exist.js").status_code == 404
 
 
+def test_spreadsheet_saves_the_ids_used_for_the_rendered_run(client):
+    """Changing a picker after a run must not stage a different pair/target."""
+    body = client.get("/js/screens/spreadsheet.js").get_data(as_text=True)
+    assert "api.match(matchAId, matchBId)" in body
+    assert "api.saveMatch(matchAId, matchBId)" in body
+    assert "api.ledger(ledgerAId, ledgerBId)" in body
+    assert "api.saveLedger(ledgerAId, ledgerBId)" in body
+    assert "api.frequency(Number(tallyTargetId), params)" in body
+    assert "api.saveTally(tallyTargetId, params)" in body
+
+
+def test_export_staging_formats_saved_times_in_local_time(client):
+    body = client.get("/js/screens/export.js").get_data(as_text=True)
+    assert "fmtDate(l.created_at)" in body
+    assert "fmtDate(t.created_at)" in body
+
+
 def test_registering_ui_does_not_disturb_api(client):
     # The Phase 2A API envelope and public endpoints still behave unchanged.
     r = client.get("/api/health")

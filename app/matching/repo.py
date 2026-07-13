@@ -119,7 +119,8 @@ def direct_contact_records(conn, dataset_id, phone_a, phone_b) -> list[dict]:
     """The raw records BETWEEN the pair (either side's rows), for the ledger.
     `direct_contact` above aggregates the same records into counts."""
     rows = conn.execute(
-        "SELECT phone_number, timestamp, call_type, duration_seconds, other_party, area "
+        "SELECT id AS record_id, phone_number, timestamp, call_type, "
+        "duration_seconds, other_party, area "
         "FROM cdr_records WHERE dataset_id = ? "
         "AND ((phone_number = ? AND other_party = ?) OR (phone_number = ? AND other_party = ?)) "
         "ORDER BY timestamp",
@@ -138,7 +139,8 @@ def records_for(conn, dataset_id, phones, parties=None, areas=None) -> list[dict
     """
     if not phones or (parties is not None and not parties) or (areas is not None and not areas):
         return []
-    sql = ("SELECT phone_number, timestamp, call_type, duration_seconds, other_party, area "
+    sql = ("SELECT id AS record_id, phone_number, timestamp, call_type, "
+           "duration_seconds, other_party, area "
            "FROM cdr_records WHERE dataset_id = ? "
            f"AND phone_number IN ({','.join('?' * len(phones))})")
     binds: list = [dataset_id, *phones]

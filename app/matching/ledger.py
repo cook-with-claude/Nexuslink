@@ -100,16 +100,25 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
         other_users))
 
     rows: list[dict] = []
+    seen_record_ids: set[int] = set()
+
+    def append_once(record, category, distinctive=None):
+        """Assign each source CDR to its most specific ledger category."""
+        record_id = record["record_id"]
+        if record_id in seen_record_ids:
+            return
+        seen_record_ids.add(record_id)
+        rows.append(_row(record, category, targets, distinctive))
+
     for r in repo.direct_contact_records(conn, dataset_id, phone_a, phone_b):
-        rows.append(_row(r, "direct", targets))
+        append_once(r, "direct")
     for r in repo.records_for(conn, dataset_id, both, parties=shared_parties):
-        rows.append(_row(r, "shared_contact", targets,
-                         distinctive=r["other_party"] in distinctive_parties))
+        append_once(r, "shared_contact",
+                    distinctive=r["other_party"] in distinctive_parties)
     for category, areas in (("meet_up_location", meet_up_areas),
                             ("shared_location", shared_only_areas)):
         for r in repo.records_for(conn, dataset_id, both, areas=areas):
-            rows.append(_row(r, category, targets,
-                             distinctive=r["area"] in distinctive_areas))
+            append_once(r, category, distinctive=r["area"] in distinctive_areas)
 
     counts: dict[str, int] = {}
     for r in rows:

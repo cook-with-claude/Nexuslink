@@ -435,10 +435,12 @@ function matcherCard(datasets) {
       if (a && b && a.dataset_id !== b.dataset_id) {
         slot.appendChild(msg("Both targets must be from the same dataset.")); return;
       }
+      const matchAId = pickA.value;
+      const matchBId = pickB.value;
       btn.disabled = true;
       slot.appendChild(loading("Comparing…"));
       try {
-        const payload = await api.match(pickA.value, pickB.value);
+        const payload = await api.match(matchAId, matchBId);
         if (mine !== seq) return;
         clear(slot);
         slot.appendChild(matchFindingsBlock(payload));
@@ -446,7 +448,7 @@ function matcherCard(datasets) {
         save.addEventListener("click", async () => {
           save.disabled = true;
           try {
-            await api.saveMatch(pickA.value, pickB.value);
+            await api.saveMatch(matchAId, matchBId);
             save.textContent = "Saved ✓";
             toast("Pair match saved to export");
             refreshSavedCount();
@@ -557,10 +559,12 @@ function ledgerCard(datasets) {
       if (a && b && a.dataset_id !== b.dataset_id) {
         slot.appendChild(msg("Both targets must be from the same dataset.")); return;
       }
+      const ledgerAId = pickA.value;
+      const ledgerBId = pickB.value;
       btn.disabled = true;
       slot.appendChild(loading("Listing records…"));
       try {
-        const payload = await api.ledger(pickA.value, pickB.value);
+        const payload = await api.ledger(ledgerAId, ledgerBId);
         if (mine !== seq) return;
         clear(slot);
         slot.appendChild(ledgerTable(payload));
@@ -569,7 +573,7 @@ function ledgerCard(datasets) {
           save.addEventListener("click", async () => {
             save.disabled = true;
             try {
-              const saved = await api.saveLedger(pickA.value, pickB.value);
+              const saved = await api.saveLedger(ledgerAId, ledgerBId);
               save.textContent = "Saved ✓";
               toast(`Ledger saved to export (${saved.row_count} records)`);
               refreshSavedCount();
@@ -698,6 +702,7 @@ function explorerCard(datasets) {
     btn.addEventListener("click", async () => {
       clear(slot);
       if (!target.value) { slot.appendChild(msg("Select a target.")); return; }
+      const tallyTargetId = target.value;
       const params = { rank_by: rankBy.value };
       if (callType.value) params.call_type = callType.value;
       if (area.value.trim()) params.area = area.value.trim();
@@ -709,7 +714,7 @@ function explorerCard(datasets) {
       btn.disabled = true;
       slot.appendChild(loading("Counting…"));
       try {
-        const res = await api.frequency(Number(target.value), params);
+        const res = await api.frequency(Number(tallyTargetId), params);
         clear(slot);
         renderTally(slot, res);
         if (res.total_records > 0) {
@@ -720,7 +725,7 @@ function explorerCard(datasets) {
           save.addEventListener("click", async () => {
             save.disabled = true;
             try {
-              const saved = await api.saveTally(target.value, params);
+              const saved = await api.saveTally(tallyTargetId, params);
               save.textContent = "Saved ✓";
               toast(`Count saved to export: ${saved.filter_label}`);
               refreshSavedCount();

@@ -4,6 +4,7 @@ Enforces the invariants import-linter cannot express, by parsing the source:
   * no SQL execution (.execute/.executemany/.executescript) in any app/*/routes.py
   * no commit()/rollback() in any app/*/repo.py
   * no `flask` import in any app/*/repo.py
+  * tools reach frozen Phase 1 only through app.infra.phase1
 
 The scanners are generic over app/*/routes.py and app/*/repo.py, so every domain
 package added by the reorg (and later) is covered automatically.
@@ -13,6 +14,7 @@ import ast
 import pathlib
 
 APP = pathlib.Path(__file__).resolve().parents[2] / "app"
+TOOLS = APP.parent / "tools"
 _IDENTITY = APP / "api" / "identity.py"
 
 _SQL_CALLS = {"execute", "executemany", "executescript"}
@@ -81,6 +83,22 @@ def test_no_flask_import_in_repos():
             if _is_flask_import(node):
                 offenders.append(f"{f.relative_to(APP)}:{node.lineno}")
     assert not offenders, f"repos must not import flask: {offenders}"
+
+
+def test_tools_reach_phase1_only_through_infra_seam():
+    offenders = []
+    for path in sorted(TOOLS.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module in {"detection", "loader"} or module.startswith("phase1_cdr"):
+                    offenders.append(f"{path.name}:{node.lineno} {module}")
+            elif isinstance(node, ast.Import):
+                for name in node.names:
+                    if name.name in {"detection", "loader"} or name.name.startswith("phase1_cdr"):
+                        offenders.append(f"{path.name}:{node.lineno} {name.name}")
+    assert not offenders, f"tools must reach Phase 1 via app.infra.phase1: {offenders}"
 
 
 def test_identity_context_is_data_free():

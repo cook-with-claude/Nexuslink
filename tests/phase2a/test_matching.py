@@ -630,6 +630,31 @@ def test_ledger_lists_every_record_in_four_categories(client, pair):
     assert data["category_counts"]["direct"] == 4
 
 
+def test_ledger_assigns_overlapping_records_to_one_category(client, tmp_path):
+    """A shared-contact record in a meet-up area is still one source CDR."""
+    rows = [
+        ("100", "iA", "Cafe", "2026-01-01T10:00:00", 1, 60, "200", "", ""),
+        ("200", "iB", "Cafe", "2026-01-01T10:10:00", 2, 60, "100", "", ""),
+        ("100", "iA", "Cafe", "2026-01-01T11:00:00", 1, 60, "X", "", ""),
+        ("200", "iB", "Cafe", "2026-01-01T11:30:00", 1, 60, "X", "", ""),
+    ]
+    df = pd.DataFrame(rows, columns=COLUMNS)
+    path = tmp_path / "overlapping_ledger.xlsx"
+    df.to_excel(path, index=False, engine="openpyxl")
+    with open(path, "rb") as fh:
+        data = {"name": "overlap", "file": (io.BytesIO(fh.read()), path.name)}
+    ds = client.post("/api/imports", data=data,
+                     content_type="multipart/form-data").get_json()["data"]["dataset_id"]
+    a = _mk_target(client, ds, "A", "100")
+    b = _mk_target(client, ds, "B", "200")
+
+    ledger_rows = _ledger(client, a, b).get_json()["data"]["rows"]
+    assert len(ledger_rows) == len(rows)
+    assert [r["category"] for r in ledger_rows] == [
+        "direct", "direct", "shared_contact", "shared_contact"]
+    assert len({r["timestamp"] for r in ledger_rows}) == len(rows)
+
+
 def test_ledger_rows_carry_the_actual_record_detail(client, pair):
     a, b = pair
     rows = _ledger(client, a, b).get_json()["data"]["rows"]
@@ -829,3 +854,12 @@ def test_export_carries_saved_matches_and_tallies(client, pair):
     saved = client.get("/api/frequency/saved").get_json()["data"][0]
     assert tallies[1][8] == saved["tally"]["top"][0]["value"]
     assert tallies[1][9] == saved["tally"]["top"][0]["count"]
+
+
+def test_matcher_generator_outputs_are_repo_local():
+    from tools import gen_matcher_scenarios as scenarios
+
+    assert scenarios.STRANGERS_OUTPUT.parent == scenarios.REPO_ROOT
+    assert scenarios.STRANGERS_OUTPUT.name == "sample_matcher_scenarios.xlsx"
+    assert scenarios.CLOSEKNIT_OUTPUT.parent == scenarios.REPO_ROOT
+    assert scenarios.CLOSEKNIT_OUTPUT.name == "sample_matcher_closeknit.xlsx"
