@@ -4,6 +4,32 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - HANDOFF for Khaled's review (Nadim + Claude) — main MERGED + demo PORTED
+
+**For Khaled to review before we call this final.** The contact matcher you built (git author
+`smoky0y`) went through: an 8-angle `/code-review` (Claude) + a fresh-eyes pass (Codex) → mechanical
+fixes → an 8-item method-hardening pass. It now lives on **two independent lines, both carrying the
+matcher**:
+- **`main`** (`c0d69ac`, pushed, CI green) = Phase 3 + matcher.
+- **`claude/rebrand-nexuslink-phase2`** (`b447c0f`, pushed) = the Phase-2 professor demo + matcher,
+  **ported (not merged)** so it stays pure Phase 2 — no server-key/passphrase, still one-click launch.
+  Verified 254 tests + a headless screenshot of Alice↔Bob (all three findings High, strangers-mode
+  banner). Its own HANDOFF entry (on that branch) details the port.
+
+**NEEDS YOUR SIGN-OFF (co-founder / domain — same protocol the Phase-1 gates went through):**
+1. **Six new/changed thresholds**, all left as PROPOSALS in `app/matching/gates.py` + `repo.py`:
+   `HUB_UBIQUITY_FRACTION` 0.50, `SESSION_GAP_SECONDS` 3600, `LEDGER_ROW_CAP` 50000, small-population
+   cap = Medium, and the recalibrated `DIRECT_HIGH/MEDIUM` (10/3) + `N_HIGH/MEDIUM` (50/15) against the
+   new relevant-record sample bases.
+2. **One method shift beyond the literal memo:** `CK_SOLID_MEDIUM` was dropped — a close-knit mutual
+   finding now rates purely on distinctive (non-hub) shared-contact count and no longer fires on
+   hub-only overlap. This changes how ordinary group-fabric-only pairs rate.
+
+Full per-item rationale: `docs/superpowers/specs/2026-07-13-matcher-method-hardening-decisions.md`
+(accepted decisions) + `2026-07-13-contact-matcher-method-decision-memo.md`. The review trail is the
+three entries below (the merge entry + Codex's two). **Nothing further changes on the method until you
+and Nadim agree.**
+
 ## 2026-07-13 - Claude+Codex: contact matcher — dual review + method hardening — ✅ MERGED to `main`
 
 **MERGED** with Nadim's explicit permission (3-way merge commit — main had 2026-07-12 UI polish the
