@@ -80,8 +80,10 @@ MODE_NEAR_TIE = 1.15                 # within 15% of the boundary = near tie
 # single coincidental caller delete evidence in a tiny population).
 COMMON_MIN_USERS = 3
 # Below this many other subscribers, commonality (and the mode metric) is too
-# crude to trust -- surfaced as a caveat, the math is left alone.
+# crude to trust. Indirect findings are capped at Medium (PROPOSAL pending
+# co-founder review) and the limitation remains visible as a caveat.
 SMALL_POPULATION = 10
+SMALL_POPULATION_CAP = MEDIUM
 # Gate-cliff disclosure: a raw value within this fraction of a tier line (with a
 # minimum slack of 1 for integer-valued gates) gets a per-finding note, so a
 # 49-vs-50 near miss is visible instead of buried under "Medium".
@@ -107,6 +109,11 @@ def weakest(gate_ratings: dict[str, str]) -> tuple[str, list[str]]:
     strength = min(gate_ratings.values(), key=_ORDER.get)
     bound_by = [name for name, r in gate_ratings.items() if r == strength]
     return strength, bound_by
+
+
+def _apply_population_cap(ratings: dict[str, str], other_users: int) -> None:
+    if other_users < SMALL_POPULATION:
+        ratings["comparison population"] = SMALL_POPULATION_CAP
 
 
 def _days(span: tuple[str, str]) -> tuple[date, date]:
@@ -265,6 +272,7 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
         "distinctiveness": distinct_rating,
         "window overlap": window_rating,
     }
+    _apply_population_cap(ratings, other_users)
     strength, bound_by = weakest(ratings)
     share_a = len(shared) / len(contacts_a)
     share_b = len(shared) / len(contacts_b)
@@ -318,6 +326,7 @@ def _co_presence_finding(facts: dict, window_rating: str,
         "location distinctiveness": _tier(distinct_ratio, DISTINCT_HIGH, DISTINCT_MEDIUM),
         "window overlap": window_rating,
     }
+    _apply_population_cap(ratings, other_users)
     strength, bound_by = weakest(ratings)
     return {
         "type": "co_presence",
@@ -355,7 +364,7 @@ def build_findings(facts: dict) -> dict:
     spread_median = facts.get("contact_spread_median", 2)
 
     other_users = facts.get("other_users", 0)
-    if 0 < other_users < SMALL_POPULATION:
+    if other_users < SMALL_POPULATION:
         caveats.append(
             f"Only {other_users} other subscriber(s) in this dataset — too few to "
             "reliably judge which contacts or places are common.")
