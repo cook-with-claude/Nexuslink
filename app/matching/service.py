@@ -16,6 +16,13 @@ from app.matching import gates, repo
 def compute_match(conn, target_a: dict, target_b: dict) -> dict:
     """Full findings payload for two targets of the same dataset. Callers
     validate targets exist / same dataset / distinct before calling."""
+    # Canonical pair order: co-presence events are deduped per (area, day) keyed
+    # to A's calendar day, so midnight-straddling meet-ups could merge differently
+    # depending on which box each name was put in. Sorting here makes A-vs-B and
+    # B-vs-A byte-identical (the response's `pair` reflects canonical order; saved
+    # pair identity was already order-normalized).
+    if target_b["phone_number"] < target_a["phone_number"]:
+        target_a, target_b = target_b, target_a
     dataset_id = target_a["dataset_id"]
     phone_a, phone_b = target_a["phone_number"], target_b["phone_number"]
 
@@ -44,6 +51,8 @@ def compute_match(conn, target_a: dict, target_b: dict) -> dict:
             conn, dataset_id, shared_parties, phone_a, phone_b),
         "area_commonality": repo.area_commonality(
             conn, dataset_id, co_areas, phone_a, phone_b),
+        # Dataset-level mode facts (adaptive gates, spec 2026-07-13).
+        **repo.dataset_interconnectedness(conn, dataset_id),
     }
 
     result = gates.build_findings(facts)

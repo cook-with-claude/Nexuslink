@@ -19,16 +19,19 @@ COLUMNS = ["phone_number", "imei", "area", "timestamp", "call_type",
            "duration_seconds", "other_party", "other_imei", "other_area"]
 
 # Pair under test: A=100, B=200. Background subscribers 300-700 (other_users=5;
-# with COMMON_USER_FRACTION=0.20 the common threshold is >=1 other user).
+# COMMON_USER_FRACTION=0.20 alone would make the common threshold >=1 other user,
+# but the COMMON_MIN_USERS=3 floor raises it to >=3 in a population this small).
 #
 # Expected facts, worked by hand:
 #   direct:   4 rows (2 A-out, 2 B-out) -> both directions, 2 calls + 2 SMS,
 #             volume 4 -> Medium (DIRECT_MEDIUM=3).
 #   contacts: A={P1,P2,P9,PA}, B={P1,P2,P9,PB}; shared={P1,P2,P9};
-#             P9 is common (300+400 also call it), P1/P2 distinctive -> 2 >= MUTUAL_MIN.
+#             P9 has 2 other users -- under the floor of 3, so DISTINCTIVE here
+#             (the floor protecting a tiny population); P1/P2 distinctive too.
 #   co-presence: Cafe 01-03 (two pairings, one day -> ONE event, distinctive),
 #             Edge 01-06 (exactly 3600s apart -> inclusive window counts),
-#             Downtown 01-05 (common area: 300+400 have rows there),
+#             Downtown 01-05 (300+400 have rows there -- 2 others, under the
+#             floor of 3, so distinctive in this tiny population),
 #             Far 01-07 (3660s apart -> NOT an event). Total 3 events.
 #   samples:  n_a=11, n_b=10 -> sample gate Low (N_MEDIUM=15) binds both
 #             indirect findings; direct is volume-rated and stays Medium.
@@ -278,6 +281,129 @@ def test_weakest_reports_every_gate_at_the_minimum():
     assert bound == ["b", "d"]
 
 
+# ---- adaptive gates: dataset mode, commonality floor, cliff disclosure ----
+# (spec 2026-07-13-adaptive-matcher-gates.md)
+
+def test_commonality_floor_protects_tiny_populations():
+    """One other subscriber must never brand a contact common (0.2 * 3 = 0.6
+    would, without the COMMON_MIN_USERS floor)."""
+    facts = _facts(other_users=3, contact_commonality={"P1": 1, "P2": 1, "P3": 1})
+    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
+    assert all(c["distinctive"] for c in f["evidence"]["shared_contacts"])
+
+
+def test_commonality_floor_still_discounts_at_scale():
+    # 3 others sharing it clears the floor even where 20% alone would need only 1.
+    facts = _facts(other_users=5, contact_commonality={"P1": 3, "P2": 3, "P3": 3})
+    assert "mutual_contacts" not in _by_type(gates.build_findings(facts))
+
+
+def test_small_population_caveat():
+    r = gates.build_findings(_facts(other_users=5))
+    assert any("too few" in c for c in r["caveats"])
+    r = gates.build_findings(_facts(other_users=10))
+    assert not any("too few" in c for c in r["caveats"])
+
+
+def test_dataset_mode_classification_tiers():
+    for density, mode, cls in [
+        (0.4, "strangers", "High"),      # margin 2.0/0.4 = 5.0
+        (1.2, "strangers", "Medium"),    # margin 1.67
+        (1.6, "strangers", "Low"),       # margin 1.25
+        (1.9, "strangers", "Near tie"),  # margin 1.05
+        (2.1, "close-knit", "Near tie"), # margin 1.05, other side of the line
+        (2.4, "close-knit", "Low"),      # margin 1.2
+        (3.0, "close-knit", "Medium"),   # margin 1.5
+        (5.0, "close-knit", "High"),     # margin 2.5
+        (0.0, "strangers", "High"),      # empty/atomized dataset: decisively strangers
+    ]:
+        ctx = gates.classify_dataset(density)
+        assert (ctx["mode"], ctx["classification"]) == (mode, cls), density
+        assert ctx["boundary"] == gates.CLOSE_KNIT_BOUNDARY
+
+
+def test_payload_carries_dataset_context():
+    r = gates.build_findings(_facts(dataset_density=0.4))
+    assert r["dataset_context"]["mode"] == "strangers"
+    r = gates.build_findings(_facts(dataset_density=4.0, contact_spread_median=6))
+    assert r["dataset_context"]["mode"] == "close-knit"
+    # the zero-record early return still describes the dataset
+    r = gates.build_findings(_facts(n_b=0, span_b=None))
+    assert "dataset_context" in r
+
+
+def _ck_facts(**over):
+    """Close-knit variant of the baseline: dense dataset, typical contact shared
+    by 6 subscribers."""
+    return _facts(dataset_density=4.0, contact_spread_median=6, **over)
+
+
+def test_close_knit_group_wide_overlap_rates_medium_never_suppressed():
+    """In a clique, sharing only the group's common fabric is still a REAL mutual
+    relationship: solid overlap, nothing pair-specific -> Medium bound by
+    distinctiveness, never 'no link'."""
+    facts = _ck_facts(contact_commonality={"P1": 6, "P2": 8, "P3": 7})
+    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
+    assert f["strength"] == "Medium"
+    assert f["bound_by"] == ["distinctiveness"]
+
+
+def test_close_knit_rare_shared_contacts_rate_high():
+    # All shared contacts rarer than the dataset-typical shared spread of 6:
+    # pair-specific mutuals beyond the group fabric.
+    facts = _ck_facts(contact_commonality={"P1": 1, "P2": 0, "P3": 2})
+    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
+    assert f["strength"] == "High"
+
+
+def test_close_knit_single_shared_contact_fires():
+    # The >=2-distinctive suppression floor is strangers-mode only. One shared
+    # group-wide contact is trivial overlap -> Low, but it FIRES.
+    facts = _ck_facts(contacts_a={"P1": 5}, contacts_b={"P1": 2},
+                      contact_commonality={"P1": 6})
+    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
+    assert f["strength"] == "Low"
+
+
+def test_close_knit_one_rare_contact_rates_medium_with_a_near_note():
+    # 1 rare shared contact: one short of the High count -- rate Medium and SAY
+    # it was close (cliff disclosure).
+    facts = _ck_facts(contact_commonality={"P1": 1, "P2": 8, "P3": 7})
+    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
+    assert f["strength"] == "Medium"
+    assert any("rare shared contacts is just short of High: 1 vs 2" in n
+               for n in f["notes"])
+
+
+def test_strangers_mode_still_suppresses_all_common_shared():
+    # Same commonality profile as the close-knit Low case, but a sparse dataset:
+    # the old rule (fires only from 2 distinctive) still applies.
+    facts = _facts(dataset_density=0.3,
+                   contact_commonality={"P1": 6, "P2": 8, "P3": 7})
+    assert "mutual_contacts" not in _by_type(gates.build_findings(facts))
+
+
+def test_near_boundary_notes_flag_cliff_cases():
+    r = _by_type(gates.build_findings(_facts(n_a=49)))
+    assert any("just short of High" in n and "49" in n
+               for n in r["mutual_contacts"]["notes"])
+    direct_2 = _facts(direct={"total": 2, "calls": 2, "sms": 0, "a_to_b": 2,
+                              "b_to_a": 0, "first": None, "last": None})
+    f = _by_type(gates.build_findings(direct_2))["direct_contact"]
+    assert any("just short of Medium" in n for n in f["notes"])
+    events_4 = _facts(co_events=[
+        {"area": "X", "day": f"2026-01-{d:02d}", "a_time": None, "b_time": None}
+        for d in range(10, 14)])
+    f = _by_type(gates.build_findings(events_4))["co_presence"]
+    assert any("event count" in n and "just short of High" in n for n in f["notes"])
+
+
+def test_no_notes_when_far_from_every_line():
+    f = _by_type(gates.build_findings(_facts()))["mutual_contacts"]
+    # n=60, share 1.0, distinctiveness 1.0, window 1.0: nothing near a boundary.
+    assert f["notes"] == []
+
+
 # ---- end-to-end: the fixture dataset through the API ----
 
 def test_match_requires_auth(app_data_dir, bootstrap_key):
@@ -326,7 +452,9 @@ def test_match_fixture_findings(client, pair):
     shared = {c["party"]: c for c in mutual["evidence"]["shared_contacts"]}
     assert set(shared) == {"P1", "P2", "P9"}
     assert shared["P1"]["distinctive"] and shared["P2"]["distinctive"]
-    assert not shared["P9"]["distinctive"]         # 2 of 5 other users have it
+    # P9 is contacted by 2 others -- 20% alone would call that common, but the
+    # COMMON_MIN_USERS floor (3) protects evidence in a 5-other-user population.
+    assert shared["P9"]["distinctive"]
     assert shared["P9"]["other_users_with"] == 2
     # n=11 records on the weaker side -> the sample gate binds the min()
     assert mutual["strength"] == "Low"
@@ -338,7 +466,7 @@ def test_match_fixture_findings(client, pair):
                       ("Edge", "2026-01-06"),      # exactly 60 min -> inclusive
                       ("Downtown", "2026-01-05")}  # common area still an EVENT
     assert co["evidence"]["gates"]["event count"] == "Medium"       # 3 events
-    assert co["evidence"]["gates"]["location distinctiveness"] == "High"  # 2/3
+    assert co["evidence"]["gates"]["location distinctiveness"] == "High"  # 3/3 (floor)
     assert co["strength"] == "Low"
     assert "sample" in co["bound_by"]
 
@@ -346,6 +474,35 @@ def test_match_fixture_findings(client, pair):
     assert "Far" not in {e["area"] for e in co["evidence"]["events"]}
     # Far IS a shared area without time overlap -> detail row
     assert data["details"]["shared_areas_no_time_overlap"] == ["Far"]
+
+    # 7 subscribers with almost no contact overlap: decisively strangers mode,
+    # and the 5-other-subscriber population triggers the small-population caveat.
+    assert data["dataset_context"]["mode"] == "strangers"
+    assert any("too few" in c for c in data["caveats"])
+
+
+def test_match_is_byte_symmetric_across_midnight(client, dataset_id, tmp_path):
+    """A-vs-B and B-vs-A must be identical. Midnight-straddling meet-ups used to
+    dedupe differently depending on whose calendar day keyed the event."""
+    rows = [
+        ("100", "iA", "M", "2026-01-01T23:50:00", 1, 30, "", "", ""),
+        ("100", "iA", "M", "2026-01-02T00:30:00", 1, 30, "", "", ""),
+        ("200", "iB", "M", "2026-01-02T00:20:00", 1, 30, "", "", ""),
+        ("200", "iB", "M", "2026-01-02T00:40:00", 1, 30, "", "", ""),
+    ]
+    df = pd.DataFrame(rows, columns=COLUMNS)
+    path = tmp_path / "midnight.xlsx"
+    df.to_excel(path, index=False, engine="openpyxl")
+    with open(path, "rb") as fh:
+        data = {"name": "midnight", "file": (io.BytesIO(fh.read()), "midnight.xlsx")}
+    ds = client.post("/api/imports", data=data,
+                     content_type="multipart/form-data").get_json()["data"]["dataset_id"]
+    a = _mk_target(client, ds, "A", "100")
+    b = _mk_target(client, ds, "B", "200")
+    ab = _match(client, a, b).get_json()["data"]
+    ba = _match(client, b, a).get_json()["data"]
+    ab.pop("computed_at"), ba.pop("computed_at")
+    assert ab == ba
 
 
 def test_match_is_symmetric(client, pair):
@@ -456,6 +613,12 @@ def test_export_carries_saved_matches_and_tallies(client, pair):
     assert set(findings) == {"Direct contact", "Mutual relationship", "Meeting up"}
     assert findings["Direct contact"][6] == "Medium"
     assert "A (100)" in matches[1][2] and "B (200)" in matches[1][3]
+    # Adaptive-gates columns: the dataset mode (with its classification
+    # confidence) and any near-boundary cliff notes travel with every row.
+    assert matches[0][10] == "Dataset mode" and matches[0][11] == "Near-boundary notes"
+    assert findings["Direct contact"][10] == "strangers (High confidence)"
+    # direct volume 4 sits one above DIRECT_MEDIUM=3 -> a "barely clears" note
+    assert "barely clears Medium" in findings["Direct contact"][11]
 
     tallies = list(wb["Frequency counts"].iter_rows(values_only=True))
     assert len(tallies) > 1

@@ -124,6 +124,45 @@ def other_user_count(conn, dataset_id, phone_a, phone_b) -> int:
     ).fetchone()["n"]
 
 
+_CONTACT_SPREAD = (
+    "SELECT COUNT(DISTINCT phone_number) AS k FROM cdr_records "
+    "WHERE dataset_id = ? AND other_party IS NOT NULL GROUP BY other_party"
+)
+# The rarity base considers SHARED contacts only (k >= 2): most contacts in any
+# dataset are personal (k = 1), so a median over everything would always be 1
+# and nothing shared could ever count as rare.
+_SHARED_SPREAD = _CONTACT_SPREAD + " HAVING COUNT(DISTINCT phone_number) >= 2"
+
+
+def dataset_interconnectedness(conn, dataset_id) -> dict:
+    """Dataset-level facts for the adaptive mode (spec 2026-07-13).
+
+    dataset_density: average shared contacts per subscriber pair = sum over
+    contacts of C(k, 2) / C(n, 2), where k = subscribers contacting that party.
+    One GROUP BY, no O(n^2) pass. contact_spread_median: the typical SHARED
+    contact's k (the close-knit rarity base)."""
+    n = conn.execute(
+        "SELECT COUNT(DISTINCT phone_number) AS n FROM cdr_records WHERE dataset_id = ?",
+        (dataset_id,),
+    ).fetchone()["n"]
+    agg = conn.execute(
+        f"SELECT COUNT(*) AS parties, COALESCE(SUM(k * (k - 1) / 2), 0) AS overlap "
+        f"FROM ({_SHARED_SPREAD})",
+        (dataset_id,),
+    ).fetchone()
+    pairs = n * (n - 1) // 2
+    median = 2  # no shared contacts at all -> mode is strangers, base unused
+    if agg["parties"]:
+        median = conn.execute(
+            f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k LIMIT 1 OFFSET ?",
+            (dataset_id, (agg["parties"] - 1) // 2),
+        ).fetchone()["k"]
+    return {
+        "dataset_density": (agg["overlap"] / pairs) if pairs else 0.0,
+        "contact_spread_median": median,
+    }
+
+
 def _commonality(conn, dataset_id, column, values, phone_a, phone_b) -> dict[str, int]:
     if not values:
         return {}
