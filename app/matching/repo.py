@@ -272,22 +272,21 @@ def dataset_interconnectedness(conn, dataset_id, hub_ubiquity_fraction) -> dict:
     dataset_density: average non-hub shared contacts per subscriber pair = sum
     over contacts of C(k, 2) / C(n, 2), where k = subscribers contacting that
     party. One GROUP BY, no O(n^2) pass. contact_spread_median: the typical
-    non-hub SHARED contact's k (the close-knit rarity base)."""
+    SHARED contact's k (the close-knit rarity base); hubs remain in this spread
+    so an even population such as [2, 2, 100, 100] has its true median of 51."""
     n = conn.execute(
         "SELECT COUNT(DISTINCT phone_number) AS n FROM cdr_records WHERE dataset_id = ?",
         (dataset_id,),
     ).fetchone()["n"]
     hub_ceiling = round(hub_ubiquity_fraction * n)
-    hub_filtered_spread = (
-        _SHARED_SPREAD + " AND COUNT(DISTINCT phone_number) <= ?"
-    )
     spreads = [
         row["k"] for row in conn.execute(
-            f"SELECT k FROM ({hub_filtered_spread}) ORDER BY k",
-            (dataset_id, hub_ceiling),
+            f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k",
+            (dataset_id,),
         ).fetchall()
     ]
-    overlap = sum(k * (k - 1) // 2 for k in spreads)
+    non_hub_spreads = [k for k in spreads if k <= hub_ceiling]
+    overlap = sum(k * (k - 1) // 2 for k in non_hub_spreads)
     pairs = n * (n - 1) // 2
     spread_median = median(spreads) if spreads else 2
     return {
