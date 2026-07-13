@@ -31,11 +31,8 @@ def compute_match(conn, target_a: dict, target_b: dict) -> dict:
     contacts_a = repo.contact_tallies(conn, dataset_id, phone_a, exclude=(phone_a, phone_b))
     contacts_b = repo.contact_tallies(conn, dataset_id, phone_b, exclude=(phone_a, phone_b))
     shared_parties = set(contacts_a) & set(contacts_b)
-    # Per-area volume (evidence counter) subsumes the plain area set the gates
-    # need, so one query per side serves both.
-    area_tallies_a = repo.area_tallies(conn, dataset_id, phone_a)
-    area_tallies_b = repo.area_tallies(conn, dataset_id, phone_b)
-    areas_a, areas_b = set(area_tallies_a), set(area_tallies_b)
+    areas_a = repo.area_set(conn, dataset_id, phone_a)
+    areas_b = repo.area_set(conn, dataset_id, phone_b)
     co_events = repo.co_presence_events(conn, dataset_id, phone_a, phone_b)
     co_areas = {e["area"] for e in co_events}
 
@@ -47,7 +44,6 @@ def compute_match(conn, target_a: dict, target_b: dict) -> dict:
         "span_b": repo.observation_span(conn, dataset_id, phone_b),
         "contacts_a": contacts_a, "contacts_b": contacts_b,
         "areas_a": areas_a, "areas_b": areas_b,
-        "area_tallies_a": area_tallies_a, "area_tallies_b": area_tallies_b,
         "direct": repo.direct_contact(conn, dataset_id, phone_a, phone_b),
         "co_events": co_events,
         "other_users": repo.other_user_count(conn, dataset_id, phone_a, phone_b),

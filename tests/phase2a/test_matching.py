@@ -133,8 +133,6 @@ def _facts(**over):
         "other_users": 10,
         "contact_commonality": {"P1": 0, "P2": 0, "P3": 0},
         "area_commonality": {"X": 0},
-        "area_tallies_a": {"X": 10, "Y": 4},
-        "area_tallies_b": {"X": 8, "Z": 6},
     }
     base.update(over)
     return base
@@ -406,82 +404,6 @@ def test_no_notes_when_far_from_every_line():
     assert f["notes"] == []
 
 
-# ---- evidence counters (spec 2026-07-13-matcher-evidence-counters-design.md) ----
-# Descriptive tallies of the raw evidence: NO gates, NO confidence (a count is not
-# a verdict -- same rule as the frequency explorer).
-
-def test_evidence_counts_direct_and_mutual_call_split():
-    facts = _facts(
-        contacts_a={"P1": 5, "P2": 4, "P9": 3},
-        contacts_b={"P1": 6, "P2": 2, "P9": 1},
-        contact_commonality={"P1": 0, "P2": 0, "P9": 9},  # P9 common (>= 20% of 10)
-    )
-    c = gates.build_findings(facts)["evidence_counts"]
-    assert c["direct"] == {"records": 12, "calls": 10, "sms": 2, "a_to_b": 6, "b_to_a": 6}
-    assert c["mutual_calls"]["distinctive"] == {
-        "contacts": 2, "records_a": 9, "records_b": 8, "records": 17}   # P1 + P2
-    assert c["mutual_calls"]["common"] == {
-        "contacts": 1, "records_a": 3, "records_b": 1, "records": 4}    # P9
-
-
-def test_evidence_counts_location_buckets_are_disjoint_by_area():
-    """An area where they MET is never also counted as shared-only: the buckets
-    partition the shared areas, so the totals sum without double counting."""
-    facts = _facts(
-        areas_a={"X", "Q", "SoloA"}, areas_b={"X", "Q", "SoloB"},
-        area_tallies_a={"X": 10, "Q": 7, "SoloA": 3},
-        area_tallies_b={"X": 8, "Q": 5, "SoloB": 2},
-        # the baseline co_events all sit in area X -> X is the meet-up bucket
-    )
-    loc = gates.build_findings(facts)["evidence_counts"]["mutual_locations"]
-    assert loc["meet_up"] == {"areas": 1, "records_a": 10, "records_b": 8, "records": 18}
-    assert loc["non_meet_up"] == {"areas": 1, "records_a": 7, "records_b": 5, "records": 12}
-    # SoloA / SoloB are not shared -> counted in neither bucket
-    assert loc["meet_up"]["areas"] + loc["non_meet_up"]["areas"] == 2
-
-
-def test_evidence_counts_use_the_same_classification_as_the_finding():
-    """Close-knit mode: the counter's distinctive/common split must match the
-    mutual finding's -- one classifier, two consumers."""
-    facts = _ck_facts(contact_commonality={"P1": 1, "P2": 8, "P3": 7})
-    result = gates.build_findings(facts)
-    counts = result["evidence_counts"]["mutual_calls"]
-    shared = _by_type(result)["mutual_contacts"]["evidence"]["shared_contacts"]
-    distinctive_in_finding = sum(1 for c in shared if c["distinctive"])
-    assert counts["distinctive"]["contacts"] == distinctive_in_finding == 1
-    assert counts["common"]["contacts"] == 2
-
-
-def test_evidence_counts_zero_when_nothing_shared():
-    facts = _facts(
-        contacts_a={"PA": 1}, contacts_b={"PB": 1}, contact_commonality={},
-        direct={"total": 0, "calls": 0, "sms": 0, "a_to_b": 0, "b_to_a": 0,
-                "first": None, "last": None},
-        co_events=[], areas_a={"A1"}, areas_b={"B1"},
-        area_tallies_a={"A1": 4}, area_tallies_b={"B1": 5})
-    c = gates.build_findings(facts)["evidence_counts"]
-    assert c["direct"]["records"] == 0
-    assert c["mutual_calls"]["distinctive"]["contacts"] == 0
-    assert c["mutual_locations"]["meet_up"]["areas"] == 0
-    assert c["mutual_locations"]["non_meet_up"]["areas"] == 0
-
-
-def test_evidence_counts_present_even_when_a_target_has_no_records():
-    """The zero-record early return still carries counts (no KeyError downstream).
-    Real facts for a record-less target are empty everywhere -- gathered here as
-    repo.py would produce them, since a fabricated dict could contradict itself."""
-    result = gates.build_findings(_facts(
-        n_b=0, span_b=None, contacts_b={}, areas_b=set(), area_tallies_b={},
-        co_events=[], contact_commonality={}, area_commonality={},
-        direct={"total": 0, "calls": 0, "sms": 0, "a_to_b": 0, "b_to_a": 0,
-                "first": None, "last": None}))
-    assert result["no_link"] is True
-    c = result["evidence_counts"]
-    assert c["direct"]["records"] == 0
-    assert c["mutual_calls"]["common"]["records"] == 0
-    assert c["mutual_locations"]["meet_up"]["areas"] == 0
-
-
 # ---- end-to-end: the fixture dataset through the API ----
 
 def test_match_requires_auth(app_data_dir, bootstrap_key):
@@ -589,37 +511,6 @@ def test_match_is_symmetric(client, pair):
     ba = _match(client, b, a).get_json()["data"]
     assert ({f["type"]: f["strength"] for f in ab["findings"]}
             == {f["type"]: f["strength"] for f in ba["findings"]})
-
-
-def test_match_payload_carries_evidence_counts(client, pair):
-    """Hand-worked from ROWS: the pair's shared areas are Cafe/Edge/Downtown
-    (meet-ups) and Far (shared, no time overlap)."""
-    a, b = pair
-    data = _match(client, a, b).get_json()["data"]
-    c = data["evidence_counts"]
-    # the 4 direct A<->B records: 2 calls + 2 SMS, 2 each way
-    assert c["direct"] == {"records": 4, "calls": 2, "sms": 2, "a_to_b": 2, "b_to_a": 2}
-    # shared contacts P1, P2, P9 -- all distinctive (P9's 2 other users sit UNDER
-    # the COMMON_MIN_USERS floor), one record per side per contact
-    assert c["mutual_calls"]["distinctive"] == {
-        "contacts": 3, "records_a": 3, "records_b": 3, "records": 6}
-    assert c["mutual_calls"]["common"] == {
-        "contacts": 0, "records_a": 0, "records_b": 0, "records": 0}
-    loc = c["mutual_locations"]
-    # A: 2 Cafe (10:00 + 11:00) + 1 Edge + 1 Downtown = 4;  B: 1 in each = 3.
-    # NB the Cafe pairings collapse to ONE event, but the counter tallies RECORDS
-    # -- that is exactly the difference between the finding and the count.
-    assert loc["meet_up"] == {"areas": 3, "records_a": 4, "records_b": 3, "records": 7}
-    # Far: one record each, hours apart -> a shared LOCATION but not a meet-up
-    assert loc["non_meet_up"] == {"areas": 1, "records_a": 1, "records_b": 1,
-                                  "records": 2}
-
-
-def test_evidence_counts_are_symmetric(client, pair):
-    a, b = pair
-    ab = _match(client, a, b).get_json()["data"]["evidence_counts"]
-    ba = _match(client, b, a).get_json()["data"]["evidence_counts"]
-    assert ab == ba
 
 
 def test_match_run_stores_nothing(client, pair):
@@ -737,29 +628,3 @@ def test_export_carries_saved_matches_and_tallies(client, pair):
     saved = client.get("/api/frequency/saved").get_json()["data"][0]
     assert tallies[1][8] == saved["tally"]["top"][0]["value"]
     assert tallies[1][9] == saved["tally"]["top"][0]["count"]
-
-
-def test_export_evidence_counts_sheet(client, pair):
-    """The counts sheet: one row per saved pair, raw tallies, NO confidence
-    column anywhere (a count is not a gated verdict)."""
-    a, b = pair
-    client.post("/api/match/save", json={"target_a_id": a, "target_b_id": b})
-    wb = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
-    rows = list(wb["Evidence counts"].iter_rows(values_only=True))
-    assert rows[0][:6] == ("Pair ID", "Dataset", "Target A", "Target B", "Saved at",
-                           "Direct records")
-    assert not any("onfidence" in str(h) for h in rows[0])
-    row = rows[1]
-    assert "A (100)" in row[2] and "B (200)" in row[3]
-    assert row[5] == 4                       # direct records
-    assert (row[6], row[7]) == (2, 2)        # calls, SMS
-    assert (row[10], row[11]) == (3, 6)      # distinctive contacts / records
-    assert (row[12], row[13]) == (0, 0)      # common contacts / records
-    assert (row[14], row[15]) == (3, 7)      # meet-up areas / records
-    assert (row[16], row[17]) == (1, 2)      # shared-only areas / records
-
-
-def test_export_evidence_counts_placeholder_when_nothing_saved(client):
-    wb = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
-    rows = list(wb["Evidence counts"].iter_rows(values_only=True))
-    assert rows[1][0] == "none saved"

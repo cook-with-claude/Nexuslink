@@ -639,13 +639,6 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
 /* Gate-cliff near-boundary notes under a finding's binding line. */
 .near-note { margin: var(--s1) 0 0; }
 
-/* Evidence strip: the RAW tallies the findings were computed from. Muted and
-   pill-free on purpose — a count is not a gated verdict. */
-.evidence-strip { margin-top: var(--s3); }
-.evidence-strip > summary { color: var(--fg); }
-.evidence-strip > summary strong { color: var(--fg-muted); font-weight: 600; }
-.evidence-strip .gate-rows .v { color: var(--fg-muted); }
-
 /* Export screen: click-to-save staging list (saved matches + counts). */
 .saved-item {
   display: flex;

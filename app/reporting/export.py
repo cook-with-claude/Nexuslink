@@ -7,16 +7,13 @@ set. Pure transformation: takes stored rows and produces .xlsx bytes with
 openpyxl. Exports the *stored* answers -- it never recomputes, so the file always
 matches what the app has shown. No Flask, no SQL, no audit (ADR 0001 layering).
 
-Layout: six sheets, always all present so the workbook shape is predictable.
+Layout: five sheets, always all present so the workbook shape is predictable.
 "Summary" is one row per target with the gated answers; "Frequent areas" and
 "Frequent contacts" hold the per-target tallies as real rows (deliberately NO
 confidence column -- a count is not a gated verdict, same rule as the UI).
 "Contact matches" holds one row per finding of each SAVED pair match;
-"Evidence counts" one row per saved pair with the RAW tallies those findings were
-computed from (direct records, mutual calls split distinctive/common, mutual
-locations split meet-up/shared-only -- again no confidence anywhere);
 "Frequency counts" one row per ranked value of each SAVED explorer tally.
-The staged sheets are click-to-save: nothing lands here automatically.
+Both new sheets are click-to-save staged: nothing lands here automatically.
 """
 
 from __future__ import annotations
@@ -41,14 +38,6 @@ MATCHES_HEADERS = ["Match ID", "Dataset", "Target A", "Target B", "Saved at",
                    "Dataset mode", "Near-boundary notes"]
 TALLIES_HEADERS = ["Count ID", "Target", "Phone number", "Dataset", "Saved at",
                    "Filters", "Total records", "Rank", "Value", "Count"]
-# Raw evidence tallies per saved pair (spec 2026-07-13-matcher-evidence-counters).
-# NO confidence column anywhere by design: a count is not a gated verdict.
-COUNTS_HEADERS = ["Pair ID", "Dataset", "Target A", "Target B", "Saved at",
-                  "Direct records", "Calls", "SMS", "A→B", "B→A",
-                  "Shared contacts (distinctive)", "Mutual-call records (distinctive)",
-                  "Shared contacts (common)", "Mutual-call records (common)",
-                  "Meet-up areas", "Meet-up records",
-                  "Shared-only areas", "Shared-only records"]
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -151,45 +140,6 @@ def _append_match_rows(ws, saved: dict) -> None:
         ])
 
 
-def _append_counts_row(ws, saved: dict) -> None:
-    """One row per saved pair: the RAW evidence the findings were computed from.
-
-    Pairs saved before the counters existed carry no `evidence_counts`: emit
-    em-dashes, not zeros -- zeros would read as "no evidence" when the truth is
-    "not measured". Re-saving the pair fills the row in (the save endpoint
-    recomputes server-side).
-    """
-    result = saved["result"]
-    pair = result.get("pair") or {}
-    base = [
-        saved["id"], saved.get("dataset_name"),
-        _target_cell(pair.get("target_a") or {}),
-        _target_cell(pair.get("target_b") or {}),
-        _fmt_when(saved.get("created_at")),
-    ]
-    counts = result.get("evidence_counts")
-    if not counts:
-        ws.append(base + ["—"] * (len(COUNTS_HEADERS) - len(base)))
-        ws.cell(row=ws.max_row, column=6).font = _NOT_ANALYZED_FONT
-        return
-    d = counts.get("direct") or {}
-    mc = counts.get("mutual_calls") or {}
-    ml = counts.get("mutual_locations") or {}
-
-    def bucket(b, item_key):
-        b = b or {}
-        return [b.get(item_key, 0), b.get("records", 0)]
-
-    ws.append(base + [
-        d.get("records", 0), d.get("calls", 0), d.get("sms", 0),
-        d.get("a_to_b", 0), d.get("b_to_a", 0),
-        *bucket(mc.get("distinctive"), "contacts"),
-        *bucket(mc.get("common"), "contacts"),
-        *bucket(ml.get("meet_up"), "areas"),
-        *bucket(ml.get("non_meet_up"), "areas"),
-    ])
-
-
 def _append_tally_rows(ws, saved: dict) -> None:
     tally = saved["tally"]
     base = [
@@ -216,13 +166,11 @@ def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
     areas_ws = wb.create_sheet("Frequent areas")
     contacts_ws = wb.create_sheet("Frequent contacts")
     matches_ws = wb.create_sheet("Contact matches")
-    counts_ws = wb.create_sheet("Evidence counts")
     tallies_ws = wb.create_sheet("Frequency counts")
     summary.append(HEADERS)
     areas_ws.append(AREAS_HEADERS)
     contacts_ws.append(CONTACTS_HEADERS)
     matches_ws.append(MATCHES_HEADERS)
-    counts_ws.append(COUNTS_HEADERS)
     tallies_ws.append(TALLIES_HEADERS)
 
     for row in rows:
@@ -253,16 +201,14 @@ def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
 
     for saved in pair_matches:
         _append_match_rows(matches_ws, saved)
-        _append_counts_row(counts_ws, saved)
     if not pair_matches:
         _placeholder(matches_ws, "none saved")
-        _placeholder(counts_ws, "none saved")
     for saved in tallies:
         _append_tally_rows(tallies_ws, saved)
     if not tallies:
         _placeholder(tallies_ws, "none saved")
 
-    for ws in (summary, areas_ws, contacts_ws, matches_ws, counts_ws, tallies_ws):
+    for ws in (summary, areas_ws, contacts_ws, matches_ws, tallies_ws):
         _finish_sheet(ws)
     buf = io.BytesIO()
     wb.save(buf)

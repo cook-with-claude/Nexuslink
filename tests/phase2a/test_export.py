@@ -111,7 +111,7 @@ def test_export_detail_sheets(client, two_targets):
     res = client.post("/api/export/results.xlsx")
     wb = load_workbook(io.BytesIO(res.data))
     assert wb.sheetnames == ["Summary", "Frequent areas", "Frequent contacts",
-                             "Contact matches", "Evidence counts", "Frequency counts"]
+                             "Contact matches", "Frequency counts"]
 
     areas = list(wb["Frequent areas"].iter_rows(values_only=True))
     assert list(areas[0]) == AREAS_HEADERS

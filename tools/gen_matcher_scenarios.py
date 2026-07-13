@@ -242,23 +242,6 @@ STRANGERS_EXPECT = {
 }
 STRANGERS_CAVEAT = {"P13"}
 STRANGERS_SHARED_AREA = {"P15": ["P15_STADIUM"]}
-# Evidence counters: raw tallies per scenario (direct records, shared contacts
-# across both buckets, meet-up areas, shared-only areas). Only the scenarios whose
-# counts are worth pinning; the disjointness check below runs for every pair.
-EXPECT_COUNTS = {
-    # heavy two-way direct (12), 5 shared contacts, the private cafe as the meet-up
-    "P01": {"direct": 12, "shared_contacts": 5, "meet_up_areas": 1,
-            "shared_only_areas": 0},
-    # direct only: no shared contacts, no shared areas at all
-    "P02": {"direct": 12, "shared_contacts": 0, "meet_up_areas": 0,
-            "shared_only_areas": 0},
-    # meet-ups only, in one private park
-    "P09": {"direct": 0, "shared_contacts": 0, "meet_up_areas": 1,
-            "shared_only_areas": 0},
-    # the shared-area-without-time-overlap case: a mutual LOCATION, not a meet-up
-    "P15": {"direct": 0, "shared_contacts": 0, "meet_up_areas": 0,
-            "shared_only_areas": 1},
-}
 
 
 # =============================================================== close-knit ==
@@ -302,8 +285,7 @@ CLOSEKNIT_EXPECT = {
 
 # ============================================================= verification ==
 def verify(ds: Dataset, pairs, expect, expect_mode,
-           caveat_pairs=frozenset(), shared_area=None, expect_counts=None):
-    expect_counts = EXPECT_COUNTS if expect_counts is None else expect_counts
+           caveat_pairs=frozenset(), shared_area=None):
     bad = [(r, reason) for r in ds.rows
            for _, reason in [validate_row(r)] if reason is not None]
     if bad:
@@ -362,32 +344,6 @@ def verify(ds: Dataset, pairs, expect, expect_mode,
                 f" expected {want_detail}")
         if not exp and not result["no_link"]:
             failures.append(f"{scen}: expected no_link")
-
-        # Evidence counters (spec 2026-07-13-matcher-evidence-counters): the raw
-        # tallies must agree with the scenario's construction, so the fixture can
-        # never drift from the counter.
-        counts = result["evidence_counts"]
-        want = expect_counts.get(scen)
-        if want:
-            got_counts = {
-                "direct": counts["direct"]["records"],
-                "shared_contacts": (counts["mutual_calls"]["distinctive"]["contacts"]
-                                    + counts["mutual_calls"]["common"]["contacts"]),
-                "meet_up_areas": counts["mutual_locations"]["meet_up"]["areas"],
-                "shared_only_areas": counts["mutual_locations"]["non_meet_up"]["areas"],
-            }
-            if got_counts != want:
-                failures.append(
-                    f"{scen}: evidence counts {got_counts}, expected {want}")
-        # The location buckets partition the shared areas -- never double counted.
-        shared_area_total = len(
-            {r["area"] for r in ds.rows if r["phone_number"] == pa}
-            & {r["area"] for r in ds.rows if r["phone_number"] == pb})
-        bucketed = (counts["mutual_locations"]["meet_up"]["areas"]
-                    + counts["mutual_locations"]["non_meet_up"]["areas"])
-        if bucketed != shared_area_total:
-            failures.append(f"{scen}: location buckets sum to {bucketed}, "
-                            f"but the pair shares {shared_area_total} areas")
         parts = [f"{t.split('_')[0]} {f['strength']} [{', '.join(f['bound_by'])}]"
                  for t, f in got.items()] or (
             ["no link" + (" + shared-area detail" if want_detail else "")])
@@ -422,8 +378,7 @@ if __name__ == "__main__":
     verify(strangers, STRANGERS_PAIRS, STRANGERS_EXPECT, "strangers",
            STRANGERS_CAVEAT, STRANGERS_SHARED_AREA)
     closeknit = build_closeknit()
-    verify(closeknit, CLOSEKNIT_PAIRS, CLOSEKNIT_EXPECT, "close-knit",
-           expect_counts={})
+    verify(closeknit, CLOSEKNIT_PAIRS, CLOSEKNIT_EXPECT, "close-knit")
     write_xlsx(strangers, REPO + r"\sample_matcher_scenarios.xlsx")
     write_xlsx(closeknit, REPO + r"\sample_matcher_closeknit.xlsx")
     print("OK")
