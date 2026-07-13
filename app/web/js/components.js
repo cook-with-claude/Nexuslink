@@ -362,10 +362,54 @@ export function datasetModeNote(ctx) {
   ]);
 }
 
+// Raw evidence tallies (spec 2026-07-13-matcher-evidence-counters-design.md):
+// what the findings above were computed FROM. Deliberately pill-free — a count is
+// not a gated verdict (the same rule the frequency explorer follows). The summary
+// line is always visible; the table breaks each category into its two buckets.
+// Returns null for payloads saved before the counters existed, so an old saved
+// match renders exactly as it used to.
+export function evidenceCountsBlock(counts) {
+  if (!counts) return null;
+  const d = counts.direct || {};
+  const mc = counts.mutual_calls || {};
+  const ml = counts.mutual_locations || {};
+  const n = (bucket, key) => (bucket && bucket[key]) || 0;
+  const callRecords = n(mc.distinctive, "records") + n(mc.common, "records");
+  const callContacts = n(mc.distinctive, "contacts") + n(mc.common, "contacts");
+  const summary =
+    `Direct ${n(d, "records")} · ` +
+    `Mutual calls ${callRecords} across ${callContacts} contacts · ` +
+    `Locations ${n(ml.meet_up, "areas")} meet-up / ` +
+    `${n(ml.non_meet_up, "areas")} shared-only`;
+
+  const row = (label, bucket, itemKey, itemLabel) => [
+    el("span", { class: "k" }, label),
+    el("span", { class: "v" },
+      `${n(bucket, itemKey)} ${itemLabel} · ${n(bucket, "records")} records ` +
+      `(A ${n(bucket, "records_a")} / B ${n(bucket, "records_b")})`),
+  ];
+
+  return el("details", { class: "gate evidence-strip" }, [
+    el("summary", {}, [el("strong", {}, "Evidence "), summary]),
+    el("div", { class: "gate-rows" }, [
+      el("span", { class: "k" }, "Direct contact"),
+      el("span", { class: "v" },
+        `${n(d, "records")} records (${n(d, "calls")} calls, ${n(d, "sms")} SMS · ` +
+        `A→B ${n(d, "a_to_b")} / B→A ${n(d, "b_to_a")})`),
+      ...row("Mutual calls · distinctive", mc.distinctive, "contacts", "contacts"),
+      ...row("Mutual calls · common", mc.common, "contacts", "contacts"),
+      ...row("Mutual locations · meet-up", ml.meet_up, "areas", "areas"),
+      ...row("Mutual locations · shared-only", ml.non_meet_up, "areas", "areas"),
+    ]),
+  ]);
+}
+
 export function matchFindingsBlock(payload, wrapClass = "det-block") {
   const block = el("div", { class: wrapClass });
   const modeNote = datasetModeNote(payload.dataset_context);
   if (modeNote) block.appendChild(modeNote);
+  const ev = evidenceCountsBlock(payload.evidence_counts);
+  if (ev) block.appendChild(ev);
   for (const c of payload.caveats || []) {
     block.appendChild(el("p", { class: "hint" }, "⚠ " + c));
   }
