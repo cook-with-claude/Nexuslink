@@ -39,9 +39,24 @@ confidence, no pills** — it lists records, it does not judge them.
   pair twice is legitimate for a record listing, unlike pair matches, which replace.
 - **UI**: fifth Spreadsheet card; 50 rows, then "Expand all" into a scrollable sticky-header grid.
   **The Excel "Pair records" sheet is EXHAUSTIVE — no cap.** That is the point of it.
+- **Filtering + sorting are CLIENT-SIDE** (the records sheet does both server-side, because it pages
+  over a whole dataset; a ledger is already fully in hand, so a round trip would be waste). Same
+  affordances though: an in-header filter row (category / who / date-contains / call type / other
+  party — matching the NUMBER *or* the target NAME / area / distinctive-common-n_a) and click-to-sort
+  arrows on Date & time and Duration. The 50-row cap and Expand act on the FILTERED set, and the note
+  says when a count is filtered from the total. The rules are pure exported functions
+  (`filterLedgerRows`, `sortLedgerRows`) so they are unit-tested without a DOM shim.
 
-**Verified live:** migration 3 applied in place to an existing DB; david↔jeff yields 54 rows; the
-workbook carries all 54, direct rows naming both parties.
+**Verified live:** migration 3 applied in place to an existing DB; david↔jeff yields 54 rows (12
+direct / 30 shared-contact / 12 meet-up); the workbook carries all 54, direct rows naming both
+parties. Suite 267 passed / 1 skipped, node 35/35.
+
+**Known fixture gap (not a bug):** no pair in either scenario dataset has a shared contact who is
+*also* a target, because their shared contacts (`777…`/`888…`) are pure counterparties, never
+subscribers — so the `other_party_is_target` flag, though covered by
+`test_ledger_flags_a_shared_contact_who_is_also_a_target` (which builds its own dataset), cannot be
+seen by clicking around. Adding a P16 scenario to `tools/gen_matcher_scenarios.py` would fix that;
+offered to Khaled, not yet done.
 
 **Open questions for Codex/Nadim:** (1) a heavy real pair could produce tens of thousands of rows —
 `rows_json` and the sheet are both unbounded; do we want a stored-row cap, a warning, or streaming?

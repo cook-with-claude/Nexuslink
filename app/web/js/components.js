@@ -414,8 +414,25 @@ export function matchFindingsBlock(payload, wrapClass = "det-block") {
 
 export const LEDGER_PAGE = 50;
 
-const LEDGER_COLS = ["Category", "Who", "Date & time", "Type", "Duration",
-                     "Other party", "Area", "Distinctive"];
+// Sorting is client-side (the whole ledger is already in hand) but behaves like
+// the records sheet's server-side sort: click a header to toggle, an arrow shows
+// the active column and direction. Pure + exported so the ordering rules are
+// testable without a DOM. `null` column = the natural order the server returned
+// (grouped by category, then by time).
+export function sortLedgerRows(rows, col, dir = "asc") {
+  if (!col) return rows;
+  const sign = dir === "desc" ? -1 : 1;
+  const key = (r) => (col === "duration_seconds"
+    ? Number(r.duration_seconds ?? 0)
+    : String(r.timestamp ?? ""));
+  return [...rows].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (ka < kb) return -1 * sign;
+    if (ka > kb) return 1 * sign;
+    return 0;
+  });
+}
 
 function ledgerCell(r) {
   const party = r.other_party_is_target
@@ -507,10 +524,22 @@ export function ledgerTable(payload) {
   ]);
   const controls = [fCat, fWho, fWhen, fType, fParty, fArea, fDist];
 
+  // Sortable headers (the records sheet's affordance): click toggles
+  // oldest/newest and shortest/longest; the arrow marks the active column.
+  let sortCol = null;
+  let sortDir = "asc";
+  const whenBtn = el("button", { class: "link", title: "Sort by time" }, "Date & time");
+  const durBtn = el("button", { class: "link", title: "Sort by duration" }, "Duration");
+  const sortMark = (col) => (sortCol !== col ? "" : (sortDir === "asc" ? " ↑" : " ↓"));
+
   const body = el("tbody", {});
   const wrap = el("div", { class: "ledger-scroll" }, el("table", { class: "ledger-table" }, [
     el("thead", {}, [
-      el("tr", {}, LEDGER_COLS.map((c) => el("th", {}, c))),
+      el("tr", {}, [
+        el("th", {}, "Category"), el("th", {}, "Who"), el("th", {}, whenBtn),
+        el("th", {}, "Type"), el("th", { class: "num" }, durBtn),
+        el("th", {}, "Other party"), el("th", {}, "Area"), el("th", {}, "Distinctive"),
+      ]),
       el("tr", { class: "filter-row" }, [
         el("th", {}, fCat), el("th", {}, fWho), el("th", {}, fWhen),
         el("th", {}, fType), el("th", {}),          // duration: nothing to filter
@@ -528,14 +557,16 @@ export function ledgerTable(payload) {
 
   let expanded = false;
   const render = () => {
-    const rows = filterLedgerRows(all, {
+    const rows = sortLedgerRows(filterLedgerRows(all, {
       category: fCat.value, who: fWho.value, when: fWhen.value,
       call_type: fType.value, party: fParty.value, area: fArea.value,
       distinctive: fDist.value,
-    });
+    }), sortCol, sortDir);
     const shown = expanded ? rows.length : Math.min(LEDGER_PAGE, rows.length);
     clear(body);
     for (const r of rows.slice(0, shown)) body.appendChild(el("tr", {}, ledgerCell(r)));
+    whenBtn.textContent = "Date & time" + sortMark("timestamp");
+    durBtn.textContent = "Duration" + sortMark("duration_seconds");
 
     const filtered = rows.length !== all.length ? ` (filtered from ${all.length})` : "";
     if (rows.length === 0) {
@@ -555,6 +586,15 @@ export function ledgerTable(payload) {
     wrap.classList.add("expanded");
     render();
   });
+  const toggleSort = (col) => () => {
+    // Same toggle rule as the records sheet: a new column starts ascending; the
+    // active column flips direction.
+    sortDir = sortCol === col && sortDir === "asc" ? "desc" : "asc";
+    sortCol = col;
+    render();
+  };
+  whenBtn.addEventListener("click", toggleSort("timestamp"));
+  durBtn.addEventListener("click", toggleSort("duration_seconds"));
   for (const c of controls) {
     c.addEventListener("input", render);
     c.addEventListener("change", render);

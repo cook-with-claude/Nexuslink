@@ -53,7 +53,7 @@ function findAll(node, pred, out = []) {
 
 const { bindingGates, bindingNote, detectionBlock, frequentAreasBlock,
         strengthPill, matchFindingsBlock, ledgerTable, filterLedgerRows,
-        LEDGER_PAGE } = await import("./components.js");
+        sortLedgerRows, LEDGER_PAGE } = await import("./components.js");
 
 const noteText = (result) => {
   const p = bindingNote(result);
@@ -348,7 +348,8 @@ test("ledgerTable: caps at LEDGER_PAGE rows and Expand all reveals the rest", ()
   assert.match(block.textContent, new RegExp(`first ${LEDGER_PAGE} of ${rows.length}`));
   assert.match(block.textContent, /export contains every record/);
 
-  const expand = findAll(block, (n) => n.tag === "button")[0];
+  // the header sort toggles are buttons too, so pick the Expand control by class
+  const expand = findAll(block, (n) => (n.className || "").startsWith("btn"))[0];
   expand.click();
   assert.equal(bodyRows(), rows.length);                    // every row now shown
   assert.match(block.textContent, new RegExp(`all ${rows.length} record`));
@@ -405,6 +406,48 @@ test("filterLedgerRows: the party filter matches a target NAME too", () => {
   const hits = filterLedgerRows(FROWS, { party: "B" });
   assert.equal(hits.length, 1);
   assert.equal(hits[0].other_party_name, "B");
+});
+
+test("sortLedgerRows: time and duration sort both ways; null column keeps order", () => {
+  const rows = [
+    LROW({ timestamp: "2026-03-01T09:00:00", duration_seconds: 30 }),
+    LROW({ timestamp: "2026-01-01T09:00:00", duration_seconds: 120 }),
+    LROW({ timestamp: "2026-02-01T09:00:00", duration_seconds: 5 }),
+  ];
+  const times = (rs) => rs.map((r) => r.timestamp.slice(0, 7));
+  const durs = (rs) => rs.map((r) => r.duration_seconds);
+
+  assert.deepEqual(times(sortLedgerRows(rows, "timestamp", "asc")),
+                   ["2026-01", "2026-02", "2026-03"]);
+  assert.deepEqual(times(sortLedgerRows(rows, "timestamp", "desc")),
+                   ["2026-03", "2026-02", "2026-01"]);
+  // duration sorts NUMERICALLY (a string sort would put 120 before 30)
+  assert.deepEqual(durs(sortLedgerRows(rows, "duration_seconds", "asc")), [5, 30, 120]);
+  assert.deepEqual(durs(sortLedgerRows(rows, "duration_seconds", "desc")), [120, 30, 5]);
+  // no column = the server's natural order (grouped by category, then time)
+  assert.deepEqual(times(sortLedgerRows(rows, null)), times(rows));
+  // and sorting never mutates the caller's array
+  assert.deepEqual(times(rows), ["2026-03", "2026-01", "2026-02"]);
+});
+
+test("ledgerTable: the date and duration headers are clickable sort toggles", () => {
+  const rows = [
+    LROW({ timestamp: "2026-03-01T09:00:00", duration_seconds: 30 }),
+    LROW({ timestamp: "2026-01-01T09:00:00", duration_seconds: 120 }),
+  ];
+  const block = ledgerTable(ledgerPayload(rows));
+  const links = findAll(block, (n) => n.tag === "button" && (n.className || "") === "link");
+  assert.equal(links.length, 2);                       // Date & time, Duration
+
+  const firstCellTime = () =>
+    findAll(block, (n) => n.tag === "td")[2].textContent;   // 3rd column
+  const [whenBtn] = links;
+  whenBtn.click();                                     // ascending
+  assert.match(firstCellTime(), /2026-01-01/);
+  assert.match(whenBtn.textContent, /↑/);
+  whenBtn.click();                                     // toggles to descending
+  assert.match(firstCellTime(), /2026-03-01/);
+  assert.match(whenBtn.textContent, /↓/);
 });
 
 test("ledgerTable: no strength pill anywhere — a record is not a verdict", () => {

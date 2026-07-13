@@ -158,7 +158,9 @@ happened there). Rows carry `who`/`who_phone`, `timestamp`, `call_type`, `durati
 target is named and flagged), `area`, and `distinctive` (null on direct rows). Common contacts/areas
 are **listed and labelled**, never hidden and never called evidence; the label comes from the same
 `gates.classify_shared_contacts` / `classify_areas` the verdicts use, so the two cannot disagree.
-The UI pages at 50 rows with an Expand control; the workbook's **`Pair records`** sheet is exhaustive.
+The UI pages at 50 rows with an Expand control, and filters/sorts **client-side** (the whole ledger is
+already in the response, so a round trip would be waste — unlike the records sheet, which pages over a
+whole dataset server-side); the workbook's **`Pair records`** sheet is exhaustive.
 
 The matcher is a **gated pair inference** (`app/matching/`): typed findings, each rated
 High/Medium/Low by the weakest of the gates applicable to that finding type (`gates.py`;

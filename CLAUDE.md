@@ -70,8 +70,10 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **267 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
-  every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's
-  built-in runner). Both run in the CI `frontend` job. NOTE: a JS refactor that renames/removes an
+  every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests
+  (Node's built-in runner; **35 currently**). Both run in the CI `frontend` job. Logic worth testing is
+  extracted as a pure exported function (`bindingGates`, `filterLedgerRows`, `sortLedgerRows`) rather
+  than tested through the minimal DOM shim. NOTE: a JS refactor that renames/removes an
   exported symbol can still break **pytest** — `tests/phase2a/test_ui.py` greps served JS for symbol
   needles, so grep `tests/` too before assuming "no Python touched → tests unaffected".
 - Lint: `ruff check app tests main.py` (config in `pyproject.toml`; excludes `phase1_cdr/`, `vendor/`).
