@@ -116,12 +116,27 @@ CREATE TABLE IF NOT EXISTS saved_ledgers (
 );
 """
 
+# --- Migration 4: matcher query indexes ---
+# These cover dataset-scoped contact/area group-bys and the co-presence area/time
+# self-join. They change query plans only; matcher outputs are unchanged.
+_MATCHER_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_records_dataset_other_party
+  ON cdr_records(dataset_id, other_party);
+
+CREATE INDEX IF NOT EXISTS idx_records_dataset_area
+  ON cdr_records(dataset_id, area);
+
+CREATE INDEX IF NOT EXISTS idx_records_dataset_area_time
+  ON cdr_records(dataset_id, area, timestamp);
+"""
+
 # Ordered (version, ddl) pairs, contiguous from 1. Append new migrations; never edit
 # or reorder a released one (it may already be applied to installed databases).
 MIGRATIONS: list[tuple[int, str]] = [
     (1, _BASELINE),
     (2, _SAVED_EXPORTS),
     (3, _SAVED_LEDGERS),
+    (4, _MATCHER_INDEXES),
 ]
 
 class MigrationError(RuntimeError):
