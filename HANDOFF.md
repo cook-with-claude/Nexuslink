@@ -4,6 +4,50 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Claude: pair record ledger — on `claude/contact-matcher`, NOT merged
+
+Brainstormed with Khaled. Spec `docs/superpowers/specs/2026-07-13-pair-record-ledger-design.md`.
+Suite **267 passed / 1 skipped**, ruff clean, `node --test` 28/28, phase1 byte-frozen.
+**NOTE for CI:** `pyproject.toml` gained `app.matching.ledger` to the import-linter layers contract
+(`lint-imports` can't run on this Windows box — watch the `boundaries` job).
+
+**A first attempt was REVERTED** (commit `3cdac0a`, kept in history deliberately): it shipped
+summary *evidence counts*, and Khaled rejected the shape outright — a count is not what was wanted,
+and folding non-distinctive contacts under the word "evidence" is wrong, since a number half the
+dataset calls is not evidence of a link between two people. **Do not rebuild it.**
+
+**What the ledger is:** every record LINKING two targets, listed individually — `direct` (their own
+calls/SMS), `shared_contact` (calls from EITHER side to a contact they both have), and
+`meet_up_location` / `shared_location` (records in shared areas, split by whether a co-presence event
+happened there — the latter being the "same place, different times" signal the verdicts only mention
+in passing). Real dates, times, call types, durations. **Nothing here is gated: no strengths, no
+confidence, no pills** — it lists records, it does not judge them.
+
+**Decisions worth keeping:**
+- **Naming (Khaled):** parties resolve to TARGET NAMES wherever the dataset has a target. Direct rows
+  name both sides. A shared contact who is **themselves a target** is flagged and named — an analyst
+  must not have to notice by eye that the third party is someone else under investigation.
+- **Common contacts/areas are LISTED but labelled** — never hidden (the analyst must be able to audit
+  what the matcher discounted), never presented as evidence.
+- **It lives in `app/matching/ledger.py`, NOT a new `app/ledger/` package.** It needs the same
+  shared-contact/co-presence facts AND the same distinctive/common classification the verdicts use
+  (`gates.classify_shared_contacts` + the new `classify_areas`, both extracted for this), so their
+  labels can never drift. A separate package would have had to either break the CI-enforced
+  domain-independence contract (a second exception on top of `app.reporting`'s) or duplicate the SQL.
+  Own feature, same domain — CLAUDE.md's "new endpoint in an existing domain" case.
+- **Migration 3** (`saved_ledgers`): ledgers **ACCUMULATE** (no UNIQUE on the pair) — saving the same
+  pair twice is legitimate for a record listing, unlike pair matches, which replace.
+- **UI**: fifth Spreadsheet card; 50 rows, then "Expand all" into a scrollable sticky-header grid.
+  **The Excel "Pair records" sheet is EXHAUSTIVE — no cap.** That is the point of it.
+
+**Verified live:** migration 3 applied in place to an existing DB; david↔jeff yields 54 rows; the
+workbook carries all 54, direct rows naming both parties.
+
+**Open questions for Codex/Nadim:** (1) a heavy real pair could produce tens of thousands of rows —
+`rows_json` and the sheet are both unbounded; do we want a stored-row cap, a warning, or streaming?
+(2) `app.matching` now holds two features (verdicts + ledger) — right call, or should the ledger get
+its own domain if the independence contract is ever revisited?
+
 ## 2026-07-13 - Claude: adaptive matcher gates + test datasets + UX fixes — on `claude/contact-matcher`, NOT merged
 
 Extends the 2026-07-12 contact-matcher work on the same branch after a hands-on testing session

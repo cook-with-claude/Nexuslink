@@ -84,8 +84,9 @@ async function savedItemsCard() {
     el("span", { class: "kicker" }, "click-to-save staging"),
   ]));
   card.appendChild(el("p", { class: "hint" },
-    "Pair matches and explorer counts saved from the Spreadsheet tab. " +
-    "These fill the “Contact matches” and “Frequency counts” sheets of the workbook."));
+    "Pair matches, record ledgers and explorer counts saved from the Spreadsheet " +
+    "tab. These fill the “Contact matches”, “Pair records” and “Frequency counts” " +
+    "sheets of the workbook."));
 
   const slot = el("div");
   card.appendChild(slot);
@@ -95,18 +96,20 @@ async function savedItemsCard() {
     slot.appendChild(loading());
     let matches;
     let tallies;
+    let ledgers;
     try {
-      [matches, tallies] = await Promise.all([api.savedMatches(), api.savedTallies()]);
+      [matches, tallies, ledgers] = await Promise.all([
+        api.savedMatches(), api.savedTallies(), api.savedLedgers()]);
     } catch (e) {
       clear(slot);
       slot.appendChild(msg(e.message));
       return;
     }
     clear(slot);
-    if (matches.length === 0 && tallies.length === 0) {
+    if (matches.length === 0 && tallies.length === 0 && ledgers.length === 0) {
       slot.appendChild(el("div", { class: "empty" },
-        "Nothing saved yet. Use “Save to export” on a pair comparison or a count " +
-        "in the Spreadsheet tab."));
+        "Nothing saved yet. Use “Save to export” on a pair comparison, a record " +
+        "ledger, or a count in the Spreadsheet tab."));
       return;
     }
 
@@ -137,6 +140,24 @@ async function savedItemsCard() {
             try {
               await api.deleteSavedMatch(m.id);
               toast("Saved pair match removed");
+            } catch (e) { toast(e.message, "error"); }
+            load();
+          }));
+      }
+    }
+    if (ledgers.length) {
+      slot.appendChild(el("h4", {}, `Record ledgers (${ledgers.length})`));
+      for (const l of ledgers) {
+        const p = l.pair;
+        slot.appendChild(row(
+          `${p.target_a.name} (${p.target_a.phone_number}) ↔ ` +
+          `${p.target_b.name} (${p.target_b.phone_number}) — ${l.dataset_name}`,
+          `${l.row_count} record(s) · saved ` +
+          `${(l.created_at || "").slice(0, 16).replace("T", " ")}`,
+          async () => {
+            try {
+              await api.deleteSavedLedger(l.id);
+              toast("Saved ledger removed");
             } catch (e) { toast(e.message, "error"); }
             load();
           }));

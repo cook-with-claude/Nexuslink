@@ -100,11 +100,28 @@ CREATE TABLE IF NOT EXISTS saved_tallies (
 );
 """
 
+# --- Migration 3: saved pair-record ledgers ---
+# The full record listing behind a pair (spec 2026-07-13-pair-record-ledger-design).
+# Unlike saved_pair_matches there is NO unique constraint on the pair: ledgers
+# accumulate (like saved_tallies), so the same pair may be staged more than once.
+_SAVED_LEDGERS = """
+CREATE TABLE IF NOT EXISTS saved_ledgers (
+  id          INTEGER PRIMARY KEY,
+  dataset_id  INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  target_a_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  target_b_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL,
+  row_count   INTEGER NOT NULL,
+  rows_json   TEXT NOT NULL
+);
+"""
+
 # Ordered (version, ddl) pairs, contiguous from 1. Append new migrations; never edit
 # or reorder a released one (it may already be applied to installed databases).
 MIGRATIONS: list[tuple[int, str]] = [
     (1, _BASELINE),
     (2, _SAVED_EXPORTS),
+    (3, _SAVED_LEDGERS),
 ]
 
 class MigrationError(RuntimeError):

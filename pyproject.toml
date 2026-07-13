@@ -38,7 +38,7 @@ name = "Layered architecture"
 type = "layers"
 layers = [
     "app.api.system | app.auth.routes | app.datasets.routes | app.targets.routes | app.analysis.routes | app.matching.routes | app.reporting.routes | app.ui",
-    "app.matching.service",
+    "app.matching.service | app.matching.ledger",
     "app.auth.account | app.datasets.repo | app.datasets.validation | app.targets.repo | app.analysis.repo | app.analysis.bridge | app.matching.repo | app.matching.gates | app.reporting.export",
     "app.audit",
     "app.api.guards | app.api.errors",

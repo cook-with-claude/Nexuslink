@@ -143,6 +143,22 @@ only — the two staged sheets always carry exactly the user's curated saves.
 | POST | `/api/match/save` | required | same as `/api/match` | `200 <match payload>` (recomputed server-side, persisted; replaces a previous save of the same pair — order-normalized, so A↔B = B↔A) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
 | GET | `/api/match/saved` | required | — | `200 [{id,dataset_id,dataset_name,created_at,result}]` | — |
 | DELETE | `/api/match/saved/<id>` | required | — | `200 {deleted}` | `404 NOT_FOUND` |
+| POST | `/api/ledger` | required | `{target_a_id, target_b_id}` | `200 {pair, rows[], row_count, category_counts}` (stores nothing) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| POST | `/api/ledger/save` | required | same | `200 {id, …ledger}` (recomputed server-side; ledgers **accumulate**, they do not replace) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| GET | `/api/ledger/saved` | required | — | `200 [{id,dataset_name,created_at,row_count,pair}]` (row counts only — the rows themselves go to the workbook) | — |
+| DELETE | `/api/ledger/saved/<id>` | required | — | `200 {deleted}` | `404 NOT_FOUND` |
+
+**Pair record ledger** (`app/matching/ledger.py`, spec `2026-07-13-pair-record-ledger-design.md`) —
+a separate feature from the matcher: it LISTS the records, it does not judge them (no strengths, no
+confidence anywhere). Each row is one CDR record in one of four categories — `direct` (the pair's own
+calls/SMS), `shared_contact` (calls from either side to a contact they both have),
+`meet_up_location` / `shared_location` (records in a shared area, split by whether a co-presence event
+happened there). Rows carry `who`/`who_phone`, `timestamp`, `call_type`, `duration_seconds`,
+`other_party` (+ `other_party_name` and `other_party_is_target` — a shared contact who is themselves a
+target is named and flagged), `area`, and `distinctive` (null on direct rows). Common contacts/areas
+are **listed and labelled**, never hidden and never called evidence; the label comes from the same
+`gates.classify_shared_contacts` / `classify_areas` the verdicts use, so the two cannot disagree.
+The UI pages at 50 rows with an Expand control; the workbook's **`Pair records`** sheet is exhaustive.
 
 The matcher is a **gated pair inference** (`app/matching/`): typed findings, each rated
 High/Medium/Low by the weakest of the gates applicable to that finding type (`gates.py`;

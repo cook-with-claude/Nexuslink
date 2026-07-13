@@ -1,6 +1,8 @@
 // Shared UI bits. Single source of truth for the confidence pill and the gate
 // trace, so the "no raw JSON / one visual language" rules hold everywhere.
 
+import { callTypeDisplay } from "./call-types.js";
+
 // --- small DOM helpers ---
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -400,6 +402,83 @@ export function matchFindingsBlock(payload, wrapClass = "det-block") {
     block.appendChild(el("p", { class: "hint" },
       `Also share ${alone.length} area(s) without time overlap ` +
       `(too weak to be a finding): ${alone.join(", ")}`));
+  }
+  return block;
+}
+
+// --- pair record ledger (spec 2026-07-13-pair-record-ledger-design.md) ---
+// The RECORDS behind a pair, not a verdict about them: no strength pills, no
+// gates, no confidence anywhere. Shows LEDGER_PAGE rows; an Expand control
+// reveals the rest in a scrollable grid (a heavy pair runs to thousands of rows).
+// The export is the exhaustive artifact — say so rather than implying rows are lost.
+
+export const LEDGER_PAGE = 50;
+
+const LEDGER_COLS = ["Category", "Who", "Date & time", "Type", "Duration",
+                     "Other party", "Area", "Distinctive"];
+
+function ledgerCell(r) {
+  const party = r.other_party_is_target
+    ? `${r.other_party_name} (${r.other_party})`
+    : (r.other_party || "—");
+  const distinctive = r.distinctive === null || r.distinctive === undefined
+    ? "—" : (r.distinctive ? "distinctive" : "common");
+  return [
+    el("td", {}, r.category_label),
+    el("td", { class: "data" }, `${r.who} (${r.who_phone})`),
+    el("td", { class: "data dim" }, String(r.timestamp || "").replace("T", " ")),
+    el("td", { class: "dim" }, callTypeDisplay(r.call_type)),
+    el("td", { class: "num dim" }, String(r.duration_seconds ?? 0)),
+    el("td", { class: "data" }, [
+      party,
+      r.other_party_is_target
+        ? el("span", { class: "tag tag-target" }, "target")
+        : null,
+    ].filter(Boolean)),
+    el("td", { class: "data" }, r.area || "—"),
+    el("td", { class: "dim" }, distinctive),
+  ];
+}
+
+export function ledgerTable(payload) {
+  const block = el("div", {});
+  const rows = (payload && payload.rows) || [];
+  if (rows.length === 0) {
+    block.appendChild(el("div", { class: "empty" },
+      "No records link these two targets."));
+    return block;
+  }
+
+  const counts = payload.category_counts || {};
+  block.appendChild(el("p", { class: "hint" },
+    `${payload.row_count} record(s): ` +
+    Object.entries(counts).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(" · ")));
+
+  const body = el("tbody", {});
+  const table = el("table", { class: "ledger-table" }, [
+    el("thead", {}, el("tr", {}, LEDGER_COLS.map((c) => el("th", {}, c)))),
+    body,
+  ]);
+  const wrap = el("div", { class: "ledger-scroll" }, table);
+  const fill = (limit) => {
+    clear(body);
+    for (const r of rows.slice(0, limit)) body.appendChild(el("tr", {}, ledgerCell(r)));
+  };
+  fill(LEDGER_PAGE);
+  block.appendChild(wrap);
+
+  if (rows.length > LEDGER_PAGE) {
+    const note = el("p", { class: "hint" },
+      `Showing the first ${LEDGER_PAGE} of ${rows.length}. ` +
+      "The export contains every record.");
+    const expand = el("button", { class: "btn btn-sm" }, "Expand all");
+    expand.addEventListener("click", () => {
+      fill(rows.length);
+      wrap.classList.add("expanded");
+      note.textContent = `Showing all ${rows.length} records.`;
+      expand.remove();
+    });
+    block.appendChild(el("div", { class: "form-actions" }, [expand, note]));
   }
   return block;
 }

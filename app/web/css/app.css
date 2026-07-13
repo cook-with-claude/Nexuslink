@@ -639,6 +639,33 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
 /* Gate-cliff near-boundary notes under a finding's binding line. */
 .near-note { margin: var(--s1) 0 0; }
 
+/* Pair record ledger: a record LISTING, not a verdict — no pills anywhere. Caps
+   its height so a heavy pair (thousands of rows) scrolls inside the card instead
+   of pushing the page; "Expand all" grows the viewport, not the row count. */
+.ledger-scroll {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: var(--s2);
+}
+.ledger-scroll.expanded { max-height: 70vh; }
+.ledger-table { width: 100%; }
+.ledger-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  z-index: 1;
+}
+.tag-target {
+  margin-left: var(--s2);
+  padding: 0 var(--s2);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+}
+
 /* Export screen: click-to-save staging list (saved matches + counts). */
 .saved-item {
   display: flex;

@@ -7,13 +7,15 @@ set. Pure transformation: takes stored rows and produces .xlsx bytes with
 openpyxl. Exports the *stored* answers -- it never recomputes, so the file always
 matches what the app has shown. No Flask, no SQL, no audit (ADR 0001 layering).
 
-Layout: five sheets, always all present so the workbook shape is predictable.
+Layout: six sheets, always all present so the workbook shape is predictable.
 "Summary" is one row per target with the gated answers; "Frequent areas" and
 "Frequent contacts" hold the per-target tallies as real rows (deliberately NO
 confidence column -- a count is not a gated verdict, same rule as the UI).
 "Contact matches" holds one row per finding of each SAVED pair match;
-"Frequency counts" one row per ranked value of each SAVED explorer tally.
-Both new sheets are click-to-save staged: nothing lands here automatically.
+"Pair records" the EXHAUSTIVE record ledger of each SAVED pair (every call and
+every shared-area record, with dates/times -- no cap, and no confidence: these are
+records, not verdicts); "Frequency counts" one row per ranked value of each SAVED
+explorer tally. The staged sheets are click-to-save: nothing lands automatically.
 """
 
 from __future__ import annotations
@@ -38,6 +40,13 @@ MATCHES_HEADERS = ["Match ID", "Dataset", "Target A", "Target B", "Saved at",
                    "Dataset mode", "Near-boundary notes"]
 TALLIES_HEADERS = ["Count ID", "Target", "Phone number", "Dataset", "Saved at",
                    "Filters", "Total records", "Rank", "Value", "Count"]
+# The pair record ledger (spec 2026-07-13-pair-record-ledger-design): the actual
+# records behind a pair, EXHAUSTIVE -- no cap, that is the point of the sheet. No
+# confidence column: these are records, not verdicts.
+LEDGER_HEADERS = ["Ledger ID", "Dataset", "Pair", "Saved at", "Category", "Who",
+                  "Phone", "Date & time", "Call type", "Duration (s)",
+                  "Other party", "Other party name", "Also a target", "Area",
+                  "Distinctive"]
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -140,6 +149,44 @@ def _append_match_rows(ws, saved: dict) -> None:
         ])
 
 
+_CALL_TYPES = {1: "out call", 2: "in call", 11: "out SMS", 22: "in SMS"}
+
+
+def _call_type_cell(code) -> str:
+    """"wording (code)" -- the app-wide convention (app/web/js/call-types.js)."""
+    return f"{_CALL_TYPES.get(code, 'unknown')} ({code})"
+
+
+def _append_ledger_rows(ws, saved: dict) -> None:
+    """EVERY record of one saved ledger -- no cap. The on-screen table pages at 50
+    rows; the workbook is where the exhaustive listing lives.
+
+    `distinctive` is None for direct rows (the pair themselves are not a "shared"
+    item to judge), so it renders as an em-dash rather than a misleading "no".
+    """
+    pair = saved["pair"]
+    pair_cell = (f"{pair['target_a']['name']} ({pair['target_a']['phone_number']}) ↔ "
+                 f"{pair['target_b']['name']} ({pair['target_b']['phone_number']})")
+    base = [saved["id"], saved.get("dataset_name"), pair_cell,
+            _fmt_when(saved.get("created_at"))]
+    rows = saved.get("rows") or []
+    if not rows:
+        ws.append(base + ["no records"] + [""] * (len(LEDGER_HEADERS) - len(base) - 1))
+        ws.cell(row=ws.max_row, column=5).font = _NOT_ANALYZED_FONT
+        return
+    for r in rows:
+        distinctive = r.get("distinctive")
+        ws.append(base + [
+            r.get("category_label"), r.get("who"), r.get("who_phone"),
+            _fmt_when(r.get("timestamp")), _call_type_cell(r.get("call_type")),
+            r.get("duration_seconds"),
+            r.get("other_party") or "—", r.get("other_party_name") or "—",
+            "yes" if r.get("other_party_is_target") else "",
+            r.get("area"),
+            "—" if distinctive is None else ("distinctive" if distinctive else "common"),
+        ])
+
+
 def _append_tally_rows(ws, saved: dict) -> None:
     tally = saved["tally"]
     base = [
@@ -157,20 +204,23 @@ def _append_tally_rows(ws, saved: dict) -> None:
 
 
 def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
-                           tallies: list[dict] = ()) -> bytes:
-    """rows: targets_with_latest_result() output. pair_matches / tallies: the
-    SAVED items, already JSON-decoded ({"result": …} / {"tally": …})."""
+                           tallies: list[dict] = (), ledgers: list[dict] = ()) -> bytes:
+    """rows: targets_with_latest_result() output. pair_matches / tallies / ledgers:
+    the SAVED items, already JSON-decoded ({"result": …} / {"tally": …} /
+    {"rows": […], "pair": {…}})."""
     wb = Workbook()
     summary = wb.active
     summary.title = "Summary"
     areas_ws = wb.create_sheet("Frequent areas")
     contacts_ws = wb.create_sheet("Frequent contacts")
     matches_ws = wb.create_sheet("Contact matches")
+    ledger_ws = wb.create_sheet("Pair records")
     tallies_ws = wb.create_sheet("Frequency counts")
     summary.append(HEADERS)
     areas_ws.append(AREAS_HEADERS)
     contacts_ws.append(CONTACTS_HEADERS)
     matches_ws.append(MATCHES_HEADERS)
+    ledger_ws.append(LEDGER_HEADERS)
     tallies_ws.append(TALLIES_HEADERS)
 
     for row in rows:
@@ -203,12 +253,16 @@ def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
         _append_match_rows(matches_ws, saved)
     if not pair_matches:
         _placeholder(matches_ws, "none saved")
+    for saved in ledgers:
+        _append_ledger_rows(ledger_ws, saved)
+    if not ledgers:
+        _placeholder(ledger_ws, "none saved")
     for saved in tallies:
         _append_tally_rows(tallies_ws, saved)
     if not tallies:
         _placeholder(tallies_ws, "none saved")
 
-    for ws in (summary, areas_ws, contacts_ws, matches_ws, tallies_ws):
+    for ws in (summary, areas_ws, contacts_ws, matches_ws, ledger_ws, tallies_ws):
         _finish_sheet(ws)
     buf = io.BytesIO()
     wb.save(buf)

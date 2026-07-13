@@ -127,6 +127,31 @@ def _is_common(users_with: int, other_users: int) -> bool:
     return users_with >= max(COMMON_MIN_USERS, COMMON_USER_FRACTION * other_users)
 
 
+def classify_shared_contacts(shared, commonality, other_users, mode,
+                             spread_median) -> list[str]:
+    """The DISTINCTIVE subset of `shared`, dataset-mode aware.
+
+    Strangers: common = the 20%-of-others discount (with the COMMON_MIN_USERS
+    floor). Close-knit: the fixed cutoff would brand everyone's real friends
+    common, so "rare" means shared by fewer subscribers than the dataset's typical
+    SHARED contact; the pair itself is part of a contact's spread while
+    `commonality` counts only OTHERS, so +2 puts both sides on the same base.
+
+    ONE classifier, several consumers (the mutual finding and the record ledger) --
+    they must never label the same contact differently.
+    """
+    if mode == CLOSE_KNIT:
+        return [p for p in shared if commonality.get(p, 0) + 2 < spread_median]
+    return [p for p in shared if not _is_common(commonality.get(p, 0), other_users)]
+
+
+def classify_areas(areas, commonality, other_users) -> list[str]:
+    """The DISTINCTIVE subset of `areas`. Area commonality is absolute in BOTH
+    dataset modes -- a busy mall is a busy mall whether the subscribers are
+    strangers or a clique -- so this takes no mode."""
+    return [a for a in areas if not _is_common(commonality.get(a, 0), other_users)]
+
+
 def classify_dataset(density: float) -> dict:
     """Strangers vs close-knit from the dataset's interconnectedness (average
     shared contacts per subscriber pair), plus a confidence tier for the
@@ -198,16 +223,14 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
         return None
     commonality = facts["contact_commonality"]
     other_users = facts["other_users"]
+    distinctive = classify_shared_contacts(
+        shared, commonality, other_users, mode, spread_median)
     if mode == CLOSE_KNIT:
-        # In a clique the fixed cutoff brands everyone's real friends "common".
-        # Sharing contacts is a FACT there -- the finding always fires; what gets
-        # graded is how pair-specific the overlap is. "Rare" = shared by fewer
-        # subscribers than the dataset's typical SHARED contact. The pair itself
-        # is part of a shared contact's spread (commonality counts OTHERS), so
-        # +2 puts both sides of the comparison on the same base. Count-based:
-        # >= CK_RARE_HIGH rare mutuals -> High (a private link beyond the group
-        # fabric); solid but all group-wide -> Medium; trivial overlap -> Low.
-        distinctive = [p for p in shared if commonality.get(p, 0) + 2 < spread_median]
+        # Sharing contacts is a FACT in a clique -- the finding always fires; what
+        # gets graded is how pair-specific the overlap is. Count-based (not a
+        # ratio): extra group fabric on top of rare mutuals must never LOWER a
+        # rating. >= CK_RARE_HIGH rare mutuals -> High (a private link beyond the
+        # group fabric); solid but all group-wide -> Medium; trivial -> Low.
         if len(distinctive) >= CK_RARE_HIGH:
             distinct_rating = HIGH
         elif len(distinctive) == 1 or len(shared) >= CK_SOLID_MEDIUM:
@@ -217,8 +240,6 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
         distinct_note = _near_note("rare shared contacts", len(distinctive),
                                    CK_RARE_HIGH, CK_RARE_HIGH, integer=True)
     else:
-        distinctive = [p for p in shared
-                       if not _is_common(commonality.get(p, 0), other_users)]
         if len(distinctive) < MUTUAL_MIN_DISTINCTIVE:
             return None
         distinct_ratio = len(distinctive) / len(shared)

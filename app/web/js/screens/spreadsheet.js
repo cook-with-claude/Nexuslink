@@ -15,7 +15,7 @@ import { api } from "../api.js";
 import { shell } from "../layout.js";
 import {
   el, loading, clear, msg, toast, detectionBlock, frequentAreasBlock,
-  matchFindingsBlock,
+  matchFindingsBlock, ledgerTable,
 } from "../components.js";
 import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
@@ -40,9 +40,11 @@ export async function spreadsheetScreen(app) {
   const detection = detectionCard(datasets);
   const explorer = explorerCard(datasets);
   const matcher = matcherCard(datasets);
+  const ledger = ledgerCard(datasets);
   detection.refresh(targets);
   explorer.refresh(targets);
   matcher.refresh(targets);
+  ledger.refresh(targets);
 
   // Click a user in the sheet -> make sure a target exists for that phone in
   // that dataset (created on the fly, named after the number), then run the
@@ -61,6 +63,7 @@ export async function spreadsheetScreen(app) {
       detection.refresh(targets);
       explorer.refresh(targets);
       matcher.refresh(targets);
+      ledger.refresh(targets);
       t = targets.find((x) => x.dataset_id === datasetId && x.phone_number === phone);
       if (!t) return;
     }
@@ -72,6 +75,7 @@ export async function spreadsheetScreen(app) {
   body.appendChild(detection.card);
   body.appendChild(explorer.card);
   body.appendChild(matcher.card);
+  body.appendChild(ledger.card);
 }
 
 function targetOption(t, datasets) {
@@ -456,6 +460,130 @@ function matcherCard(datasets) {
           el("span", { class: "hint" },
             "Saving replaces any previous save of this pair in the export."),
         ]));
+      } catch (e) {
+        if (mine !== seq) return;
+        clear(slot);
+        slot.appendChild(msg(e.message));
+      } finally {
+        if (mine === seq) btn.disabled = false;
+      }
+    });
+  };
+
+  return { card, refresh };
+}
+
+// ---- 5. pair record ledger (the records themselves) ----
+
+// A separate feature from the matcher: the matcher judges, this LISTS. Every
+// record linking two targets — direct calls, calls to shared contacts, and
+// records in shared areas (meet-up and non-meet-up) — with real dates and times.
+// Common contacts/areas are listed but LABELLED: they are not evidence of a link,
+// and they are not hidden either. No pills, no gates: nothing here is a verdict.
+function ledgerCard(datasets) {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("div", { class: "card-head" }, [
+    el("h3", {}, "Pair record ledger"),
+    el("span", { class: "kicker" }, "records · not a verdict"),
+  ]));
+  card.appendChild(el("p", { class: "hint" },
+    "Lists every record that links two targets: their direct calls, the calls " +
+    "either side made to a contact they share, and their records in shared areas. " +
+    "Dates and times included; the export carries every row."));
+
+  const savedLine = el("p", { class: "hint saved-count" }, "");
+  card.appendChild(savedLine);
+  const refreshSavedCount = async () => {
+    try {
+      const saved = await api.savedLedgers();
+      const rows = saved.reduce((n, l) => n + (l.row_count || 0), 0);
+      savedLine.textContent = saved.length === 0
+        ? "Nothing saved for export yet."
+        : `Saved for export: ${saved.length} ledger${saved.length === 1 ? "" : "s"} ` +
+          `(${rows} record${rows === 1 ? "" : "s"}; manage on the Export screen).`;
+    } catch (e) {
+      // a failed count must not break the card
+    }
+  };
+
+  const inner = el("div");
+  card.appendChild(inner);
+  let seq = 0;
+
+  const refresh = (targets) => {
+    refreshSavedCount();
+    const keepA = inner.querySelector("#lg-a") ? inner.querySelector("#lg-a").value : "";
+    const keepB = inner.querySelector("#lg-b") ? inner.querySelector("#lg-b").value : "";
+    clear(inner);
+    if (targets.length < 2) {
+      inner.appendChild(el("div", { class: "empty" },
+        "Needs at least two targets from the same dataset."));
+      return;
+    }
+    const option = (t) => targetOption(t, datasets);
+    const pickA = el("select", { id: "lg-a" },
+      [el("option", { value: "" }, "— target A —")].concat(targets.map(option)));
+    const pickB = el("select", { id: "lg-b" },
+      [el("option", { value: "" }, "— target B —")].concat(targets.map(option)));
+    if (keepA) pickA.value = keepA;
+    if (keepB) pickB.value = keepB;
+
+    const field = (labelText, forId, input) =>
+      el("div", {}, [el("label", { for: forId }, labelText), input]);
+    inner.appendChild(el("div", { class: "filter-grid" }, [
+      field("Target A", "lg-a", pickA),
+      field("Target B", "lg-b", pickB),
+    ]));
+
+    const btn = el("button", { class: "btn btn-primary" }, "List records");
+    const slot = el("div");
+    inner.appendChild(el("div", { class: "form-actions" }, [
+      btn,
+      el("span", { class: "hint" }, "Both targets must be from the same dataset."),
+    ]));
+    inner.appendChild(slot);
+
+    btn.addEventListener("click", async () => {
+      const mine = ++seq;
+      clear(slot);
+      if (!pickA.value || !pickB.value) {
+        slot.appendChild(msg("Select both targets.")); return;
+      }
+      if (pickA.value === pickB.value) {
+        slot.appendChild(msg("Pick two different targets.")); return;
+      }
+      const a = targets.find((t) => String(t.id) === pickA.value);
+      const b = targets.find((t) => String(t.id) === pickB.value);
+      if (a && b && a.dataset_id !== b.dataset_id) {
+        slot.appendChild(msg("Both targets must be from the same dataset.")); return;
+      }
+      btn.disabled = true;
+      slot.appendChild(loading("Listing records…"));
+      try {
+        const payload = await api.ledger(pickA.value, pickB.value);
+        if (mine !== seq) return;
+        clear(slot);
+        slot.appendChild(ledgerTable(payload));
+        if (payload.row_count > 0) {
+          const save = el("button", { class: "btn btn-sm" }, "Save to export");
+          save.addEventListener("click", async () => {
+            save.disabled = true;
+            try {
+              const saved = await api.saveLedger(pickA.value, pickB.value);
+              save.textContent = "Saved ✓";
+              toast(`Ledger saved to export (${saved.row_count} records)`);
+              refreshSavedCount();
+            } catch (e) {
+              toast(e.message, "error");
+              save.disabled = false;
+            }
+          });
+          slot.appendChild(el("div", { class: "form-actions" }, [
+            save,
+            el("span", { class: "hint" },
+              "Ledgers accumulate — saving the same pair again adds another copy."),
+          ]));
+        }
       } catch (e) {
         if (mine !== seq) return;
         clear(slot);

@@ -129,6 +129,14 @@ export const api = {
     request("POST", "/api/match/save", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
   savedMatches: () => request("GET", "/api/match/saved"),
   deleteSavedMatch: (id) => request("DELETE", "/api/match/saved/" + id, {}),
+  // pair record ledger: the records themselves. Saved ledgers ACCUMULATE (the
+  // same pair may legitimately be staged twice), unlike pair matches.
+  ledger: (aId, bId) =>
+    request("POST", "/api/ledger", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
+  saveLedger: (aId, bId) =>
+    request("POST", "/api/ledger/save", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
+  savedLedgers: () => request("GET", "/api/ledger/saved"),
+  deleteSavedLedger: (id) => request("DELETE", "/api/ledger/saved/" + id, {}),
   // saved explorer counts: same server-side recompute rule, from the filters.
   saveTally: (targetId, params) =>
     request("POST", "/api/frequency/save", { json: { target_id: Number(targetId), ...params } }),

@@ -115,6 +115,54 @@ def co_presence_events(conn, dataset_id, phone_a, phone_b) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def direct_contact_records(conn, dataset_id, phone_a, phone_b) -> list[dict]:
+    """The raw records BETWEEN the pair (either side's rows), for the ledger.
+    `direct_contact` above aggregates the same records into counts."""
+    rows = conn.execute(
+        "SELECT phone_number, timestamp, call_type, duration_seconds, other_party, area "
+        "FROM cdr_records WHERE dataset_id = ? "
+        "AND ((phone_number = ? AND other_party = ?) OR (phone_number = ? AND other_party = ?)) "
+        "ORDER BY timestamp",
+        (dataset_id, phone_a, phone_b, phone_b, phone_a),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def records_for(conn, dataset_id, phones, parties=None, areas=None) -> list[dict]:
+    """Raw CDR records for the given subscriber(s), optionally restricted to a set
+    of counterparties or a set of areas. Feeds the pair record ledger, which lists
+    the actual calls rather than summarizing them.
+
+    `parties` / `areas` are caller-supplied lists (never user input verbatim -- the
+    ledger derives them from the pair's own shared sets), bound as parameters.
+    """
+    if not phones or (parties is not None and not parties) or (areas is not None and not areas):
+        return []
+    sql = ("SELECT phone_number, timestamp, call_type, duration_seconds, other_party, area "
+           "FROM cdr_records WHERE dataset_id = ? "
+           f"AND phone_number IN ({','.join('?' * len(phones))})")
+    binds: list = [dataset_id, *phones]
+    if parties is not None:
+        sql += f" AND other_party IN ({','.join('?' * len(parties))})"
+        binds.extend(parties)
+    if areas is not None:
+        sql += f" AND area IN ({','.join('?' * len(areas))})"
+        binds.extend(areas)
+    sql += " ORDER BY timestamp, phone_number"
+    return [dict(r) for r in conn.execute(sql, binds).fetchall()]
+
+
+def targets_by_phone(conn, dataset_id) -> dict[str, dict]:
+    """phone_number -> target row, for every target of this dataset. The ledger
+    names parties by their target name where one exists, and flags a shared contact
+    who is THEMSELVES a target (someone else under investigation)."""
+    rows = conn.execute(
+        "SELECT id, name, phone_number FROM targets WHERE dataset_id = ?",
+        (dataset_id,),
+    ).fetchall()
+    return {r["phone_number"]: dict(r) for r in rows}
+
+
 def other_user_count(conn, dataset_id, phone_a, phone_b) -> int:
     """Distinct subscribers in the dataset besides the pair (distinctiveness base)."""
     return conn.execute(
@@ -219,4 +267,39 @@ def saved_pair_matches(conn) -> list[dict]:
 
 def delete_pair_match(conn, match_id) -> bool:
     cur = conn.execute("DELETE FROM saved_pair_matches WHERE id = ?", (match_id,))
+    return cur.rowcount > 0
+
+
+# ---- saved pair-record ledgers (click-to-save export staging) ----
+# Ledgers ACCUMULATE (no UNIQUE on the pair, unlike saved_pair_matches): a ledger
+# is a record listing, so saving the same pair twice is a legitimate act.
+
+def save_ledger(conn, dataset_id, target_a_id, target_b_id, created_at,
+                row_count, rows_json) -> int:
+    cur = conn.execute(
+        "INSERT INTO saved_ledgers "
+        "(dataset_id, target_a_id, target_b_id, created_at, row_count, rows_json) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (dataset_id, target_a_id, target_b_id, created_at, row_count, rows_json),
+    )
+    return cur.lastrowid
+
+
+def saved_ledgers(conn) -> list[dict]:
+    rows = conn.execute(
+        "SELECT l.id, l.dataset_id, l.created_at, l.row_count, l.rows_json, "
+        "d.name AS dataset_name, "
+        "ta.name AS name_a, ta.phone_number AS phone_a, "
+        "tb.name AS name_b, tb.phone_number AS phone_b "
+        "FROM saved_ledgers l "
+        "JOIN datasets d ON d.id = l.dataset_id "
+        "JOIN targets ta ON ta.id = l.target_a_id "
+        "JOIN targets tb ON tb.id = l.target_b_id "
+        "ORDER BY l.id",
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_ledger(conn, ledger_id) -> bool:
+    cur = conn.execute("DELETE FROM saved_ledgers WHERE id = ?", (ledger_id,))
     return cur.rowcount > 0

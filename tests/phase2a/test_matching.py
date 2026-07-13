@@ -599,7 +599,208 @@ def test_saved_tallies_accumulate_and_delete(client, pair):
     assert client.delete(f"/api/frequency/saved/{listed[0]['id']}").status_code == 404
 
 
+# ---- pair record ledger (spec 2026-07-13-pair-record-ledger-design.md) ----
+# The RECORDS themselves, not a verdict about them: no strengths, no confidence.
+
+def _ledger(client, a, b):
+    return client.post("/api/ledger", json={"target_a_id": a, "target_b_id": b})
+
+
+def test_ledger_lists_every_record_in_four_categories(client, pair):
+    a, b = pair
+    data = _ledger(client, a, b).get_json()["data"]
+    rows = data["rows"]
+    by_cat = {}
+    for r in rows:
+        by_cat.setdefault(r["category"], []).append(r)
+    assert set(by_cat) == {"direct", "shared_contact", "meet_up_location",
+                           "shared_location"}
+    # direct: the 4 A<->B records, BOTH sides' rows
+    assert len(by_cat["direct"]) == 4
+    assert {r["who_phone"] for r in by_cat["direct"]} == {"100", "200"}
+    # shared contacts P1/P2/P9: one record per side per contact = 6 rows
+    assert len(by_cat["shared_contact"]) == 6
+    assert {r["other_party"] for r in by_cat["shared_contact"]} == {"P1", "P2", "P9"}
+    # shared_location: the Far records (shared area, no time overlap) -- one each
+    assert {r["area"] for r in by_cat["shared_location"]} == {"Far"}
+    assert len(by_cat["shared_location"]) == 2
+    # meet-up areas: Cafe / Edge / Downtown
+    assert {r["area"] for r in by_cat["meet_up_location"]} == {"Cafe", "Edge", "Downtown"}
+    assert data["row_count"] == len(rows)
+    assert data["category_counts"]["direct"] == 4
+
+
+def test_ledger_rows_carry_the_actual_record_detail(client, pair):
+    a, b = pair
+    rows = _ledger(client, a, b).get_json()["data"]["rows"]
+    direct = [r for r in rows if r["category"] == "direct"]
+    first = min(direct, key=lambda r: r["timestamp"])
+    assert first["timestamp"] == "2026-01-01T09:00:00"   # date AND time
+    assert first["call_type"] == 1
+    assert first["duration_seconds"] == 60
+    assert first["area"] == "Home"
+    # nothing in a ledger row is a verdict
+    assert "strength" not in first and "confidence" not in first
+
+
+def test_ledger_names_both_parties_on_a_direct_row(client, pair):
+    """We know who both sides are -- name them, don't print bare numbers."""
+    a, b = pair
+    rows = _ledger(client, a, b).get_json()["data"]["rows"]
+    direct = [r for r in rows if r["category"] == "direct"]
+    a_rows = [r for r in direct if r["who_phone"] == "100"]
+    assert a_rows and all(r["who"] == "A" for r in a_rows)
+    assert all(r["other_party_name"] == "B" for r in a_rows)
+    assert all(r["other_party_is_target"] for r in direct)
+
+
+def test_ledger_flags_a_shared_contact_who_is_also_a_target(client, tmp_path):
+    """A mutual contact who is themselves under investigation must be flagged and
+    NAMED, not left as a bare number. (A target must be a subscriber, so this
+    needs a dataset where the shared contact has records of their own.)"""
+    rows = [
+        # A and B both call subscriber C -- a shared contact who is also a target
+        ("100", "iA", "Home", "2026-01-01T09:00:00", 1, 60, "300", "", ""),
+        ("200", "iB", "Bwork", "2026-01-02T09:00:00", 1, 60, "300", "", ""),
+        # ... and both call P2, an outsider
+        ("100", "iA", "Home", "2026-01-03T09:00:00", 1, 60, "P2", "", ""),
+        ("200", "iB", "Bwork", "2026-01-04T09:00:00", 1, 60, "P2", "", ""),
+        # C's own records make them a subscriber (and thus targetable)
+        ("300", "iC", "Cplace", "2026-01-05T09:00:00", 1, 60, "999", "", ""),
+        ("400", "i4", "Elsewhere", "2026-01-05T10:00:00", 1, 60, "888", "", ""),
+    ]
+    df = pd.DataFrame(rows, columns=COLUMNS)
+    path = tmp_path / "shared_target.xlsx"
+    df.to_excel(path, index=False, engine="openpyxl")
+    with open(path, "rb") as fh:
+        data = {"name": "st", "file": (io.BytesIO(fh.read()), "shared_target.xlsx")}
+    ds = client.post("/api/imports", data=data,
+                     content_type="multipart/form-data").get_json()["data"]["dataset_id"]
+    a = _mk_target(client, ds, "A", "100")
+    b = _mk_target(client, ds, "B", "200")
+    _mk_target(client, ds, "Carlos", "300")
+
+    ledger_rows = _ledger(client, a, b).get_json()["data"]["rows"]
+    c_rows = [r for r in ledger_rows if r["other_party"] == "300"]
+    assert len(c_rows) == 2                                  # one from each side
+    assert all(r["other_party_is_target"] for r in c_rows)
+    assert all(r["other_party_name"] == "Carlos" for r in c_rows)
+    # the outsider is not flagged and carries no name
+    p2 = next(r for r in ledger_rows if r["other_party"] == "P2")
+    assert p2["other_party_is_target"] is False
+    assert p2["other_party_name"] is None
+
+
+def test_ledger_lists_common_items_but_labels_them(client, pair):
+    """Common contacts/areas are NOT evidence, but they are not hidden either --
+    an analyst must be able to audit what the matcher discounted."""
+    a, b = pair
+    rows = _ledger(client, a, b).get_json()["data"]["rows"]
+    shared = {r["other_party"]: r for r in rows if r["category"] == "shared_contact"}
+    # in this 5-other-user fixture the floor keeps every shared contact distinctive
+    assert all(shared[p]["distinctive"] is True for p in ("P1", "P2", "P9"))
+    downtown = [r for r in rows if r["area"] == "Downtown"]
+    assert downtown and all(r["distinctive"] is True for r in downtown)
+
+
+def test_ledger_is_symmetric(client, pair):
+    a, b = pair
+    ab = _ledger(client, a, b).get_json()["data"]
+    ba = _ledger(client, b, a).get_json()["data"]
+    ab.pop("computed_at"), ba.pop("computed_at")
+    assert ab == ba
+
+
+def test_ledger_run_stores_nothing(client, pair):
+    _ledger(client, *pair)
+    assert client.get("/api/ledger/saved").get_json()["data"] == []
+
+
+def test_save_ledger_accumulates_and_deletes(client, pair):
+    """Unlike pair matches (which replace), ledgers accumulate: saving the same
+    pair twice is a legitimate act."""
+    a, b = pair
+    first = client.post("/api/ledger/save", json={"target_a_id": a, "target_b_id": b})
+    assert first.status_code == 200
+    assert first.get_json()["data"]["row_count"] > 0
+    client.post("/api/ledger/save", json={"target_a_id": b, "target_b_id": a})
+    saved = client.get("/api/ledger/saved").get_json()["data"]
+    assert len(saved) == 2
+    assert saved[0]["pair"]["target_a"]["name"] == "A"
+    assert saved[0]["row_count"] == first.get_json()["data"]["row_count"]
+    assert client.delete(f"/api/ledger/saved/{saved[0]['id']}").status_code == 200
+    assert len(client.get("/api/ledger/saved").get_json()["data"]) == 1
+    assert client.delete(f"/api/ledger/saved/{saved[0]['id']}").status_code == 404
+
+
+def test_save_ledger_writes_audit_rows(client, pair, bootstrap_key):
+    a, b = pair
+    client.post("/api/ledger/save", json={"target_a_id": a, "target_b_id": b})
+    saved_id = client.get("/api/ledger/saved").get_json()["data"][0]["id"]
+    client.delete(f"/api/ledger/saved/{saved_id}")
+    from app.infra import storage
+    conn = storage.connect(bootstrap_key)
+    events = [r["event_type"] for r in conn.execute(
+        "SELECT event_type FROM audit_log WHERE event_type LIKE 'LEDGER_%' "
+        "ORDER BY id").fetchall()]
+    conn.close()
+    assert events == ["LEDGER_SAVE", "LEDGER_DELETE"]
+
+
+def test_ledger_validation_and_auth(client, pair, app_data_dir, bootstrap_key):
+    a, b = pair
+    assert _ledger(client, a, a).status_code == 400        # same target twice
+    assert _ledger(client, a, 9999).status_code == 404     # unknown target
+    app = create_app()
+    app.config.update(TESTING=True, DB_KEY=bootstrap_key)
+    assert app.test_client().post(
+        "/api/ledger", json={"target_a_id": a, "target_b_id": b}).status_code == 401
+
+
+def test_deleting_a_target_cascades_its_saved_ledgers(client, pair):
+    a, b = pair
+    client.post("/api/ledger/save", json={"target_a_id": a, "target_b_id": b})
+    assert client.delete(f"/api/targets/{a}").status_code == 200
+    assert client.get("/api/ledger/saved").get_json()["data"] == []
+
+
 # ---- export workbook integration ----
+
+def test_export_pair_records_sheet_is_exhaustive(client, pair):
+    """The workbook lists EVERY ledger row -- no cap. The 50-row cap is a UI
+    affordance; the export is the exhaustive artifact."""
+    a, b = pair
+    saved = client.post("/api/ledger/save",
+                        json={"target_a_id": a, "target_b_id": b}).get_json()["data"]
+    wb = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
+    rows = list(wb["Pair records"].iter_rows(values_only=True))
+    assert rows[0] == tuple(
+        ["Ledger ID", "Dataset", "Pair", "Saved at", "Category", "Who", "Phone",
+         "Date & time", "Call type", "Duration (s)", "Other party",
+         "Other party name", "Also a target", "Area", "Distinctive"])
+    assert not any("onfidence" in str(h) or "trength" in str(h) for h in rows[0])
+    body = rows[1:]
+    assert len(body) == saved["row_count"]          # every row, none dropped
+    assert "A (100)" in body[0][2] and "B (200)" in body[0][2]
+
+    direct = [r for r in body if r[4] == "Direct contact"]
+    assert len(direct) == 4
+    assert direct[0][7] == "2026-01-01 09:00"       # date AND time
+    assert direct[0][8] == "out call (1)"           # wording (code) convention
+    assert direct[0][11] == "B"                     # other party NAMED
+    assert direct[0][12] == "yes"                   # ... and flagged as a target
+    assert direct[0][14] == "—"                     # distinctive n/a on a direct row
+
+    shared = [r for r in body if r[4] == "Shared contact"]
+    assert {r[14] for r in shared} == {"distinctive"}
+    assert any(r[4] == "Shared location" and r[13] == "Far" for r in body)
+
+
+def test_export_pair_records_placeholder_when_nothing_saved(client):
+    wb = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
+    rows = list(wb["Pair records"].iter_rows(values_only=True))
+    assert rows[1][0] == "none saved"
+
 
 def test_export_carries_saved_matches_and_tallies(client, pair):
     a, b = pair

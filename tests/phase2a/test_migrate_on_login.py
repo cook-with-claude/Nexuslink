@@ -39,6 +39,7 @@ def test_login_auto_upgrades_a_v0_database(client):
     conn = _open_raw(client)
     conn.execute("DROP TABLE IF EXISTS saved_pair_matches")
     conn.execute("DROP TABLE IF EXISTS saved_tallies")
+    conn.execute("DROP TABLE IF EXISTS saved_ledgers")
     conn.execute("PRAGMA user_version = 0")
     conn.commit()
     conn.close()
@@ -73,13 +74,15 @@ def test_login_against_too_new_db_fails_closed(client):
         client.get("/api/datasets")
 
 
-def test_v1_database_upgrades_in_place_to_v2(client):
-    """Migration 2 (saved_pair_matches + saved_tallies) applies to an existing v1
-    install without touching its data — the first real use of the ADR 0002 seam."""
+def test_v1_database_upgrades_in_place_to_latest(client):
+    """An existing v1 install walks the whole migration chain on next login without
+    touching its data — migration 2 (saved_pair_matches + saved_tallies) and
+    migration 3 (saved_ledgers). The ADR 0002 seam doing its job."""
     conn = _open_raw(client)
-    # Rewind to a genuine v1 state: drop migration 2's tables, restamp version 1.
+    # Rewind to a genuine v1 state: drop everything after migration 1, restamp.
     conn.execute("DROP TABLE IF EXISTS saved_pair_matches")
     conn.execute("DROP TABLE IF EXISTS saved_tallies")
+    conn.execute("DROP TABLE IF EXISTS saved_ledgers")
     conn.execute("PRAGMA user_version = 1")
     conn.execute(
         "INSERT INTO datasets (name, filename, imported_at, row_count, skipped_count) "
@@ -90,10 +93,10 @@ def test_v1_database_upgrades_in_place_to_v2(client):
     assert client.get("/api/datasets").status_code == 200  # get_db() migrates
 
     conn = _open_raw(client)
-    assert migrations.current_version(conn) == 2
+    assert migrations.current_version(conn) == _LATEST
     tables = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-    assert {"saved_pair_matches", "saved_tallies"} <= tables
+    assert {"saved_pair_matches", "saved_tallies", "saved_ledgers"} <= tables
     kept = conn.execute("SELECT name FROM datasets WHERE name='keep-me'").fetchone()
     assert kept is not None  # existing data survived the upgrade
     conn.close()

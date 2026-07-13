@@ -15,22 +15,45 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// --- minimal DOM shim: only what el("p", {class}, "text") exercises ---
+// --- minimal DOM shim ---
+// Covers what el() touches, plus the little more the ledger table needs:
+// clear() (firstChild/removeChild), classList, remove(), and dispatchable click
+// handlers so the "Expand all" behaviour can actually be exercised.
 globalThis.document = {
   createTextNode: (s) => ({ nodeType: 3, textContent: String(s) }),
   createElement: (tag) => ({
     tag,
     className: "",
     _children: [],
+    _listeners: {},
+    _parent: null,
+    classList: {
+      _set: new Set(),
+      add(c) { this._set.add(c); },
+      contains(c) { return this._set.has(c); },
+    },
     setAttribute() {},
-    addEventListener() {},
-    appendChild(c) { this._children.push(c); return c; },
+    addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); },
+    click() { for (const fn of this._listeners.click || []) fn(); },
+    appendChild(c) { c._parent = this; this._children.push(c); return c; },
+    removeChild(c) { this._children = this._children.filter((x) => x !== c); return c; },
+    remove() { if (this._parent) this._parent.removeChild(this); },
+    get firstChild() { return this._children[0] || null; },
     get textContent() { return this._children.map((c) => c.textContent).join(""); },
+    set textContent(v) { this._children = [{ nodeType: 3, textContent: String(v) }]; },
   }),
 };
 
+// Depth-first search of the shim tree (the real DOM's querySelector equivalent).
+function findAll(node, pred, out = []) {
+  if (pred(node)) out.push(node);
+  for (const c of node._children || []) findAll(c, pred, out);
+  return out;
+}
+
 const { bindingGates, bindingNote, detectionBlock, frequentAreasBlock,
-        strengthPill, matchFindingsBlock } = await import("./components.js");
+        strengthPill, matchFindingsBlock, ledgerTable,
+        LEDGER_PAGE } = await import("./components.js");
 
 const noteText = (result) => {
   const p = bindingNote(result);
@@ -263,4 +286,77 @@ test("matchFindingsBlock: payloads predating the adaptive gates render unchanged
   });
   assert.doesNotMatch(block.textContent, /confidence in this reading/);
   assert.doesNotMatch(block.textContent, /≈/);
+});
+
+// --- pair record ledger: the records themselves, never a verdict ---
+
+const LROW = (over = {}) => ({
+  category: "shared_contact", category_label: "Shared contact",
+  who: "A", who_phone: "100", timestamp: "2026-01-03T10:00:00",
+  call_type: 1, duration_seconds: 60,
+  other_party: "P1", other_party_name: null, other_party_is_target: false,
+  area: "Home", distinctive: true, ...over,
+});
+
+const ledgerPayload = (rows) => ({
+  pair: PAIR, rows, row_count: rows.length,
+  category_counts: rows.reduce((m, r) => ({ ...m, [r.category]: (m[r.category] || 0) + 1 }), {}),
+});
+
+test("ledgerTable: renders record detail — date, time, type, party, area", () => {
+  const block = ledgerTable(ledgerPayload([LROW()]));
+  assert.match(block.textContent, /2026-01-03 10:00:00/);   // date AND time
+  assert.match(block.textContent, /out call/);
+  assert.match(block.textContent, /A \(100\)/);
+  assert.match(block.textContent, /P1/);
+  assert.match(block.textContent, /distinctive/);
+});
+
+test("ledgerTable: a common item is listed, not hidden — and labelled", () => {
+  const block = ledgerTable(ledgerPayload([LROW({ other_party: "8880001", distinctive: false })]));
+  assert.match(block.textContent, /8880001/);
+  assert.match(block.textContent, /common/);
+});
+
+test("ledgerTable: a shared contact who is also a target is named and tagged", () => {
+  const block = ledgerTable(ledgerPayload([LROW({
+    other_party: "300", other_party_name: "Carlos", other_party_is_target: true,
+  })]));
+  assert.match(block.textContent, /Carlos \(300\)/);
+  assert.match(block.textContent, /target/);
+});
+
+test("ledgerTable: direct rows show an em-dash for distinctive (not 'common')", () => {
+  const block = ledgerTable(ledgerPayload([LROW({
+    category: "direct", category_label: "Direct contact", distinctive: null,
+    other_party: "200", other_party_name: "B", other_party_is_target: true,
+  })]));
+  assert.doesNotMatch(block.textContent, /common/);
+  assert.match(block.textContent, /—/);
+});
+
+test("ledgerTable: caps at LEDGER_PAGE rows and Expand all reveals the rest", () => {
+  const rows = Array.from({ length: LEDGER_PAGE + 25 }, (_, i) =>
+    LROW({ timestamp: `2026-01-01T10:${String(i % 60).padStart(2, "0")}:00` }));
+  const block = ledgerTable(ledgerPayload(rows));
+  const bodyRows = () => findAll(block, (n) => n.tag === "tr").length - 1;  // minus header
+  assert.equal(bodyRows(), LEDGER_PAGE);
+  assert.match(block.textContent, new RegExp(`first ${LEDGER_PAGE} of ${rows.length}`));
+  assert.match(block.textContent, /export contains every record/);
+
+  const expand = findAll(block, (n) => n.tag === "button")[0];
+  expand.click();
+  assert.equal(bodyRows(), rows.length);                    // every row now shown
+  assert.match(block.textContent, new RegExp(`all ${rows.length} records`));
+});
+
+test("ledgerTable: no strength pill anywhere — a record is not a verdict", () => {
+  const block = ledgerTable(ledgerPayload([LROW(), LROW({ category: "direct" })]));
+  const pills = findAll(block, (n) => (n.className || "").includes("pill"));
+  assert.equal(pills.length, 0);
+});
+
+test("ledgerTable: an empty ledger says so", () => {
+  const block = ledgerTable(ledgerPayload([]));
+  assert.match(block.textContent, /No records link these two targets/);
 });

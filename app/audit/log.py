@@ -28,6 +28,8 @@ PAIR_MATCH_SAVE = "PAIR_MATCH_SAVE"
 PAIR_MATCH_DELETE = "PAIR_MATCH_DELETE"
 TALLY_SAVE = "TALLY_SAVE"
 TALLY_DELETE = "TALLY_DELETE"
+LEDGER_SAVE = "LEDGER_SAVE"
+LEDGER_DELETE = "LEDGER_DELETE"
 
 
 def write_audit(conn, username: str, event_type: str, detail: dict | None = None) -> None:

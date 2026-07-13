@@ -98,6 +98,21 @@ sheet copies `result_json` — it never recomputes.
 Saved tallies accumulate (each is a different question) and are individually deletable from the
 Export screen.
 
+### `saved_ledgers` — click-to-save export staging (pair record ledger) — migration 3
+| Column | Type | Constraints |
+|---|---|---|
+| id | INTEGER | PK |
+| dataset_id | INTEGER | NOT NULL, FK → `datasets(id)` **ON DELETE CASCADE** |
+| target_a_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| target_b_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| created_at | TEXT | NOT NULL |
+| row_count | INTEGER | NOT NULL (denormalized so the Export screen lists ledgers without decoding the rows) |
+| rows_json | TEXT | NOT NULL (every ledger row, as computed server-side) |
+
+**No UNIQUE on the pair** — unlike `saved_pair_matches`, ledgers **accumulate**: a record listing is
+not a verdict, so saving the same pair twice is legitimate. The export's `Pair records` sheet copies
+`rows_json` exhaustively (no cap; the 50-row page is a UI affordance only).
+
 ### `audit_log` — in-DB (encrypted) audit trail
 | Column | Type | Constraints |
 |---|---|---|
@@ -119,3 +134,4 @@ Export screen.
 - The runner is auto-invoked on login via `app/api/guards.py:get_db()` (Phase 3 increment 3.1,
   ADR 0002). **Migration 2** (contact-matcher feature) added `saved_pair_matches` +
   `saved_tallies` — the seam's first real use; existing installs upgrade in place on next login.
+  **Migration 3** (pair record ledger) added `saved_ledgers`.

@@ -17,7 +17,7 @@ from flask import Blueprint, request
 from app.api.guards import current_username, get_db, login_required
 from app.api.responses import err, ok
 from app.audit import log as audit
-from app.matching import repo, service
+from app.matching import ledger, repo, service
 
 bp = Blueprint("matching", __name__, url_prefix="/api")
 
@@ -103,3 +103,74 @@ def delete_saved_match(match_id: int):
                       {"id": match_id})
     db.commit()
     return ok({"deleted": match_id})
+
+
+# ---- pair record ledger (the records themselves, not a verdict about them) ----
+# Its own feature: run/save/list/delete, its own staging table, its own export
+# sheet. Saved ledgers ACCUMULATE (a record listing saved twice is legitimate),
+# unlike pair matches, which replace on the same pair.
+
+@bp.post("/ledger")
+@login_required
+def run_ledger():
+    """Every record linking the pair. Stores NOTHING (pure read, like /match)."""
+    db = get_db()
+    pair, error = _pair_from_request(db)
+    if error is not None:
+        return error
+    return ok(ledger.compute_ledger(db, *pair))
+
+
+@bp.post("/ledger/save")
+@login_required
+def save_ledger():
+    """Recompute server-side and stage for export -- a client-authored payload can
+    never enter a report."""
+    db = get_db()
+    pair, error = _pair_from_request(db)
+    if error is not None:
+        return error
+    payload = ledger.compute_ledger(db, *pair)
+    ledger_id = repo.save_ledger(
+        db, payload["pair"]["dataset_id"],
+        payload["pair"]["target_a"]["id"], payload["pair"]["target_b"]["id"],
+        datetime.now(timezone.utc).isoformat(),
+        payload["row_count"], json.dumps(payload["rows"]),
+    )
+    audit.write_audit(db, current_username(), audit.LEDGER_SAVE,
+                      {"ledger_id": ledger_id, "rows": payload["row_count"],
+                       "target_a_id": payload["pair"]["target_a"]["id"],
+                       "target_b_id": payload["pair"]["target_b"]["id"]})
+    db.commit()
+    return ok({"id": ledger_id, **payload})
+
+
+@bp.get("/ledger/saved")
+@login_required
+def saved_ledgers():
+    """The staged ledgers. Row counts only -- the rows themselves can run to
+    thousands and the Export screen only lists what is staged; the workbook is
+    where the full listing goes."""
+    rows = repo.saved_ledgers(get_db())
+    return ok([{
+        "id": r["id"],
+        "dataset_id": r["dataset_id"],
+        "dataset_name": r["dataset_name"],
+        "created_at": r["created_at"],
+        "row_count": r["row_count"],
+        "pair": {
+            "target_a": {"name": r["name_a"], "phone_number": r["phone_a"]},
+            "target_b": {"name": r["name_b"], "phone_number": r["phone_b"]},
+        },
+    } for r in rows])
+
+
+@bp.delete("/ledger/saved/<int:ledger_id>")
+@login_required
+def delete_saved_ledger(ledger_id: int):
+    db = get_db()
+    if not repo.delete_ledger(db, ledger_id):
+        return err("NOT_FOUND", "saved ledger not found", 404)
+    audit.write_audit(db, current_username(), audit.LEDGER_DELETE, {"id": ledger_id})
+    db.commit()
+    return ok({"deleted": ledger_id})

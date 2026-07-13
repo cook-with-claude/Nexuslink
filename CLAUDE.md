@@ -32,7 +32,10 @@ app/
   datasets/     repo.py, validation.py (DOMAIN); routes.py (APPLICATION)
   targets/      repo.py (DOMAIN); routes.py (APPLICATION)
   analysis/     repo.py, bridge.py (DOMAIN); routes.py (APPLICATION)
-  matching/     repo.py, gates.py (DOMAIN, gates is pure); service.py; routes.py (APPLICATION)
+  matching/     repo.py, gates.py (DOMAIN, gates is pure); service.py (verdicts) +
+                ledger.py (the pair's RECORDS — own feature, same domain: it reuses the
+                same facts + the same distinctive/common classifier, so labels can't drift);
+                routes.py (APPLICATION)
   reporting/    export.py (DOMAIN); routes.py (APPLICATION) — cross-domain report composition,
                 deliberately OUTSIDE the domain-independence contract (it reads analysis+matching)
   audit/        log.py
@@ -64,7 +67,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **254 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **267 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
   every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's
