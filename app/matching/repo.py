@@ -121,11 +121,18 @@ def _direct_interactions(conn, dataset_id, phone_a, phone_b) -> list[dict]:
             _modality(record["call_type"]),
         )
         current = interactions.get(key)
-        if current is None or (
+        if current is None:
+            record["_source_record_ids"] = [record["record_id"]]
+            interactions[key] = record
+        elif (
             record["call_type"] in (1, 11)
             and current["call_type"] not in (1, 11)
         ):
+            record["_source_record_ids"] = [
+                *current["_source_record_ids"], record["record_id"]]
             interactions[key] = record
+        else:
+            current["_source_record_ids"].append(record["record_id"])
     return sorted(
         interactions.values(), key=lambda r: (r["timestamp"], r["record_id"])
     )

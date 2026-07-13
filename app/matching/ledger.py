@@ -123,7 +123,7 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
         record_id = record["record_id"]
         if record_id in seen_record_ids:
             return
-        seen_record_ids.add(record_id)
+        seen_record_ids.update(record.get("_source_record_ids", (record_id,)))
         total_row_count += 1
         counts[category] = counts.get(category, 0) + 1
         if len(rows) < LEDGER_ROW_CAP:
