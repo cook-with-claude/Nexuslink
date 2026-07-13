@@ -219,7 +219,7 @@ def _direct_finding(facts: dict) -> dict | None:
 
 
 def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
-                    mode: str, spread_median: int) -> dict | None:
+                    mode: str, spread_median: float) -> dict | None:
     contacts_a, contacts_b = facts["contacts_a"], facts["contacts_b"]
     shared = sorted(set(contacts_a) & set(contacts_b))
     if not shared:

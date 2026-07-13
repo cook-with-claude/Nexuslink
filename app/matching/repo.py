@@ -9,6 +9,8 @@ here.
 
 from __future__ import annotations
 
+from statistics import median
+
 # Inclusive co-presence pairing window (seconds). 60 minutes, per the matcher
 # design spec; gates.py owns the *rating* thresholds, this is the raw pairing rule.
 CO_PRESENCE_WINDOW_SECONDS = 3600
@@ -250,21 +252,18 @@ def dataset_interconnectedness(conn, dataset_id, hub_ubiquity_fraction) -> dict:
     hub_filtered_spread = (
         _SHARED_SPREAD + " AND COUNT(DISTINCT phone_number) <= ?"
     )
-    agg = conn.execute(
-        f"SELECT COUNT(*) AS parties, COALESCE(SUM(k * (k - 1) / 2), 0) AS overlap "
-        f"FROM ({hub_filtered_spread})",
-        (dataset_id, hub_ceiling),
-    ).fetchone()
+    spreads = [
+        row["k"] for row in conn.execute(
+            f"SELECT k FROM ({hub_filtered_spread}) ORDER BY k",
+            (dataset_id, hub_ceiling),
+        ).fetchall()
+    ]
+    overlap = sum(k * (k - 1) // 2 for k in spreads)
     pairs = n * (n - 1) // 2
-    median = 2  # no shared contacts at all -> mode is strangers, base unused
-    if agg["parties"]:
-        median = conn.execute(
-            f"SELECT k FROM ({hub_filtered_spread}) ORDER BY k LIMIT 1 OFFSET ?",
-            (dataset_id, hub_ceiling, (agg["parties"] - 1) // 2),
-        ).fetchone()["k"]
+    spread_median = median(spreads) if spreads else 2
     return {
-        "dataset_density": (agg["overlap"] / pairs) if pairs else 0.0,
-        "contact_spread_median": median,
+        "dataset_density": (overlap / pairs) if pairs else 0.0,
+        "contact_spread_median": spread_median,
     }
 
 
