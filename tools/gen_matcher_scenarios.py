@@ -7,9 +7,9 @@ Two workbooks land in the repo root:
   as the binding gate, the commonality discount + floor, the disjoint-window
   caveat, the shared-area detail row, and no-link.
 - sample_matcher_closeknit.xlsx   -- a CLOSE-KNIT-mode dataset (12 subscribers,
-  everyone shares the same 8 community contacts): any ordinary pair rates
-  Medium (real mutuals, group-wide fabric), and one standout pair (members 11
-  and 12) shares 3 rare private mutuals and rates High.
+  overlapping six-member community circles): reviewed ordinary pairs each have
+  one pair-specific mutual and rate Medium, while members 11 and 12 share 3 rare
+  private mutuals and rate High. No ubiquitous hub drives the mode or a finding.
 
 Every expected outcome is asserted against app.matching.service.compute_match
 (and every row against the import validator) BEFORE a workbook is written, so
@@ -32,7 +32,7 @@ CLOSEKNIT_OUTPUT = REPO_ROOT / "sample_matcher_closeknit.xlsx"
 
 from app.datasets.validation import validate_row  # noqa: E402
 from app.infra.phase1 import REQUIRED_COLUMNS  # noqa: E402
-from app.matching import service  # noqa: E402
+from app.matching import gates, repo, service  # noqa: E402
 
 
 class Dataset:
@@ -248,29 +248,31 @@ STRANGERS_SHARED_AREA = {"P15": ["P15_STADIUM"]}
 
 
 # =============================================================== close-knit ==
-FABRIC = [f"444500{i}" for i in range(1, 9)]       # the whole group's contacts
-RARE = ["4446001", "4446002", "4446003"]           # only members 11+12
+FABRIC_A = [f"44451{i:02d}" for i in range(1, 6)]   # members 1-6
+FABRIC_B = [f"44452{i:02d}" for i in range(1, 6)]   # members 7-12
+BRIDGES = [f"44453{i:02d}" for i in range(1, 5)]    # members 3/4/5 + 7/8/9
+ORDINARY_RARE = "4446001"                          # only members 1+2
+CROSS_RARE = "4446002"                             # only members 3+7
+STANDOUT_RARE = ["4446011", "4446012", "4446013"]  # only members 11+12
 
 
 def build_closeknit() -> Dataset:
-    """12 clique members. Everyone calls the same 8 community contacts, so ANY
-    pair shares 8 contacts -- in strangers rules that would all be discounted
-    (or suppress the finding); close-knit mode rates it Medium. Members 11+12
-    additionally share 3 rare private mutuals -> High."""
+    """12 members connected by non-hub six-person community contacts."""
     ds = Dataset("closeknit")
     members = [f"44400{i:02d}" for i in range(1, 13)]
     for m, phone in enumerate(members, start=1):
-        personal = [f"4447{m:02d}{j}" for j in (1, 2)]
+        contacts = list(FABRIC_A if m <= 6 else FABRIC_B)
+        if m in (3, 4, 5, 7, 8, 9):
+            contacts.extend(BRIDGES)
+        if m in (1, 2):
+            contacts.append(ORDINARY_RARE)
+        if m in (3, 7):
+            contacts.append(CROSS_RARE)
         if m in (11, 12):
-            for j, party in enumerate(RARE):
-                for i in range(3):
-                    ds.add(phone, 3 + j * 9 + i * 3, 18 + j, (m * 7 + i) % 60,
-                           home(phone), 1, party)
-            ds.own_traffic(phone, home(phone), FABRIC, 40)
-            ds.own_traffic(phone, home(phone), personal, 8, hour0=13)
-        else:
-            ds.own_traffic(phone, home(phone), FABRIC, 40)
-            ds.own_traffic(phone, home(phone), personal, 16, hour0=13)
+            contacts.extend(STANDOUT_RARE)
+        personal = [f"4447{m:02d}{j}" for j in (1, 2)]
+        ds.own_traffic(phone, home(phone), contacts, 50)
+        ds.own_traffic(phone, home(phone), personal, 10, hour0=13)
     return ds
 
 
@@ -286,9 +288,94 @@ CLOSEKNIT_EXPECT = {
 }
 
 
+# =============================================== isolated hardening scenarios ==
+# Dataset-level cases cannot coexist in one workbook: a five-subscriber small-N
+# population and a 100-subscriber hub population are mutually exclusive facts.
+# They still run through the real engine before either workbook is written.
+def build_hub_flip():
+    ds = Dataset("hub-flip")
+    services = ["9009001", "9009002", "9009003"]
+    phones = [f"901{i:04d}" for i in range(100)]
+    for index, phone in enumerate(phones):
+        for offset, service_number in enumerate(services):
+            ds.add(phone, 2 + offset, 9 + offset, index % 60,
+                   home(phone), 1, service_number)
+    return ds, phones[0], phones[1]
+
+
+def build_double_sided_direct():
+    ds = Dataset("double-sided-direct")
+    phone_a, phone_b = "9020001", "9020002"
+    for index, day in enumerate((2, 6, 10, 14, 18)):
+        call_type = 1 if index < 4 else 11
+        incoming_type = 2 if call_type == 1 else 22
+        ds.add(phone_a, day, 10, 0, home(phone_a), call_type, phone_b)
+        ds.add(phone_b, day, 10, 0, home(phone_b), incoming_type, phone_a)
+    return ds, phone_a, phone_b
+
+
+def build_location_heavy_sample():
+    ds = Dataset("location-heavy-sample")
+    phone_a, phone_b = "9030001", "9030002"
+    for offset, party in enumerate(("9039001", "9039002")):
+        ds.add(phone_a, 1 + offset, 9, 0, home(phone_a), 1, party)
+        ds.add(phone_b, 1 + offset, 10, 0, home(phone_b), 1, party)
+    for index in range(48):
+        day = 3 + index % 26
+        ds.add(phone_a, day, 8 + index % 10, index % 60,
+               home(phone_a), 1, None)
+        ds.add(phone_b, day, 8 + index % 10, index % 60,
+               home(phone_b), 1, None)
+    return ds, phone_a, phone_b
+
+
+def build_even_median_spread():
+    ds = Dataset("even-median-spread")
+    phones = [f"904{i:04d}" for i in range(100)]
+    for index, phone in enumerate(phones):
+        for offset, hub in enumerate(("9049001", "9049002")):
+            ds.add(phone, 2 + offset, 8 + offset, index % 60, home(phone), 1, hub)
+    for rare in ("9049101", "9049102"):
+        ds.add(phones[0], 5, 10, 0, home(phones[0]), 1, rare)
+        ds.add(phones[1], 5, 11, 0, home(phones[1]), 1, rare)
+    ds.own_traffic(phones[0], home(phones[0]), own_contacts(phones[0], 2), 20)
+    ds.own_traffic(phones[1], home(phones[1]), own_contacts(phones[1], 2), 20)
+    return ds, phones[0], phones[1]
+
+
+def build_small_n_cap():
+    ds = Dataset("small-N-cap")
+    phone_a, phone_b = "9050001", "9050002"
+    shared = ["9059001", "9059002"]
+    ds.own_traffic(phone_a, home(phone_a), shared, 50)
+    ds.own_traffic(phone_b, home(phone_b), shared, 50)
+    for index in range(3):
+        phone = f"905001{index}"
+        ds.own_traffic(phone, home(phone), own_contacts(phone, 2), 20)
+    return ds, phone_a, phone_b
+
+
+def build_midnight_straddle():
+    ds = Dataset("midnight-straddle")
+    phone_a, phone_b = "9060001", "9060002"
+    ds.add(phone_a, 1, 23, 40, "NIGHT_CAFE", 1, "9069001")
+    ds.add(phone_a, 2, 0, 20, "NIGHT_CAFE", 1, "9069001")
+    ds.add(phone_b, 1, 23, 50, "NIGHT_CAFE", 1, "9069002")
+    ds.add(phone_b, 2, 0, 10, "NIGHT_CAFE", 1, "9069002")
+    return ds, phone_a, phone_b
+
+
+def build_two_meetings_one_day():
+    ds = Dataset("two-meetings-one-day")
+    phone_a, phone_b = "9070001", "9070002"
+    for hour in (9, 18):
+        ds.add(phone_a, 8, hour, 0, "DAY_CAFE", 1, "9079001")
+        ds.add(phone_b, 8, hour, 10, "DAY_CAFE", 1, "9079002")
+    return ds, phone_a, phone_b
+
+
 # ============================================================= verification ==
-def verify(ds: Dataset, pairs, expect, expect_mode,
-           caveat_pairs=frozenset(), shared_area=None):
+def _connection(ds: Dataset):
     bad = [(r, reason) for r in ds.rows
            for _, reason in [validate_row(r)] if reason is not None]
     if bad:
@@ -299,22 +386,129 @@ def verify(ds: Dataset, pairs, expect, expect_mode,
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute(
-        "CREATE TABLE cdr_records (dataset_id INTEGER, phone_number TEXT, imei TEXT,"
-        " area TEXT, timestamp TEXT, call_type INTEGER, duration_seconds INTEGER,"
-        " other_party TEXT, other_imei TEXT, other_area TEXT)")
+        "CREATE TABLE cdr_records (id INTEGER PRIMARY KEY, dataset_id INTEGER, "
+        "phone_number TEXT, imei TEXT, area TEXT, timestamp TEXT, call_type INTEGER, "
+        "duration_seconds INTEGER, other_party TEXT, other_imei TEXT, other_area TEXT)")
     conn.executemany(
-        "INSERT INTO cdr_records VALUES (1, :phone_number, :imei, :area, :timestamp,"
-        " :call_type, :duration_seconds, :other_party, :other_imei, :other_area)",
+        "INSERT INTO cdr_records (dataset_id, phone_number, imei, area, timestamp, "
+        "call_type, duration_seconds, other_party, other_imei, other_area) "
+        "VALUES (1, :phone_number, :imei, :area, :timestamp, :call_type, "
+        ":duration_seconds, :other_party, :other_imei, :other_area)",
         [{**r, "other_party": r["other_party"] or None} for r in ds.rows])
+    return conn
+
+
+def _compute(conn, scenario, phone_a, phone_b):
+    target_a = {
+        "id": 1, "name": f"{scenario}-A", "dataset_id": 1,
+        "phone_number": phone_a,
+    }
+    target_b = {
+        "id": 2, "name": f"{scenario}-B", "dataset_id": 1,
+        "phone_number": phone_b,
+    }
+    return service.compute_match(conn, target_a, target_b)
+
+
+def verify_hardening_scenarios():
+    failures = []
+
+    def check(condition, message):
+        if not condition:
+            failures.append(message)
+
+    def findings(result):
+        return {finding["type"]: finding for finding in result["findings"]}
+
+    cases = [
+        ("hub-flip", build_hub_flip),
+        ("double-sided-direct", build_double_sided_direct),
+        ("location-heavy-sample", build_location_heavy_sample),
+        ("even-median-spread", build_even_median_spread),
+        ("small-N-cap", build_small_n_cap),
+        ("midnight-straddle", build_midnight_straddle),
+        ("two-meetings-one-day", build_two_meetings_one_day),
+    ]
+    for scenario, builder in cases:
+        ds, phone_a, phone_b = builder()
+        conn = _connection(ds)
+        result = _compute(conn, scenario, phone_a, phone_b)
+        got = findings(result)
+
+        if scenario == "hub-flip":
+            check(result["dataset_context"]["mode"] == "strangers",
+                  "hub-flip: ubiquitous services changed the dataset to close-knit")
+            check("mutual_contacts" not in got,
+                  "hub-flip: hub-only overlap produced a mutual finding")
+        elif scenario == "double-sided-direct":
+            direct = got.get("direct_contact")
+            check(direct is not None, "double-sided-direct: direct finding absent")
+            if direct:
+                evidence = direct["evidence"]
+                check(direct["strength"] == "Medium",
+                      f"double-sided-direct: strength {direct['strength']}, expected Medium")
+                check((evidence["total"], evidence["calls"], evidence["sms"]) == (5, 4, 1),
+                      f"double-sided-direct: deduped counts are {evidence}")
+                check((evidence["a_to_b"], evidence["b_to_a"]) == (5, 0),
+                      f"double-sided-direct: direction split is {evidence}")
+        elif scenario == "location-heavy-sample":
+            mutual = got.get("mutual_contacts")
+            check(mutual is not None, "location-heavy-sample: mutual finding absent")
+            if mutual:
+                check(mutual["evidence"]["gates"]["sample"] == "Low",
+                      "location-heavy-sample: location pings inflated mutual sample")
+                check("sample" in mutual["bound_by"],
+                      f"location-heavy-sample: bound_by {mutual['bound_by']}")
+        elif scenario == "even-median-spread":
+            mode_facts = repo.dataset_interconnectedness(
+                conn, 1, gates.HUB_UBIQUITY_FRACTION)
+            check(mode_facts["contact_spread_median"] == 51,
+                  f"even-median-spread: median {mode_facts['contact_spread_median']}")
+        elif scenario == "small-N-cap":
+            mutual = got.get("mutual_contacts")
+            check(mutual is not None, "small-N-cap: mutual finding absent")
+            if mutual:
+                check(mutual["strength"] == "Medium",
+                      f"small-N-cap: strength {mutual['strength']}, expected Medium")
+                check(mutual["bound_by"] == ["comparison population"],
+                      f"small-N-cap: bound_by {mutual['bound_by']}")
+        elif scenario == "midnight-straddle":
+            events = got["co_presence"]["evidence"]["events"]
+            check(len(events) == 1,
+                  f"midnight-straddle: {len(events)} sessions, expected 1")
+            if events:
+                check(
+                    (events[0]["a_time"], events[0]["b_time"])
+                    == ("2026-05-01T23:40:00", "2026-05-01T23:50:00"),
+                    f"midnight-straddle: representative pair {events[0]}",
+                )
+        elif scenario == "two-meetings-one-day":
+            events = got["co_presence"]["evidence"]["events"]
+            check(len(events) == 2,
+                  f"two-meetings-one-day: {len(events)} sessions, expected 2")
+            check([event["a_time"][11:16] for event in events] == ["09:00", "18:00"],
+                  f"two-meetings-one-day: representative times {events}")
+
+        print(f"{scenario:<24} verified ({len(ds.rows)} rows)")
+        conn.close()
+
+    if failures:
+        print("HARDENING FAILURES:")
+        for failure in failures:
+            print(" -", failure)
+        sys.exit(1)
+
+
+def verify(ds: Dataset, pairs, expect, expect_mode,
+           caveat_pairs=frozenset(), shared_area=None):
+    conn = _connection(ds)
 
     n_users = conn.execute(
         "SELECT COUNT(DISTINCT phone_number) n FROM cdr_records").fetchone()["n"]
     failures, summary = [], []
     mode_line = None
     for scen, (pa, pb) in pairs.items():
-        ta = {"id": 1, "name": f"{scen}-A", "dataset_id": 1, "phone_number": pa}
-        tb = {"id": 2, "name": f"{scen}-B", "dataset_id": 1, "phone_number": pb}
-        result = service.compute_match(conn, ta, tb)
+        result = _compute(conn, scen, pa, pb)
         ctx = result["dataset_context"]
         mode_line = (f"{ctx['mode']} ({ctx['classification']}, "
                      f"avg {ctx['avg_shared_contacts_per_pair']} shared/pair)")
@@ -352,6 +546,8 @@ def verify(ds: Dataset, pairs, expect, expect_mode,
             ["no link" + (" + shared-area detail" if want_detail else "")])
         summary.append(f"{scen:<12} {pa} vs {pb:<9} -> {'; '.join(parts)}")
 
+    conn.close()
+
     print(f"\n== {ds.name}: {len(ds.rows)} rows, {n_users} subscribers, "
           f"mode {mode_line} ==")
     for s in summary:
@@ -382,6 +578,8 @@ if __name__ == "__main__":
            STRANGERS_CAVEAT, STRANGERS_SHARED_AREA)
     closeknit = build_closeknit()
     verify(closeknit, CLOSEKNIT_PAIRS, CLOSEKNIT_EXPECT, "close-knit")
+    print("\n== isolated method-hardening scenarios ==")
+    verify_hardening_scenarios()
     write_xlsx(strangers, STRANGERS_OUTPUT)
     write_xlsx(closeknit, CLOSEKNIT_OUTPUT)
     print("OK")

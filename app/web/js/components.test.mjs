@@ -303,9 +303,10 @@ const LROW = (over = {}) => ({
   area: "Home", distinctive: true, ...over,
 });
 
-const ledgerPayload = (rows) => ({
+const ledgerPayload = (rows, over = {}) => ({
   pair: PAIR, rows, row_count: rows.length,
   category_counts: rows.reduce((m, r) => ({ ...m, [r.category]: (m[r.category] || 0) + 1 }), {}),
+  ...over,
 });
 
 test("ledgerTable: renders record detail — date, time, type, party, area", () => {
@@ -351,13 +352,24 @@ test("ledgerTable: caps at LEDGER_PAGE rows and Expand all reveals the rest", ()
   const bodyRows = () => findAll(block, (n) => n.tag === "tr").length - 2;
   assert.equal(bodyRows(), LEDGER_PAGE);
   assert.match(block.textContent, new RegExp(`first ${LEDGER_PAGE} of ${rows.length}`));
-  assert.match(block.textContent, /export contains every record/);
+  assert.doesNotMatch(block.textContent, /export contains every record/);
 
   // the header sort toggles are buttons too, so pick the Expand control by class
   const expand = findAll(block, (n) => (n.className || "").startsWith("btn"))[0];
   expand.click();
   assert.equal(bodyRows(), rows.length);                    // every row now shown
   assert.match(block.textContent, new RegExp(`all ${rows.length} record`));
+});
+
+test("ledgerTable: discloses a server-capped listing", () => {
+  const rows = [LROW(), LROW({ timestamp: "2026-01-04T10:00:00" })];
+  const block = ledgerTable(ledgerPayload(rows, {
+    row_count: 12, shown_row_count: 2, truncated: true,
+    cap_note: "2 of 12 rows shown; listing capped",
+    category_counts: { shared_contact: 12 },
+  }));
+  assert.match(block.textContent, /2 of 12 rows shown; listing capped/);
+  assert.match(block.textContent, /12 record\(s\): 12 shared contact/);
 });
 
 test("ledgerTable: renders a column filter row (the records sheet's pattern)", () => {

@@ -8,10 +8,10 @@ contact matcher can produce** — one per dataset mode (adaptive gates, spec
   dataset: pairs P01–P15 cover each finding type at every strength, every gate as
   the binding (weakest) gate, the common-contact/common-area discount, the
   disjoint-window caveat, the shared-area detail row, and no-link.
-- **`sample_matcher_closeknit.xlsx`** (674 rows, 12 subscribers) — a **close-knit**
-  dataset: everyone shares the same 8 community contacts, so *any* pair rates
-  Medium (real mutuals, group-wide fabric — where the old fixed cutoff would have
-  said "no link"); members 11+12 share 3 rare private mutuals and rate High.
+- **`sample_matcher_closeknit.xlsx`** (720 rows, 12 subscribers) — a **close-knit**
+  dataset: overlapping six-member community contacts establish the mode without
+  ubiquitous hubs; each reviewed ordinary pair has one rarer shared contact and
+  rates Medium, while members 11+12 have 3 rare private mutuals and rate High.
 
 Every expected outcome below was verified by running the generated rows through the
 real engine (`app.matching.service.compute_match`) before the workbooks were written
@@ -47,13 +47,39 @@ scenario number (compare `5550101` with `5550102`, and so on).
 
 | Pair | Phones | Expected findings |
 |------|--------------------|------------------------------------------|
-| CK-ordinary | 4440001 / 4440002 | Mutual **Medium** [distinctiveness] — 8 shared contacts, all group fabric |
-| CK-cross | 4440003 / 4440007 | Mutual **Medium** [distinctiveness] — any clique pair reads the same way |
-| CK-standout | 4440011 / 4440012 | Mutual **High** — 8 fabric + **3 rare private mutuals** (4446001–03) |
+| CK-ordinary | 4440001 / 4440002 | Mutual **Medium** [distinctiveness] — 5 six-member fabric contacts + 1 pair-specific mutual |
+| CK-cross | 4440003 / 4440007 | Mutual **Medium** [distinctiveness] — 4 bridge contacts + 1 pair-specific mutual across the two circles |
+| CK-standout | 4440011 / 4440012 | Mutual **High** — 5 six-member fabric contacts + **3 rare private mutuals** (4446011–13) |
 
-The dataset-mode line should read **close-knit — High confidence (avg ≈ 8 shared
-contacts per pair)**. Import the strangers file next to it and compare: same
-"everyone shares contacts" evidence, opposite rules, both explained on screen.
+The dataset-mode line should read **close-knit — Medium confidence (avg 3.26
+non-hub shared contacts per pair)**. No contact used by more than half the 12
+subscribers contributes to that mode reading.
+
+## Isolated method-hardening scenarios
+
+These dataset-level checks run in memory through the real engine before either
+workbook is written. They cannot all coexist in one import: the small-N case must
+have exactly 5 subscribers, while the hub case needs 100.
+
+| Scenario | Population / records | Required outcome |
+|----------|----------------------|------------------|
+| hub-flip | 100 unrelated subscribers sharing 3 services | **Strangers** mode; no mutual finding from hubs alone |
+| double-sided-direct | 5 physical interactions stored as 10 mirrored CDR legs | Direct total **5**, 4 calls + 1 SMS, **Medium**, A→B only |
+| location-heavy-sample | 2 contact rows + 48 location-only rows per side | Mutual sample **Low**; location pings do not clear N |
+| even-median-spread | shared-contact spreads `[2, 2, 100, 100]` | True median **51**; the k=100 hubs do not inflate mode density |
+| small-N-cap | 5 subscribers; otherwise all-High mutual evidence | Mutual **Medium** [comparison population] |
+| midnight-straddle | 4 hits around midnight in one continuous session | Exactly **1** event; representative times are one actual matched pair |
+| two-meetings-one-day | morning and evening hits in the same area/day | Exactly **2** temporal sessions |
+
+### Threshold recalibration status
+
+The new bases were reviewed against the regenerated scenarios. `DIRECT_HIGH /
+DIRECT_MEDIUM = 10 / 3` remains a proposal: 5 physical interactions (10 mirrored
+rows) now correctly rates Medium, while the 12-interaction fixture pairs remain
+High. `N_HIGH / N_MEDIUM = 50 / 15` also remains a proposal on the stricter
+finding-relevant populations: 10 relevant rows stays Low, 15 is Medium, and the
+well-sampled fixture pairs still clear 50. These values are retained for
+co-founder/domain ratification, not silently treated as final constants.
 
 ## How the datasets are constructed
 
@@ -65,14 +91,14 @@ contacts per pair)**. Import the strangers file next to it and compare: same
   the `COMMON_MIN_USERS=3` floor is far exceeded — this file exercises the
   percentage arm of the rule; the floor's tiny-population arm is covered by
   `tests/phase2a/test_matching.py`).
-- Subscribers meant to pass the sample gate carry ≥ 50 records (`N_HIGH`); the
-  P12 thin side has exactly 10 (< `N_MEDIUM` 15). All spans cover May 1–30 except
-  P13's deliberately disjoint halves.
-- Meet-up events are one per (area, day), 30 minutes apart — inside the 60-minute
-  inclusive pairing window; P15's stadium visits are hours apart, outside it.
-- In the close-knit file, the 8 fabric contacts are called by all 12 members
-  (spread 12 = the dataset's median shared spread → not rare), while `4446001–03`
-  are called only by members 11+12 (spread 2 → rare).
+- Subscribers meant to pass the mutual sample gate carry ≥ 50 contact-bearing
+  rows; co-presence uses located rows. The P12 thin side has exactly 10 relevant
+  rows (< `N_MEDIUM` 15). All spans cover May 1–30 except P13's disjoint halves.
+- Meet-up hits are 30 minutes apart and sessionized per area with a 60-minute
+  maximum gap. P15's stadium visits are hours apart and remain a detail only.
+- In the close-knit file, 14 fabric/bridge contacts are each called by exactly 6
+  members (the 50% hub ceiling is inclusive). Pair-specific contacts have spread
+  2, below the dataset's median shared spread of 6, so they are distinctive.
 
 Generator: `tools/gen_matcher_scenarios.py`. It validates every row with
 `app.datasets.validation.validate_row` and asserts the full expectation tables

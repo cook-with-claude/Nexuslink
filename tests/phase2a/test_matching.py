@@ -13,7 +13,8 @@ import pytest
 from openpyxl import load_workbook
 
 from app import create_app
-from app.matching import gates
+from app.matching import gates, ledger
+from app.reporting import export as reporting_export
 
 COLUMNS = ["phone_number", "imei", "area", "timestamp", "call_type",
            "duration_seconds", "other_party", "other_imei", "other_area"]
@@ -28,13 +29,13 @@ COLUMNS = ["phone_number", "imei", "area", "timestamp", "call_type",
 #   contacts: A={P1,P2,P9,PA}, B={P1,P2,P9,PB}; shared={P1,P2,P9};
 #             P9 has 2 other users -- under the floor of 3, so DISTINCTIVE here
 #             (the floor protecting a tiny population); P1/P2 distinctive too.
-#   co-presence: Cafe 01-03 (two pairings, one day -> ONE event, distinctive),
+#   co-presence: Cafe 01-03 (two pairings, one session -> ONE event, distinctive),
 #             Edge 01-06 (exactly 3600s apart -> inclusive window counts),
 #             Downtown 01-05 (300+400 have rows there -- 2 others, under the
 #             floor of 3, so distinctive in this tiny population),
 #             Far 01-07 (3660s apart -> NOT an event). Total 3 events.
-#   samples:  n_a=11, n_b=10 -> sample gate Low (N_MEDIUM=15) binds both
-#             indirect findings; direct is volume-rated and stays Medium.
+#   samples:  mutual uses contact rows (6/6), co-presence uses located rows
+#             (11/10) -> both Low (< N_MEDIUM=15); direct stays Medium.
 ROWS = [
     # direct A<->B
     ("100", "iA", "Home", "2026-01-01T09:00:00", 1, 60, "200", "", ""),
@@ -181,6 +182,18 @@ def test_sample_gate_binds_indirect_findings():
     assert "sample" in f["co_presence"]["bound_by"]
 
 
+def test_each_indirect_finding_uses_its_relevant_sample_population():
+    result = gates.build_findings(_facts(
+        n_a=100, n_b=100,
+        contact_n_a=2, contact_n_b=60,
+        located_n_a=60, located_n_b=60,
+    ))
+    f = _by_type(result)
+    assert f["mutual_contacts"]["evidence"]["gates"]["sample"] == "Low"
+    assert "sample" in f["mutual_contacts"]["bound_by"]
+    assert f["co_presence"]["evidence"]["gates"]["sample"] == "High"
+
+
 def test_window_overlap_gate_binds():
     # B observed for 30 days but only the last 3 overlap A -> ratio 3/30 = 0.1.
     result = gates.build_findings(_facts(
@@ -301,6 +314,12 @@ def test_commonality_floor_still_discounts_at_scale():
 def test_small_population_caveat():
     r = gates.build_findings(_facts(other_users=5))
     assert any("too few" in c for c in r["caveats"])
+    f = _by_type(r)
+    assert f["direct_contact"]["strength"] == "High"
+    assert f["mutual_contacts"]["strength"] == "Medium"
+    assert f["mutual_contacts"]["bound_by"] == ["comparison population"]
+    assert f["co_presence"]["strength"] == "Medium"
+    assert f["co_presence"]["bound_by"] == ["comparison population"]
     r = gates.build_findings(_facts(other_users=10))
     assert not any("too few" in c for c in r["caveats"])
 
@@ -338,14 +357,10 @@ def _ck_facts(**over):
     return _facts(dataset_density=4.0, contact_spread_median=6, **over)
 
 
-def test_close_knit_group_wide_overlap_rates_medium_never_suppressed():
-    """In a clique, sharing only the group's common fabric is still a REAL mutual
-    relationship: solid overlap, nothing pair-specific -> Medium bound by
-    distinctiveness, never 'no link'."""
+def test_close_knit_hub_only_overlap_is_suppressed():
+    """Close-knit mode cannot turn group-wide hubs into a relationship."""
     facts = _ck_facts(contact_commonality={"P1": 6, "P2": 8, "P3": 7})
-    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
-    assert f["strength"] == "Medium"
-    assert f["bound_by"] == ["distinctiveness"]
+    assert "mutual_contacts" not in _by_type(gates.build_findings(facts))
 
 
 def test_close_knit_rare_shared_contacts_rate_high():
@@ -356,13 +371,10 @@ def test_close_knit_rare_shared_contacts_rate_high():
     assert f["strength"] == "High"
 
 
-def test_close_knit_single_shared_contact_fires():
-    # The >=2-distinctive suppression floor is strangers-mode only. One shared
-    # group-wide contact is trivial overlap -> Low, but it FIRES.
+def test_close_knit_single_group_wide_contact_is_suppressed():
     facts = _ck_facts(contacts_a={"P1": 5}, contacts_b={"P1": 2},
                       contact_commonality={"P1": 6})
-    f = _by_type(gates.build_findings(facts))["mutual_contacts"]
-    assert f["strength"] == "Low"
+    assert "mutual_contacts" not in _by_type(gates.build_findings(facts))
 
 
 def test_close_knit_one_rare_contact_rates_medium_with_a_near_note():
@@ -481,6 +493,43 @@ def test_match_fixture_findings(client, pair):
     assert any("too few" in c for c in data["caveats"])
 
 
+def test_mirrored_direct_legs_count_once_in_finding_and_ledger(client, tmp_path):
+    rows = []
+    for index, day in enumerate((1, 2, 3, 4, 5)):
+        outgoing = 1 if index < 4 else 11
+        incoming = 2 if outgoing == 1 else 22
+        timestamp = f"2026-01-{day:02d}T10:00:00"
+        rows.extend([
+            ("100", "iA", "Shared", timestamp, outgoing, 60, "200", "", ""),
+            ("200", "iB", "Shared", timestamp, incoming, 60, "100", "", ""),
+        ])
+    path = tmp_path / "mirrored.xlsx"
+    pd.DataFrame(rows, columns=COLUMNS).to_excel(path, index=False, engine="openpyxl")
+    with open(path, "rb") as fh:
+        upload = {"name": "mirrored", "file": (io.BytesIO(fh.read()), path.name)}
+    dataset = client.post(
+        "/api/imports", data=upload, content_type="multipart/form-data"
+    ).get_json()["data"]["dataset_id"]
+    target_a = _mk_target(client, dataset, "A", "100")
+    target_b = _mk_target(client, dataset, "B", "200")
+
+    finding = _by_type(_match(client, target_a, target_b).get_json()["data"])[
+        "direct_contact"
+    ]
+    assert finding["strength"] == "Medium"
+    assert finding["evidence"]["total"] == 5
+    assert finding["evidence"]["calls"] == 4
+    assert finding["evidence"]["sms"] == 1
+    assert finding["evidence"]["a_to_b"] == 5
+    assert finding["evidence"]["b_to_a"] == 0
+
+    ledger_rows = _ledger(client, target_a, target_b).get_json()["data"]["rows"]
+    direct_rows = [row for row in ledger_rows if row["category"] == "direct"]
+    assert len(direct_rows) == 5
+    assert len(ledger_rows) == 5
+    assert all(row["who_phone"] == "100" for row in direct_rows)
+
+
 def test_match_is_byte_symmetric_across_midnight(client, dataset_id, tmp_path):
     """A-vs-B and B-vs-A must be identical. Midnight-straddling meet-ups used to
     dedupe differently depending on whose calendar day keyed the event."""
@@ -501,6 +550,10 @@ def test_match_is_byte_symmetric_across_midnight(client, dataset_id, tmp_path):
     b = _mk_target(client, ds, "B", "200")
     ab = _match(client, a, b).get_json()["data"]
     ba = _match(client, b, a).get_json()["data"]
+    events = _by_type(ab)["co_presence"]["evidence"]["events"]
+    assert len(events) == 1
+    assert (events[0]["a_time"], events[0]["b_time"]) == (
+        "2026-01-02T00:30:00", "2026-01-02T00:20:00")
     ab.pop("computed_at"), ba.pop("computed_at")
     assert ab == ba
 
@@ -758,6 +811,29 @@ def test_save_ledger_accumulates_and_deletes(client, pair):
     assert client.delete(f"/api/ledger/saved/{saved[0]['id']}").status_code == 404
 
 
+def test_saved_ledger_cap_is_disclosed_in_api_card_data_and_export(
+        client, pair, monkeypatch):
+    monkeypatch.setattr(ledger, "LEDGER_ROW_CAP", 2)
+    a, b = pair
+    live = _ledger(client, a, b).get_json()["data"]
+    assert live["row_count"] > live["shown_row_count"] == 2
+    assert live["truncated"] is True
+    assert live["cap_note"] == f"2 of {live['row_count']} rows shown; listing capped"
+
+    saved = client.post(
+        "/api/ledger/save", json={"target_a_id": a, "target_b_id": b}
+    ).get_json()["data"]
+    listed = client.get("/api/ledger/saved").get_json()["data"][0]
+    assert listed["row_count"] == saved["row_count"]
+    assert listed["shown_row_count"] == 2
+    assert listed["cap_note"] == saved["cap_note"]
+
+    workbook = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
+    exported = list(workbook["Pair records"].iter_rows(values_only=True))
+    assert len(exported[1:]) == 2
+    assert exported[1][-1] == saved["cap_note"]
+
+
 def test_save_ledger_writes_audit_rows(client, pair, bootstrap_key):
     a, b = pair
     client.post("/api/ledger/save", json={"target_a_id": a, "target_b_id": b})
@@ -791,9 +867,7 @@ def test_deleting_a_target_cascades_its_saved_ledgers(client, pair):
 
 # ---- export workbook integration ----
 
-def test_export_pair_records_sheet_is_exhaustive(client, pair):
-    """The workbook lists EVERY ledger row -- no cap. The 50-row cap is a UI
-    affordance; the export is the exhaustive artifact."""
+def test_export_pair_records_sheet_lists_every_staged_row_within_cap(client, pair):
     a, b = pair
     saved = client.post("/api/ledger/save",
                         json={"target_a_id": a, "target_b_id": b}).get_json()["data"]
@@ -802,7 +876,8 @@ def test_export_pair_records_sheet_is_exhaustive(client, pair):
     assert rows[0] == tuple(
         ["Ledger ID", "Dataset", "Pair", "Saved at", "Category", "Who", "Phone",
          "Date & time", "Call type", "Duration (s)", "Other party",
-         "Other party name", "Also a target", "Area", "Distinctive"])
+         "Other party name", "Also a target", "Area", "Distinctive",
+         "Listing note"])
     assert not any("onfidence" in str(h) or "trength" in str(h) for h in rows[0])
     body = rows[1:]
     assert len(body) == saved["row_count"]          # every row, none dropped
@@ -819,6 +894,37 @@ def test_export_pair_records_sheet_is_exhaustive(client, pair):
     shared = [r for r in body if r[4] == "Shared contact"]
     assert {r[14] for r in shared} == {"distinctive"}
     assert any(r[4] == "Shared location" and r[13] == "Far" for r in body)
+
+
+def test_export_caps_aggregate_saved_ledgers_below_excel_limit(monkeypatch):
+    monkeypatch.setattr(reporting_export, "LEDGER_EXPORT_ROW_BUDGET", 3)
+
+    def saved(ledger_id):
+        rows = [{
+            "category_label": "Direct contact", "who": "A", "who_phone": "100",
+            "timestamp": f"2026-01-0{index}T09:00:00", "call_type": 1,
+            "duration_seconds": 60, "other_party": "200",
+            "other_party_name": "B", "other_party_is_target": True,
+            "area": "Home", "distinctive": None,
+        } for index in range(1, 4)]
+        return {
+            "id": ledger_id, "dataset_name": "D", "created_at": "2026-01-01T00:00:00",
+            "row_count": 3, "rows": rows,
+            "pair": {
+                "target_a": {"name": "A", "phone_number": "100"},
+                "target_b": {"name": "B", "phone_number": "200"},
+            },
+        }
+
+    body = reporting_export.build_results_workbook(
+        [], ledgers=[saved(1), saved(2)])
+    workbook = load_workbook(io.BytesIO(body))
+    rows = list(workbook["Pair records"].iter_rows(values_only=True))[1:]
+    assert len(rows) == 3
+    assert {row[-1] for row in rows if row[-1]} == {
+        "2 of 3 rows shown; listing capped",
+        "1 of 3 rows shown; listing capped",
+    }
 
 
 def test_export_pair_records_placeholder_when_nothing_saved(client):
@@ -863,3 +969,16 @@ def test_matcher_generator_outputs_are_repo_local():
     assert scenarios.STRANGERS_OUTPUT.name == "sample_matcher_scenarios.xlsx"
     assert scenarios.CLOSEKNIT_OUTPUT.parent == scenarios.REPO_ROOT
     assert scenarios.CLOSEKNIT_OUTPUT.name == "sample_matcher_closeknit.xlsx"
+
+
+def test_matcher_generator_hardening_scenarios(capsys):
+    from tools import gen_matcher_scenarios as scenarios
+
+    scenarios.verify_hardening_scenarios()
+    output = capsys.readouterr().out
+    for name in (
+        "hub-flip", "double-sided-direct", "location-heavy-sample",
+        "even-median-spread", "small-N-cap", "midnight-straddle",
+        "two-meetings-one-day",
+    ):
+        assert f"{name}" in output

@@ -48,11 +48,12 @@ EVENTS_HIGH, EVENTS_MEDIUM = 5, 2
 # co-founder review; the session gap intentionally reuses the one-hour window.
 CO_PRESENCE_WINDOW_SECONDS = 3600
 SESSION_GAP_SECONDS = 3600
-# Direct-contact volume rating.
+# Direct physical-interaction volume rating (PROPOSAL pending co-founder review;
+# retained at 10/3 after mirrored-leg dedup scenario recalibration).
 DIRECT_HIGH, DIRECT_MEDIUM = 10, 3
 # The mutual finding fires only from this many distinctive shared contacts
-# (STRANGERS mode only -- in a close-knit dataset shared contacts are a fact,
-# never suppressed; see the 2026-07-13 adaptive-gates spec).
+# in STRANGERS mode. Close-knit mode requires at least one rare/distinctive
+# contact, so group-wide hubs alone are suppressed.
 MUTUAL_MIN_DISTINCTIVE = 2
 # Close-knit distinctiveness rating (count-based, not ratio: sharing MORE group
 # fabric on top of rare mutuals must never LOWER a rating). High = at least this

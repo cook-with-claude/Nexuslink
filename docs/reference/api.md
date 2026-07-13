@@ -192,23 +192,25 @@ thresholds are proposals pending domain review). Payload shape:
 }
 ```
 
-Gate design: *direct contact* is positive evidence rated by its own volume (never dragged down by
-the doubt gates); *mutual relationship* = min(sample N both sides, overlap share, distinctiveness,
-window overlap); *meeting up* = min(sample, event count, location distinctiveness, window overlap).
-A meet-up event = both targets in the same area within 60 minutes (inclusive), deduped per
-(area, day). Shared areas **without** time overlap are a detail row, never a finding.
+Gate design: *direct contact* is positive evidence rated by deduplicated physical interaction
+volume (mirrored incoming/outgoing legs count once, and doubt gates never drag it down); *mutual
+relationship* = min(contact-record sample N both sides, overlap share, distinctiveness, window
+overlap); *meeting up* = min(located-record sample, event count, location distinctiveness, window
+overlap). Same-area hits within 60 minutes are grouped into temporal sessions per area; each event
+shows the closest actual matched time pair. Shared areas **without** time overlap remain a detail.
 
 **Distinctiveness is dataset-adaptive** (spec `2026-07-13-adaptive-matcher-gates.md`): the
-dataset's interconnectedness (average shared contacts per subscriber pair, boundary 2.0) picks
+dataset's non-hub interconnectedness (average shared contacts per subscriber pair after excluding
+contacts used by more than 50% of subscribers, boundary 2.0) picks
 the rule-set, and the classification is disclosed with its own confidence tier ("Near tie" =
 right on the boundary; ratings may flip between imports). In **strangers** mode, contacts/areas
 that ≥ 20% of the other subscribers also have are discounted (pizza-place / busy-tower), with a
 floor: fewer than `COMMON_MIN_USERS=3` other subscribers never brand anything common, and a
-population under 10 other subscribers adds a caveat. In **close-knit** mode a shared contact is a
-fact — the mutual finding always fires; the distinctiveness gate grades pair-specificity instead:
-≥ 2 shared contacts *rarer than the dataset's median shared-contact spread* → High, solid
-group-wide overlap → Medium, trivial overlap → Low. Area commonality stays absolute in both
-modes. Every threshold is a PROPOSAL flagged in `gates.py` for domain review.
+population under 10 other subscribers adds a caveat and caps indirect findings at Medium. In
+**close-knit** mode, hub-only overlap is suppressed: at least one contact rarer than the dataset's
+true median shared-contact spread is required. One rare contact rates Medium and ≥ 2 rate High
+before the other gates are applied. Area commonality stays absolute in both modes. Every threshold
+is a PROPOSAL flagged in `gates.py` for domain review.
 
 `analyze` runs the five frozen Phase-1 detectors via the `app/analysis/bridge.py` seam and stores the
 result JSON. Payload shape:

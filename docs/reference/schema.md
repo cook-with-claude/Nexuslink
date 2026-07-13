@@ -106,12 +106,13 @@ Export screen.
 | target_a_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
 | target_b_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
 | created_at | TEXT | NOT NULL |
-| row_count | INTEGER | NOT NULL (denormalized so the Export screen lists ledgers without decoding the rows) |
-| rows_json | TEXT | NOT NULL (every ledger row, as computed server-side) |
+| row_count | INTEGER | NOT NULL (the uncapped total, so truncation remains disclosed without decoding rows) |
+| rows_json | TEXT | NOT NULL (the first `LEDGER_ROW_CAP=50,000` rows, as computed server-side) |
 
 **No UNIQUE on the pair** — unlike `saved_pair_matches`, ledgers **accumulate**: a record listing is
-not a verdict, so saving the same pair twice is legitimate. The export's `Pair records` sheet copies
-`rows_json` exhaustively (no cap; the 50-row page is a UI affordance only).
+not a verdict, so saving the same pair twice is legitimate. The export streams `Pair records` in
+write-only mode, repeats an explicit “N of M rows shown; listing capped” note when needed, and guards
+the aggregate sheet against Excel's 1,048,576-row hard limit.
 
 ### `audit_log` — in-DB (encrypted) audit trail
 | Column | Type | Constraints |
@@ -134,4 +135,5 @@ not a verdict, so saving the same pair twice is legitimate. The export's `Pair r
 - The runner is auto-invoked on login via `app/api/guards.py:get_db()` (Phase 3 increment 3.1,
   ADR 0002). **Migration 2** (contact-matcher feature) added `saved_pair_matches` +
   `saved_tallies` — the seam's first real use; existing installs upgrade in place on next login.
-  **Migration 3** (pair record ledger) added `saved_ledgers`.
+  **Migration 3** (pair record ledger) added `saved_ledgers`. **Migration 4** added dataset-scoped
+  `other_party`, `area`, and `(area, timestamp)` indexes for matcher group-bys and co-presence joins.

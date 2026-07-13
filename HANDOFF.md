@@ -4,6 +4,35 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Codex: accepted matcher method hardening — on `claude/contact-matcher`, NOT merged
+
+Implemented all eight accepted directions from
+`docs/superpowers/specs/2026-07-13-matcher-method-hardening-decisions.md` as incremental
+`claude:` commits: migration 4 query indexes; hub-filtered dataset density and a distinctive-contact
+requirement; read-time mirrored-leg dedup for findings and ledgers; finding-relevant sample bases; true
+median; temporal co-presence sessions with closest-pair representatives; the Medium small-population
+cap; and disclosed 50,000-row saved-ledger / aggregate Excel caps with write-only workbook generation.
+
+Threshold recalibration retained `DIRECT_HIGH/MEDIUM=10/3` and `N_HIGH/MEDIUM=50/15` as explicit
+proposals pending co-founder review. The new values are likewise named proposals: hub fraction 0.50,
+session gap 3,600 seconds, small-N cap Medium, and ledger cap 50,000.
+
+Two implementation notes were surfaced rather than hidden: (1) request-scoped memoization was not
+added because each `/match` or `/ledger` request already calls `dataset_interconnectedness` exactly
+once, while the two endpoints are separate requests; such a cache would have zero hits, and a
+cross-request cache needs invalidation absent from the memo. (2) openpyxl write-only mode is
+workbook-wide, not per-sheet through public APIs, so all six export sheets now stream with preserved
+header/number styling. Hub filtering applies to density only; the full shared spread supplies the true
+median, allowing the required `[2, 2, 100, 100] -> 51` scenario.
+
+Regenerated both fixture workbooks. The strangers fixture remains 1,716 rows / 40 subscribers with
+P01-P15 unchanged. The redesigned close-knit fixture is 720 rows / 12 subscribers, uses contacts held
+by at most six members, and reads close-knit at avg 3.26 shared contacts/pair. Seven isolated
+hardening scenarios run through the real engine before either workbook is written. Final verification
+after regeneration: **277 passed / 1 skipped**, Node **36/36**, Ruff clean (including `tools/`),
+import-linter **4 kept / 0 broken**, `git diff --check` clean, and
+`git diff --stat main -- phase1_cdr/` empty.
+
 ## 2026-07-13 - Codex: contact-matcher mechanical review fixes — on `claude/contact-matcher`, NOT merged
 
 Applied only the mechanical items authorized after the independent review: picker saves now use the

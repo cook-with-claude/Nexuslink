@@ -2,13 +2,14 @@
 
 **Date:** 2026-07-13
 
-**Status:** Nadim decision required; no method or threshold change applied
+**Status:** Superseded; Nadim accepted the method directions in
+`2026-07-13-matcher-method-hardening-decisions.md`
 
 **Source:** independent review findings 1, 6, 7, 8, 9, and 10
 
-This memo separates method decisions from the mechanical review fixes. Each item
-changes what a finding means or how strongly it is rated, so none should be
-implemented without Nadim's sign-off and scenario recalibration.
+This memo recorded the review proposals before sign-off. The accepted decisions,
+implementation approaches, and still-provisional threshold values now live in the
+hardening memo linked above.
 
 ## 1. Dataset mode can be driven by universal hubs
 
