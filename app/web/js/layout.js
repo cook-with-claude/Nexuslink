@@ -99,7 +99,9 @@ export function shell(app) {
 
   // setCrumb(parts): parts is a string or array of strings/nodes. The last part
   // renders as the bold "leaf"; earlier parts are muted context separated by ▸.
-  // A part may be { text, sub } to append a dim sub-label (e.g. a record count).
+  // A part may be { text, sub } to append a dim sub-label (e.g. a record count),
+  // and { text, href } to make a context part NAVIGABLE (an ancestor screen —
+  // the leaf is the current screen, so it never links).
   const setCrumb = (parts) => {
     clear(crumb);
     const arr = [].concat(parts).filter((p) => p != null && p !== "");
@@ -109,7 +111,10 @@ export function shell(app) {
       if (typeof part === "string") {
         crumb.appendChild(el("span", { class: last ? "leaf" : "ctx" }, part));
       } else if (part && part.text !== undefined) {
-        const span = el("span", { class: last ? "leaf" : "ctx" }, part.text);
+        const cls = last ? "leaf" : "ctx";
+        const span = (part.href && !last)
+          ? el("a", { class: cls, href: part.href }, part.text)
+          : el("span", { class: cls }, part.text);
         if (part.sub != null) span.appendChild(el("span", { class: "crumb-sub" }, part.sub));
         crumb.appendChild(span);
       } else {

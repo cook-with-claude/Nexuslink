@@ -361,12 +361,30 @@ function matcherCard(datasets) {
     "shared contacts, and being in the same place at the same time. Each finding " +
     "carries its own strength rating; click a finding for the evidence."));
 
+  // Saves are invisible from this card without this line (the staging list lives
+  // on the Export screen), which read as "saving is broken" and led to
+  // remove-and-retry loops that emptied the staging. Keep the count in view.
+  const savedLine = el("p", { class: "hint saved-count" }, "");
+  card.appendChild(savedLine);
+  const refreshSavedCount = async () => {
+    try {
+      const saved = await api.savedMatches();
+      savedLine.textContent = saved.length === 0
+        ? "Nothing saved for export yet."
+        : `Saved for export: ${saved.length} pair match${saved.length === 1 ? "" : "es"} ` +
+          "(manage on the Export screen).";
+    } catch (e) {
+      // A failed count fetch must not break the card; leave the line as-is.
+    }
+  };
+
   const inner = el("div");
   card.appendChild(inner);
 
   let seq = 0; // drop stale comparisons when a newer run starts
 
   const refresh = (targets) => {
+    refreshSavedCount();
     const keepA = inner.querySelector("#cm-a") ? inner.querySelector("#cm-a").value : "";
     const keepB = inner.querySelector("#cm-b") ? inner.querySelector("#cm-b").value : "";
     clear(inner);
@@ -425,7 +443,9 @@ function matcherCard(datasets) {
           save.disabled = true;
           try {
             await api.saveMatch(pickA.value, pickB.value);
+            save.textContent = "Saved ✓";
             toast("Pair match saved to export");
+            refreshSavedCount();
           } catch (e) {
             toast(e.message, "error");
             save.disabled = false;
@@ -461,6 +481,22 @@ function explorerCard(datasets) {
     "Counts the most frequent value inside the current filter. This is a plain tally, " +
     "not a detection verdict — no confidence rating applies."));
 
+  // Same visible-staging rule as the matcher card: saves accumulate on the
+  // Export screen, so show the running count here where the saving happens.
+  const savedLine = el("p", { class: "hint saved-count" }, "");
+  card.appendChild(savedLine);
+  const refreshSavedCount = async () => {
+    try {
+      const saved = await api.savedTallies();
+      savedLine.textContent = saved.length === 0
+        ? "Nothing saved for export yet."
+        : `Saved for export: ${saved.length} count${saved.length === 1 ? "" : "s"} ` +
+          "(manage on the Export screen).";
+    } catch (e) {
+      // A failed count fetch must not break the card; leave the line as-is.
+    }
+  };
+
   const inner = el("div");
   card.appendChild(inner);
 
@@ -468,6 +504,7 @@ function explorerCard(datasets) {
                      "fx-from", "fx-to", "fx-hfrom", "fx-hto"];
 
   const refresh = (targets) => {
+    refreshSavedCount();
     // Preserve any in-progress filter values across a rebuild — refresh() fires
     // when a target is created by clicking a phone in the grid, and that click
     // was aimed at the Detection card, not at wiping the explorer the user set up.
@@ -556,7 +593,9 @@ function explorerCard(datasets) {
             save.disabled = true;
             try {
               const saved = await api.saveTally(target.value, params);
+              save.textContent = "Saved ✓";
               toast(`Count saved to export: ${saved.filter_label}`);
+              refreshSavedCount();
             } catch (e) {
               toast(e.message, "error");
               save.disabled = false;

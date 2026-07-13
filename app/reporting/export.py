@@ -34,7 +34,8 @@ AREAS_HEADERS = ["Target ID", "Target", "Phone number", "Rank", "Area", "Count",
 CONTACTS_HEADERS = ["Target ID", "Target", "Phone number", "Contact number",
                     "Total", "Calls out", "Calls in", "SMS out", "SMS in"]
 MATCHES_HEADERS = ["Match ID", "Dataset", "Target A", "Target B", "Saved at",
-                   "Finding", "Strength", "Bound by", "Headline", "Key evidence"]
+                   "Finding", "Strength", "Bound by", "Headline", "Key evidence",
+                   "Dataset mode", "Near-boundary notes"]
 TALLIES_HEADERS = ["Count ID", "Target", "Phone number", "Dataset", "Saved at",
                    "Filters", "Total records", "Rank", "Value", "Count"]
 
@@ -104,6 +105,16 @@ def _finding_evidence(finding: dict) -> str:
     return ""
 
 
+def _mode_cell(result: dict) -> str:
+    """One-cell dataset-mode digest (adaptive gates): the mode changes what the
+    mutual-relationship strengths MEAN, so a saved row must carry it. Rows saved
+    before the adaptive gates have no dataset_context -> em-dash."""
+    ctx = result.get("dataset_context") or {}
+    if not ctx.get("mode"):
+        return "—"
+    return f"{ctx['mode']} ({ctx.get('classification')} confidence)"
+
+
 def _append_match_rows(ws, saved: dict) -> None:
     result = saved["result"]
     pair = result.get("pair") or {}
@@ -113,10 +124,11 @@ def _append_match_rows(ws, saved: dict) -> None:
         _target_cell(pair.get("target_b") or {}),
         _fmt_when(saved.get("created_at")),
     ]
+    mode = _mode_cell(result)
     findings = result.get("findings") or []
     if not findings:
         caveats = "; ".join(result.get("caveats") or [])
-        ws.append(base + ["No link found", "—", "", caveats, ""])
+        ws.append(base + ["No link found", "—", "", caveats, "", mode, ""])
         ws.cell(row=ws.max_row, column=6).font = _NOT_ANALYZED_FONT
         return
     for f in findings:
@@ -124,6 +136,7 @@ def _append_match_rows(ws, saved: dict) -> None:
             f.get("label"), f.get("strength"),
             ", ".join(f.get("bound_by") or []),
             f.get("headline"), _finding_evidence(f),
+            mode, "; ".join(f.get("notes") or []),
         ])
 
 

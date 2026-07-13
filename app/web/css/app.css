@@ -184,6 +184,10 @@ select:focus-visible, summary:focus-visible, tr:focus-visible {
 }
 .crumb .sep { color: var(--fg-dim); font-size: var(--fs-body); }
 .crumb .ctx { color: var(--fg-muted); font-weight: 500; }
+/* Ancestor crumb parts navigate (Datasets ▸ <dataset> ▸ target) — same muted
+   look at rest so the bar stays calm; hover shows they are links. */
+.crumb a.ctx { text-decoration: none; }
+.crumb a.ctx:hover { color: var(--accent); text-decoration: underline; }
 .crumb .leaf { color: var(--fg); font-weight: 600; }
 .crumb .crumb-sub {
   color: var(--fg-dim);
@@ -607,10 +611,33 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
 .det-block h3 { margin: 0; font-size: var(--fs-h3); }
 
 /* contact-matcher findings: each is a <details> whose summary reads as a row
-   (label + strength pill + headline); reuses the .gate collapse styling. */
-.finding { margin-top: var(--s3); }
+   (label + strength pill + headline); reuses the .gate collapse styling. The
+   larger gap keeps a finding's strength pill from crowding the next finding. */
+.finding { margin-top: var(--s4); }
 .finding summary .dim { margin-left: var(--s2); }
 .finding table { margin-top: var(--s2); }
+
+/* Dataset-mode banner (adaptive gates): which rule-set judged the pair and how
+   confident the classification is. Deliberately louder than a .hint — the mode
+   changes what the mutual-relationship ratings MEAN. */
+.mode-note {
+  margin: var(--s3) 0 var(--s4);
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--fg);
+  font-size: var(--fs-body);
+}
+.mode-note strong { color: var(--accent); }
+.mode-note.mode-near-tie {
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.mode-note.mode-near-tie strong { color: var(--warn); }
+
+/* Gate-cliff near-boundary notes under a finding's binding line. */
+.near-note { margin: var(--s1) 0 0; }
 
 /* Export screen: click-to-save staging list (saved matches + counts). */
 .saved-item {

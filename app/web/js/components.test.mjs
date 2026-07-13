@@ -221,3 +221,46 @@ test("matchFindingsBlock: shared areas without time overlap are a detail line", 
   assert.match(block.textContent, /too weak to be a finding/);
   assert.match(block.textContent, /Far, Airport/);
 });
+
+// Adaptive gates (spec 2026-07-13): the dataset-mode line and the gate-cliff
+// near-boundary notes. Old saved payloads carry neither field and must render
+// exactly as before.
+
+test("matchFindingsBlock: dataset mode line renders with its confidence tier", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], no_link: false, details: {},
+    dataset_context: { mode: "close-knit", classification: "High",
+                       avg_shared_contacts_per_pair: 4.2, boundary: 2 },
+  });
+  assert.match(block.textContent, /Close-knit \/ interconnected dataset — High confidence/);
+  assert.match(block.textContent, /avg 4.2 shared contacts per pair/);
+});
+
+test("matchFindingsBlock: a near-tie dataset says so instead of picking a side quietly", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], no_link: false, details: {},
+    dataset_context: { mode: "strangers", classification: "Near tie",
+                       avg_shared_contacts_per_pair: 1.9, boundary: 2 },
+  });
+  assert.match(block.textContent, /Near tie/);
+  assert.match(block.textContent, /may flip with small data changes/);
+});
+
+test("matchFindingsBlock: near-boundary gate notes render under the finding", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, caveats: [], no_link: false, details: {},
+    findings: [FINDING({
+      strength: "Medium",
+      notes: ["sample is just short of High: 49 vs 50"],
+    })],
+  });
+  assert.match(block.textContent, /≈ sample is just short of High: 49 vs 50/);
+});
+
+test("matchFindingsBlock: payloads predating the adaptive gates render unchanged", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], no_link: false, details: {},
+  });
+  assert.doesNotMatch(block.textContent, /confidence in this reading/);
+  assert.doesNotMatch(block.textContent, /≈/);
+});

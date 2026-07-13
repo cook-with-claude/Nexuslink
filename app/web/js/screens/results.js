@@ -40,8 +40,11 @@ export async function resultsScreen(app, params) {
   const dsBackId = store.activeDataset ? store.activeDataset.id : null;
   setActiveDatasetLabel(datasetName);
   setCrumb([
-    "Datasets",
-    datasetName || null,
+    { text: "Datasets", href: "#/datasets" },
+    datasetName
+      ? { text: datasetName,
+          href: dsBackId ? `#/datasets/${dsBackId}/targets` : undefined }
+      : null,
     { text: payload.target.name, sub: payload.target.phone_number },
   ]);
   setActions([

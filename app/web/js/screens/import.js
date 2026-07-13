@@ -9,7 +9,7 @@ import { el, clear, msg, icon } from "../components.js";
 
 export async function importScreen(app) {
   const { page, setCrumb, setActions } = shell(app);
-  setCrumb(["Datasets", "Import"]);
+  setCrumb([{ text: "Datasets", href: "#/datasets" }, "Import"]);
   setActions([el("a", { href: "#/datasets", class: "btn" }, [icon("back"), "Datasets"])]);
 
   page.appendChild(el("p", { class: "hint" }, "Upload a .xlsx CDR export. Rows that fail validation are skipped and reported below."));

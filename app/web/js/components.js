@@ -335,8 +335,37 @@ function findingEvidence(f, pair) {
 // The full findings block for one pair-match payload (the /api/match response
 // or a saved result_json). Used by the Spreadsheet matcher card; the export
 // sheet carries the same stored content.
+// The dataset-mode line (adaptive gates, spec 2026-07-13): which rule-set judged
+// this pair and how decisively the dataset sits on its side of the boundary.
+// The mode boundary is a cliff, so it is DISCLOSED with its own tier — and a
+// dataset sitting on the line says "near tie" instead of silently flipping
+// modes between imports. Old saved payloads without dataset_context render
+// exactly as before (returns null).
+export function datasetModeNote(ctx) {
+  if (!ctx || !ctx.mode) return null;
+  const label = ctx.mode === "close-knit"
+    ? "Close-knit / interconnected dataset" : "Strangers dataset";
+  if (ctx.classification === "Near tie") {
+    return el("div", { class: "mode-note mode-near-tie" }, [
+      el("strong", {}, "Near tie: "),
+      `this dataset sits ON the strangers ↔ close-knit line ` +
+      `(avg ${ctx.avg_shared_contacts_per_pair} shared contacts per pair vs ` +
+      `boundary ${ctx.boundary}). Mutual-contact ratings may flip with small ` +
+      `data changes.`,
+    ]);
+  }
+  return el("div", { class: "mode-note" }, [
+    el("strong", {}, label),
+    ` — ${ctx.classification} confidence in this reading ` +
+    `(avg ${ctx.avg_shared_contacts_per_pair} shared contacts per pair; ` +
+    `boundary ${ctx.boundary}).`,
+  ]);
+}
+
 export function matchFindingsBlock(payload, wrapClass = "det-block") {
   const block = el("div", { class: wrapClass });
+  const modeNote = datasetModeNote(payload.dataset_context);
+  if (modeNote) block.appendChild(modeNote);
   for (const c of payload.caveats || []) {
     block.appendChild(el("p", { class: "hint" }, "⚠ " + c));
   }
@@ -355,6 +384,11 @@ export function matchFindingsBlock(payload, wrapClass = "det-block") {
     if (f.strength !== "High" && f.bound_by && f.bound_by.length) {
       d.appendChild(el("p", { class: "binding-note" },
         `Held at ${f.strength} by: ${f.bound_by.join(", ")}.`));
+    }
+    // Gate-cliff disclosure: a raw value sitting near a tier line is worth a
+    // sentence — "Medium" alone hides whether it was 49-vs-50 or 20-vs-50.
+    for (const n of f.notes || []) {
+      d.appendChild(el("p", { class: "hint near-note" }, "≈ " + n));
     }
     findingEvidence(f, payload.pair)
       .filter((node) => node !== null)   // moreNote() is null when nothing is capped
