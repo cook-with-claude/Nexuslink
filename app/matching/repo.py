@@ -184,28 +184,32 @@ _CONTACT_SPREAD = (
 _SHARED_SPREAD = _CONTACT_SPREAD + " HAVING COUNT(DISTINCT phone_number) >= 2"
 
 
-def dataset_interconnectedness(conn, dataset_id) -> dict:
+def dataset_interconnectedness(conn, dataset_id, hub_ubiquity_fraction) -> dict:
     """Dataset-level facts for the adaptive mode (spec 2026-07-13).
 
-    dataset_density: average shared contacts per subscriber pair = sum over
-    contacts of C(k, 2) / C(n, 2), where k = subscribers contacting that party.
-    One GROUP BY, no O(n^2) pass. contact_spread_median: the typical SHARED
-    contact's k (the close-knit rarity base)."""
+    dataset_density: average non-hub shared contacts per subscriber pair = sum
+    over contacts of C(k, 2) / C(n, 2), where k = subscribers contacting that
+    party. One GROUP BY, no O(n^2) pass. contact_spread_median: the typical
+    non-hub SHARED contact's k (the close-knit rarity base)."""
     n = conn.execute(
         "SELECT COUNT(DISTINCT phone_number) AS n FROM cdr_records WHERE dataset_id = ?",
         (dataset_id,),
     ).fetchone()["n"]
+    hub_ceiling = round(hub_ubiquity_fraction * n)
+    hub_filtered_spread = (
+        _SHARED_SPREAD + " AND COUNT(DISTINCT phone_number) <= ?"
+    )
     agg = conn.execute(
         f"SELECT COUNT(*) AS parties, COALESCE(SUM(k * (k - 1) / 2), 0) AS overlap "
-        f"FROM ({_SHARED_SPREAD})",
-        (dataset_id,),
+        f"FROM ({hub_filtered_spread})",
+        (dataset_id, hub_ceiling),
     ).fetchone()
     pairs = n * (n - 1) // 2
     median = 2  # no shared contacts at all -> mode is strangers, base unused
     if agg["parties"]:
         median = conn.execute(
-            f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k LIMIT 1 OFFSET ?",
-            (dataset_id, (agg["parties"] - 1) // 2),
+            f"SELECT k FROM ({hub_filtered_spread}) ORDER BY k LIMIT 1 OFFSET ?",
+            (dataset_id, hub_ceiling, (agg["parties"] - 1) // 2),
         ).fetchone()["k"]
     return {
         "dataset_density": (agg["overlap"] / pairs) if pairs else 0.0,

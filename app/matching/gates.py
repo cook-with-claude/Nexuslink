@@ -50,10 +50,9 @@ DIRECT_HIGH, DIRECT_MEDIUM = 10, 3
 MUTUAL_MIN_DISTINCTIVE = 2
 # Close-knit distinctiveness rating (count-based, not ratio: sharing MORE group
 # fabric on top of rare mutuals must never LOWER a rating). High = at least this
-# many rare shared contacts (pair-specific mutuals beyond the group's fabric);
-# Medium = solid overlap that is all group-wide; below that, trivial overlap.
+# many rare shared contacts (pair-specific mutuals beyond the group's fabric).
+# One rare shared contact is Medium; hub-only overlap is not a finding.
 CK_RARE_HIGH = 2
-CK_SOLID_MEDIUM = 3
 
 # ---- adaptive dataset mode (spec 2026-07-13-adaptive-matcher-gates.md) ----
 # A fixed "common" cutoff assumes a strangers dataset; in a close-knit group
@@ -65,6 +64,9 @@ CK_SOLID_MEDIUM = 3
 # "near tie" out loud instead of silently flipping modes between imports.
 CLOSE_KNIT, STRANGERS = "close-knit", "strangers"
 CLOSE_KNIT_BOUNDARY = 2.0            # avg shared contacts per pair (PROPOSAL)
+# Contacts used by more than this fraction of all subscribers are service-like
+# hubs, not social fabric (PROPOSAL pending co-founder review).
+HUB_UBIQUITY_FRACTION = 0.50
 MODE_MARGIN_HIGH, MODE_MARGIN_MEDIUM = 2.0, 1.4   # classification confidence
 MODE_NEAR_TIE = 1.15                 # within 15% of the boundary = near tie
 # Commonality floor: a contact/area is never "common" on the say-so of fewer
@@ -226,17 +228,15 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
     distinctive = classify_shared_contacts(
         shared, commonality, other_users, mode, spread_median)
     if mode == CLOSE_KNIT:
-        # Sharing contacts is a FACT in a clique -- the finding always fires; what
-        # gets graded is how pair-specific the overlap is. Count-based (not a
-        # ratio): extra group fabric on top of rare mutuals must never LOWER a
-        # rating. >= CK_RARE_HIGH rare mutuals -> High (a private link beyond the
-        # group fabric); solid but all group-wide -> Medium; trivial -> Low.
+        # A hub-only overlap is not evidence of a relationship even in a clique.
+        # Count-based (not a ratio): extra group fabric on top of rare mutuals
+        # must never LOWER a rating. >= CK_RARE_HIGH rare mutuals -> High.
+        if not distinctive:
+            return None
         if len(distinctive) >= CK_RARE_HIGH:
             distinct_rating = HIGH
-        elif len(distinctive) == 1 or len(shared) >= CK_SOLID_MEDIUM:
-            distinct_rating = MEDIUM
         else:
-            distinct_rating = LOW
+            distinct_rating = MEDIUM
         distinct_note = _near_note("rare shared contacts", len(distinctive),
                                    CK_RARE_HIGH, CK_RARE_HIGH, integer=True)
     else:
