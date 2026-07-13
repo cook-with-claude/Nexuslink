@@ -52,7 +52,7 @@ function findAll(node, pred, out = []) {
 }
 
 const { bindingGates, bindingNote, detectionBlock, frequentAreasBlock,
-        strengthPill, matchFindingsBlock, ledgerTable,
+        strengthPill, matchFindingsBlock, ledgerTable, filterLedgerRows,
         LEDGER_PAGE } = await import("./components.js");
 
 const noteText = (result) => {
@@ -331,15 +331,19 @@ test("ledgerTable: direct rows show an em-dash for distinctive (not 'common')", 
     category: "direct", category_label: "Direct contact", distinctive: null,
     other_party: "200", other_party_name: "B", other_party_is_target: true,
   })]));
-  assert.doesNotMatch(block.textContent, /common/);
-  assert.match(block.textContent, /—/);
+  // scope to the CELLS: the filter dropdown legitimately contains the word
+  // "common" as one of its options, so a whole-block match would be meaningless
+  const cells = findAll(block, (n) => n.tag === "td").map((c) => c.textContent);
+  assert.ok(!cells.some((c) => c === "common"));
+  assert.ok(cells.includes("—"));
 });
 
 test("ledgerTable: caps at LEDGER_PAGE rows and Expand all reveals the rest", () => {
   const rows = Array.from({ length: LEDGER_PAGE + 25 }, (_, i) =>
     LROW({ timestamp: `2026-01-01T10:${String(i % 60).padStart(2, "0")}:00` }));
   const block = ledgerTable(ledgerPayload(rows));
-  const bodyRows = () => findAll(block, (n) => n.tag === "tr").length - 1;  // minus header
+  // two header rows now: the column names and the filter row
+  const bodyRows = () => findAll(block, (n) => n.tag === "tr").length - 2;
   assert.equal(bodyRows(), LEDGER_PAGE);
   assert.match(block.textContent, new RegExp(`first ${LEDGER_PAGE} of ${rows.length}`));
   assert.match(block.textContent, /export contains every record/);
@@ -347,7 +351,60 @@ test("ledgerTable: caps at LEDGER_PAGE rows and Expand all reveals the rest", ()
   const expand = findAll(block, (n) => n.tag === "button")[0];
   expand.click();
   assert.equal(bodyRows(), rows.length);                    // every row now shown
-  assert.match(block.textContent, new RegExp(`all ${rows.length} records`));
+  assert.match(block.textContent, new RegExp(`all ${rows.length} record`));
+});
+
+test("ledgerTable: renders a column filter row (the records sheet's pattern)", () => {
+  const block = ledgerTable(ledgerPayload([
+    LROW(), LROW({ category: "direct", category_label: "Direct contact" })]));
+  const filterRow = findAll(block, (n) => (n.className || "") === "filter-row");
+  assert.equal(filterRow.length, 1);
+  const controls = findAll(block, (n) => (n.className || "") === "col-filter");
+  assert.ok(controls.length >= 6);            // category, who, date, type, party, area, distinctive
+});
+
+// The filter rules are pure, so they are tested directly rather than through a
+// DOM shim that would have to fake <select>.value.
+
+const FROWS = [
+  LROW({ category: "direct", who: "A", who_phone: "100", call_type: 1,
+         other_party: "200", other_party_name: "B", other_party_is_target: true,
+         area: "Home", distinctive: null, timestamp: "2026-01-01T09:00:00" }),
+  LROW({ category: "shared_contact", who: "B", who_phone: "200", call_type: 11,
+         other_party: "8880001", distinctive: false, area: "Bwork",
+         timestamp: "2026-02-05T10:00:00" }),
+  LROW({ category: "shared_location", who: "A", who_phone: "100", call_type: 1,
+         other_party: null, area: "MALL", distinctive: true,
+         timestamp: "2026-02-06T11:00:00" }),
+];
+
+test("filterLedgerRows: category, who and call type", () => {
+  assert.equal(filterLedgerRows(FROWS, { category: "direct" }).length, 1);
+  assert.equal(filterLedgerRows(FROWS, { who: "100" }).length, 2);
+  assert.equal(filterLedgerRows(FROWS, { call_type: "11" }).length, 1);
+  assert.equal(filterLedgerRows(FROWS, {}).length, 3);           // no filter = everything
+});
+
+test("filterLedgerRows: distinctive / common / not-applicable are separable", () => {
+  assert.equal(filterLedgerRows(FROWS, { distinctive: "common" })[0].other_party, "8880001");
+  assert.equal(filterLedgerRows(FROWS, { distinctive: "distinctive" })[0].area, "MALL");
+  // "na" finds the direct rows, whose distinctive is null — NOT the common ones
+  const na = filterLedgerRows(FROWS, { distinctive: "na" });
+  assert.equal(na.length, 1);
+  assert.equal(na[0].category, "direct");
+});
+
+test("filterLedgerRows: text filters are case-insensitive 'contains'", () => {
+  assert.equal(filterLedgerRows(FROWS, { area: "mall" }).length, 1);
+  assert.equal(filterLedgerRows(FROWS, { when: "2026-02" }).length, 2);   // month
+  assert.equal(filterLedgerRows(FROWS, { party: "888" }).length, 1);
+});
+
+test("filterLedgerRows: the party filter matches a target NAME too", () => {
+  // an analyst searching "b" should find the rows whose counterparty is target B
+  const hits = filterLedgerRows(FROWS, { party: "B" });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].other_party_name, "B");
 });
 
 test("ledgerTable: no strength pill anywhere — a record is not a verdict", () => {

@@ -440,10 +440,36 @@ function ledgerCell(r) {
   ];
 }
 
+// Client-side filtering: the ledger's full row set is already in hand, so a
+// filter is instant (no round trip, unlike the records sheet, which pages over a
+// whole dataset server-side). Pure and exported so the matching rules are
+// testable without a DOM. Text filters are case-insensitive "contains".
+export function filterLedgerRows(rows, f = {}) {
+  const has = (hay, needle) =>
+    !needle || String(hay ?? "").toLowerCase().includes(needle.toLowerCase());
+  return rows.filter((r) => {
+    if (f.category && r.category !== f.category) return false;
+    if (f.who && r.who_phone !== f.who) return false;
+    if (f.call_type && String(r.call_type) !== String(f.call_type)) return false;
+    if (f.distinctive === "distinctive" && r.distinctive !== true) return false;
+    if (f.distinctive === "common" && r.distinctive !== false) return false;
+    if (f.distinctive === "na" && r.distinctive !== null
+        && r.distinctive !== undefined) return false;
+    if (f.targets_only && !r.other_party_is_target) return false;
+    if (!has(r.timestamp, f.when)) return false;
+    if (!has(r.area, f.area)) return false;
+    // party matches the number OR the target name, so "carlos" finds his rows
+    if (f.party && !(has(r.other_party, f.party) || has(r.other_party_name, f.party))) {
+      return false;
+    }
+    return true;
+  });
+}
+
 export function ledgerTable(payload) {
   const block = el("div", {});
-  const rows = (payload && payload.rows) || [];
-  if (rows.length === 0) {
+  const all = (payload && payload.rows) || [];
+  if (all.length === 0) {
     block.appendChild(el("div", { class: "empty" },
       "No records link these two targets."));
     return block;
@@ -454,32 +480,86 @@ export function ledgerTable(payload) {
     `${payload.row_count} record(s): ` +
     Object.entries(counts).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(" · ")));
 
-  const body = el("tbody", {});
-  const table = el("table", { class: "ledger-table" }, [
-    el("thead", {}, el("tr", {}, LEDGER_COLS.map((c) => el("th", {}, c)))),
-    body,
+  // --- column filters, in the header row (the records sheet's pattern) ---
+  const cats = [...new Set(all.map((r) => r.category))];
+  const fCat = el("select", { class: "col-filter", "aria-label": "filter category" },
+    [el("option", { value: "" }, "All")].concat(cats.map((c) =>
+      el("option", { value: c }, (all.find((r) => r.category === c) || {}).category_label))));
+  const whos = [...new Set(all.map((r) => r.who_phone))];
+  const fWho = el("select", { class: "col-filter", "aria-label": "filter who" },
+    [el("option", { value: "" }, "Both")].concat(whos.map((p) =>
+      el("option", { value: p }, (all.find((r) => r.who_phone === p) || {}).who))));
+  const fWhen = el("input", { class: "col-filter", type: "text",
+    placeholder: "2026-05-03…", "aria-label": "filter date" });
+  const types = [...new Set(all.map((r) => r.call_type))];
+  const fType = el("select", { class: "col-filter", "aria-label": "filter type" },
+    [el("option", { value: "" }, "Any")].concat(types.map((t) =>
+      el("option", { value: String(t) }, callTypeDisplay(t)))));
+  const fParty = el("input", { class: "col-filter", type: "text",
+    placeholder: "number or name…", "aria-label": "filter other party" });
+  const fArea = el("input", { class: "col-filter", type: "text",
+    placeholder: "contains…", "aria-label": "filter area" });
+  const fDist = el("select", { class: "col-filter", "aria-label": "filter distinctive" }, [
+    el("option", { value: "" }, "Any"),
+    el("option", { value: "distinctive" }, "distinctive"),
+    el("option", { value: "common" }, "common"),
+    el("option", { value: "na" }, "—"),
   ]);
-  const wrap = el("div", { class: "ledger-scroll" }, table);
-  const fill = (limit) => {
-    clear(body);
-    for (const r of rows.slice(0, limit)) body.appendChild(el("tr", {}, ledgerCell(r)));
-  };
-  fill(LEDGER_PAGE);
+  const controls = [fCat, fWho, fWhen, fType, fParty, fArea, fDist];
+
+  const body = el("tbody", {});
+  const wrap = el("div", { class: "ledger-scroll" }, el("table", { class: "ledger-table" }, [
+    el("thead", {}, [
+      el("tr", {}, LEDGER_COLS.map((c) => el("th", {}, c))),
+      el("tr", { class: "filter-row" }, [
+        el("th", {}, fCat), el("th", {}, fWho), el("th", {}, fWhen),
+        el("th", {}, fType), el("th", {}),          // duration: nothing to filter
+        el("th", {}, fParty), el("th", {}, fArea), el("th", {}, fDist),
+      ]),
+    ]),
+    body,
+  ]));
   block.appendChild(wrap);
 
-  if (rows.length > LEDGER_PAGE) {
-    const note = el("p", { class: "hint" },
-      `Showing the first ${LEDGER_PAGE} of ${rows.length}. ` +
-      "The export contains every record.");
-    const expand = el("button", { class: "btn btn-sm" }, "Expand all");
-    expand.addEventListener("click", () => {
-      fill(rows.length);
-      wrap.classList.add("expanded");
-      note.textContent = `Showing all ${rows.length} records.`;
-      expand.remove();
+  const note = el("p", { class: "hint" }, "");
+  const expand = el("button", { class: "btn btn-sm" }, "Expand all");
+  const actions = el("div", { class: "form-actions" }, [expand, note]);
+  block.appendChild(actions);
+
+  let expanded = false;
+  const render = () => {
+    const rows = filterLedgerRows(all, {
+      category: fCat.value, who: fWho.value, when: fWhen.value,
+      call_type: fType.value, party: fParty.value, area: fArea.value,
+      distinctive: fDist.value,
     });
-    block.appendChild(el("div", { class: "form-actions" }, [expand, note]));
+    const shown = expanded ? rows.length : Math.min(LEDGER_PAGE, rows.length);
+    clear(body);
+    for (const r of rows.slice(0, shown)) body.appendChild(el("tr", {}, ledgerCell(r)));
+
+    const filtered = rows.length !== all.length ? ` (filtered from ${all.length})` : "";
+    if (rows.length === 0) {
+      note.textContent = "No records match the current filter.";
+    } else if (shown < rows.length) {
+      note.textContent = `Showing the first ${shown} of ${rows.length}${filtered}. ` +
+        "The export contains every record.";
+    } else {
+      note.textContent = `Showing all ${rows.length} record(s)${filtered}.`;
+    }
+    // The Expand control only means something while rows are still withheld.
+    expand.disabled = expanded || rows.length <= LEDGER_PAGE;
+  };
+
+  expand.addEventListener("click", () => {
+    expanded = true;
+    wrap.classList.add("expanded");
+    render();
+  });
+  for (const c of controls) {
+    c.addEventListener("input", render);
+    c.addEventListener("change", render);
   }
+  render();
   return block;
 }
 

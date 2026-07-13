@@ -651,9 +651,18 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
 }
 .ledger-scroll.expanded { max-height: 70vh; }
 .ledger-table { width: 100%; }
-.ledger-table thead th {
+/* Two sticky header rows (column names + the in-header filters, the same pattern
+   the records sheet uses). The filter row parks directly under the names, so both
+   stay put while a long ledger scrolls beneath them. */
+.ledger-table thead tr:first-child th {
   position: sticky;
   top: 0;
+  background: var(--bg-2);
+  z-index: 2;
+}
+.ledger-table thead tr.filter-row th {
+  position: sticky;
+  top: 30px;
   background: var(--bg-2);
   z-index: 1;
 }
