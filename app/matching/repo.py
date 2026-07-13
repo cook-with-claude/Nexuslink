@@ -67,6 +67,54 @@ def area_set(conn, dataset_id, phone_number) -> set[str]:
     return {r["area"] for r in rows}
 
 
+def _modality(call_type: int) -> str:
+    if call_type in (1, 2):
+        return "call"
+    if call_type in (11, 22):
+        return "sms"
+    return f"type:{call_type}"
+
+
+def _a_originated(record: dict, phone_a: str) -> bool:
+    outgoing = record["call_type"] in (1, 11)
+    return (record["phone_number"] == phone_a) == outgoing
+
+
+def _direct_interactions(conn, dataset_id, phone_a, phone_b) -> list[dict]:
+    """Canonical direct interactions for stores carrying one or both CDR legs.
+
+    Mirrored outgoing/incoming legs share an exact timestamp, unordered party
+    pair, and modality. Prefer the outgoing leg as the ledger representative;
+    otherwise keep the first stable source row.
+    """
+    rows = conn.execute(
+        "SELECT id AS record_id, phone_number, timestamp, call_type, "
+        "duration_seconds, other_party, area "
+        "FROM cdr_records WHERE dataset_id = ? "
+        "AND ((phone_number = ? AND other_party = ?) OR "
+        "(phone_number = ? AND other_party = ?)) "
+        "ORDER BY timestamp, id",
+        (dataset_id, phone_a, phone_b, phone_b, phone_a),
+    ).fetchall()
+    interactions: dict[tuple, dict] = {}
+    for raw in rows:
+        record = dict(raw)
+        key = (
+            record["timestamp"],
+            frozenset((record["phone_number"], record["other_party"])),
+            _modality(record["call_type"]),
+        )
+        current = interactions.get(key)
+        if current is None or (
+            record["call_type"] in (1, 11)
+            and current["call_type"] not in (1, 11)
+        ):
+            interactions[key] = record
+    return sorted(
+        interactions.values(), key=lambda r: (r["timestamp"], r["record_id"])
+    )
+
+
 def direct_contact(conn, dataset_id, phone_a, phone_b) -> dict:
     """Interactions between the two subscribers themselves, from either side's rows.
 
@@ -74,12 +122,7 @@ def direct_contact(conn, dataset_id, phone_a, phone_b) -> dict:
     22=in SMS. "a_to_b" = records that describe A-originated traffic: A's own
     outgoing rows plus B's incoming rows (a dataset may carry one side or both).
     """
-    rows = conn.execute(
-        "SELECT phone_number, call_type, timestamp FROM cdr_records "
-        "WHERE dataset_id = ? AND ((phone_number = ? AND other_party = ?) "
-        "OR (phone_number = ? AND other_party = ?)) ORDER BY timestamp",
-        (dataset_id, phone_a, phone_b, phone_b, phone_a),
-    ).fetchall()
+    rows = _direct_interactions(conn, dataset_id, phone_a, phone_b)
     out = {"total": len(rows), "calls": 0, "sms": 0, "a_to_b": 0, "b_to_a": 0,
            "first": None, "last": None}
     for r in rows:
@@ -87,8 +130,7 @@ def direct_contact(conn, dataset_id, phone_a, phone_b) -> dict:
             out["calls"] += 1
         elif r["call_type"] in (11, 22):
             out["sms"] += 1
-        a_originated = (r["phone_number"] == phone_a and r["call_type"] in (1, 11)) or \
-                       (r["phone_number"] == phone_b and r["call_type"] in (2, 22))
+        a_originated = _a_originated(r, phone_a)
         out["a_to_b" if a_originated else "b_to_a"] += 1
     if rows:
         out["first"], out["last"] = rows[0]["timestamp"], rows[-1]["timestamp"]
@@ -116,17 +158,8 @@ def co_presence_events(conn, dataset_id, phone_a, phone_b) -> list[dict]:
 
 
 def direct_contact_records(conn, dataset_id, phone_a, phone_b) -> list[dict]:
-    """The raw records BETWEEN the pair (either side's rows), for the ledger.
-    `direct_contact` above aggregates the same records into counts."""
-    rows = conn.execute(
-        "SELECT id AS record_id, phone_number, timestamp, call_type, "
-        "duration_seconds, other_party, area "
-        "FROM cdr_records WHERE dataset_id = ? "
-        "AND ((phone_number = ? AND other_party = ?) OR (phone_number = ? AND other_party = ?)) "
-        "ORDER BY timestamp",
-        (dataset_id, phone_a, phone_b, phone_b, phone_a),
-    ).fetchall()
-    return [dict(r) for r in rows]
+    """Canonical records BETWEEN the pair, with mirrored legs collapsed."""
+    return _direct_interactions(conn, dataset_id, phone_a, phone_b)
 
 
 def records_for(conn, dataset_id, phones, parties=None, areas=None) -> list[dict]:
