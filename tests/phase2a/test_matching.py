@@ -591,6 +591,37 @@ def test_match_is_symmetric(client, pair):
             == {f["type"]: f["strength"] for f in ba["findings"]})
 
 
+def test_match_payload_carries_evidence_counts(client, pair):
+    """Hand-worked from ROWS: the pair's shared areas are Cafe/Edge/Downtown
+    (meet-ups) and Far (shared, no time overlap)."""
+    a, b = pair
+    data = _match(client, a, b).get_json()["data"]
+    c = data["evidence_counts"]
+    # the 4 direct A<->B records: 2 calls + 2 SMS, 2 each way
+    assert c["direct"] == {"records": 4, "calls": 2, "sms": 2, "a_to_b": 2, "b_to_a": 2}
+    # shared contacts P1, P2, P9 -- all distinctive (P9's 2 other users sit UNDER
+    # the COMMON_MIN_USERS floor), one record per side per contact
+    assert c["mutual_calls"]["distinctive"] == {
+        "contacts": 3, "records_a": 3, "records_b": 3, "records": 6}
+    assert c["mutual_calls"]["common"] == {
+        "contacts": 0, "records_a": 0, "records_b": 0, "records": 0}
+    loc = c["mutual_locations"]
+    # A: 2 Cafe (10:00 + 11:00) + 1 Edge + 1 Downtown = 4;  B: 1 in each = 3.
+    # NB the Cafe pairings collapse to ONE event, but the counter tallies RECORDS
+    # -- that is exactly the difference between the finding and the count.
+    assert loc["meet_up"] == {"areas": 3, "records_a": 4, "records_b": 3, "records": 7}
+    # Far: one record each, hours apart -> a shared LOCATION but not a meet-up
+    assert loc["non_meet_up"] == {"areas": 1, "records_a": 1, "records_b": 1,
+                                  "records": 2}
+
+
+def test_evidence_counts_are_symmetric(client, pair):
+    a, b = pair
+    ab = _match(client, a, b).get_json()["data"]["evidence_counts"]
+    ba = _match(client, b, a).get_json()["data"]["evidence_counts"]
+    assert ab == ba
+
+
 def test_match_run_stores_nothing(client, pair):
     _match(client, *pair)
     assert client.get("/api/match/saved").get_json()["data"] == []

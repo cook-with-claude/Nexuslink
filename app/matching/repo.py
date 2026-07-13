@@ -67,6 +67,18 @@ def area_set(conn, dataset_id, phone_number) -> set[str]:
     return {r["area"] for r in rows}
 
 
+def area_tallies(conn, dataset_id, phone_number) -> dict[str, int]:
+    """area -> how many records the subscriber has there. `area_set` gives only
+    the set of areas; the evidence counter needs the per-area VOLUME (how much
+    each side actually uses a shared location)."""
+    rows = conn.execute(
+        "SELECT area, COUNT(*) AS n FROM cdr_records "
+        "WHERE dataset_id = ? AND phone_number = ? GROUP BY area",
+        (dataset_id, phone_number),
+    ).fetchall()
+    return {r["area"]: r["n"] for r in rows}
+
+
 def direct_contact(conn, dataset_id, phone_a, phone_b) -> dict:
     """Interactions between the two subscribers themselves, from either side's rows.
 
