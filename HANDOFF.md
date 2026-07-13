@@ -4,6 +4,31 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-14 - Khaled review verdict: conditional hub counting — DESIGN ONLY, for Nadim
+
+Khaled reviewed the merged hardening pass (the sign-off request one entry down). Verdict on the
+hub rule: **rejects the unconditional `HUB_UBIQUITY_FRACTION` exclusion** from the mode metric.
+Grounds: finding-level protection already comes from rarity/commonality (a taxi line is never
+"rare", so strangers sharing it get no finding in either mode — the exclusion only stabilized
+the banner), and the exclusion deletes real family fabric: mom, contacted by everyone, is
+exactly the evidence that a dataset IS close-knit, and a hub-and-spoke family could read
+"strangers".
+
+**Approved replacement (design only, NOT implemented):** conditional counting — mega-popular
+contacts (spread ≥ 50% of subscribers, same measurement, renamed so it no longer implies
+exclusion) are **counted** in the density sum when there are many of them
+(`M ≥ max(2, 0.15 × n)`, both PROPOSALS) and **excluded** when there are few (lone services).
+Median, boundary 2.0, near-tie tiers, rarity-based distinctiveness (including the
+`CK_SOLID_MEDIUM` drop — consistent with Khaled's "stick to distinctiveness" direction), floors
+and caps all untouched. Full rationale, worked examples, accepted limitations (single-hub
+family; the new many/few cliff gets a disclosure note) in
+`docs/superpowers/specs/2026-07-14-conditional-hub-counting-design.md`.
+
+**For Nadim:** agree/adjust the two new proposals (`MEGA_POPULAR_MANY_MIN = 2`,
+`MEGA_POPULAR_MANY_FRACTION = 0.15`) and green-light implementation. The other 2026-07-13
+sign-off items (session gap, ledger cap, small-pop cap, DIRECT/N recalibration) remain open —
+this verdict covers the hub rule only. No code changed on this branch.
+
 ## 2026-07-13 - HANDOFF for Khaled's review (Nadim + Claude) — main MERGED + demo PORTED
 
 **For Khaled to review before we call this final.** The contact matcher you built (git author
