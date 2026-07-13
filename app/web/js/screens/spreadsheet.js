@@ -15,6 +15,7 @@ import { api } from "../api.js";
 import { shell } from "../layout.js";
 import {
   el, loading, clear, msg, toast, detectionBlock, frequentAreasBlock,
+  matchFindingsBlock, ledgerTable,
 } from "../components.js";
 import { callTypeDisplay, CALL_TYPE_OPTIONS } from "../call-types.js";
 
@@ -38,8 +39,12 @@ export async function spreadsheetScreen(app) {
 
   const detection = detectionCard(datasets);
   const explorer = explorerCard(datasets);
+  const matcher = matcherCard(datasets);
+  const ledger = ledgerCard(datasets);
   detection.refresh(targets);
   explorer.refresh(targets);
+  matcher.refresh(targets);
+  ledger.refresh(targets);
 
   // Click a user in the sheet -> make sure a target exists for that phone in
   // that dataset (created on the fly, named after the number), then run the
@@ -57,6 +62,8 @@ export async function spreadsheetScreen(app) {
       targets = await api.targets();
       detection.refresh(targets);
       explorer.refresh(targets);
+      matcher.refresh(targets);
+      ledger.refresh(targets);
       t = targets.find((x) => x.dataset_id === datasetId && x.phone_number === phone);
       if (!t) return;
     }
@@ -67,6 +74,8 @@ export async function spreadsheetScreen(app) {
   body.appendChild(recordsCard(datasets, onUserDetect));
   body.appendChild(detection.card);
   body.appendChild(explorer.card);
+  body.appendChild(matcher.card);
+  body.appendChild(ledger.card);
 }
 
 function targetOption(t, datasets) {
@@ -338,6 +347,265 @@ function renderDetection(slot, payload) {
     payload.frequent_areas, payload.frequent_areas_confidence, "det-block"));
 }
 
+// ---- 4. contact matcher (pair inference) ----
+
+// Compares TWO targets of the same dataset and reports typed findings (direct
+// contact / mutual relationship / meeting up), each with a weakest-link
+// High/Medium/Low strength. This IS an inference (unlike the explorer's
+// tallies), so it wears the inference styling. Nothing is stored until the
+// user clicks "Save to export" — the save endpoint recomputes server-side.
+function matcherCard(datasets) {
+  const card = el("div", { class: "card card-inference" });
+  card.appendChild(el("div", { class: "card-head" }, [
+    el("h3", {}, "Contact matcher"),
+    el("span", { class: "kicker kicker-inference" }, "inference · pair comparison"),
+  ]));
+  card.appendChild(el("p", { class: "hint" },
+    "Picks two targets from the same dataset and looks for a link: direct contact, " +
+    "shared contacts, and being in the same place at the same time. Each finding " +
+    "carries its own strength rating; click a finding for the evidence."));
+
+  // Saves are invisible from this card without this line (the staging list lives
+  // on the Export screen), which read as "saving is broken" and led to
+  // remove-and-retry loops that emptied the staging. Keep the count in view.
+  const savedLine = el("p", { class: "hint saved-count" }, "");
+  card.appendChild(savedLine);
+  const refreshSavedCount = async () => {
+    try {
+      const saved = await api.savedMatches();
+      savedLine.textContent = saved.length === 0
+        ? "Nothing saved for export yet."
+        : `Saved for export: ${saved.length} pair match${saved.length === 1 ? "" : "es"} ` +
+          "(manage on the Export screen).";
+    } catch (e) {
+      // A failed count fetch must not break the card; leave the line as-is.
+    }
+  };
+
+  const inner = el("div");
+  card.appendChild(inner);
+
+  let seq = 0; // drop stale comparisons when a newer run starts
+
+  const refresh = (targets) => {
+    refreshSavedCount();
+    const keepA = inner.querySelector("#cm-a") ? inner.querySelector("#cm-a").value : "";
+    const keepB = inner.querySelector("#cm-b") ? inner.querySelector("#cm-b").value : "";
+    clear(inner);
+    if (targets.length < 2) {
+      inner.appendChild(el("div", { class: "empty" },
+        "Needs at least two targets. Add them from a dataset's Targets screen, " +
+        "or click phone numbers in the sheet above."));
+      return;
+    }
+    const option = (t) => targetOption(t, datasets);
+    const pickA = el("select", { id: "cm-a" },
+      [el("option", { value: "" }, "— target A —")].concat(targets.map(option)));
+    const pickB = el("select", { id: "cm-b" },
+      [el("option", { value: "" }, "— target B —")].concat(targets.map(option)));
+    if (keepA) pickA.value = keepA;
+    if (keepB) pickB.value = keepB;
+
+    const field = (labelText, forId, input) =>
+      el("div", {}, [el("label", { for: forId }, labelText), input]);
+    inner.appendChild(el("div", { class: "filter-grid" }, [
+      field("Target A", "cm-a", pickA),
+      field("Target B", "cm-b", pickB),
+    ]));
+
+    const btn = el("button", { class: "btn btn-primary" }, "Compare");
+    const slot = el("div");
+    inner.appendChild(el("div", { class: "form-actions" }, [
+      btn,
+      el("span", { class: "hint" }, "Both targets must be from the same dataset."),
+    ]));
+    inner.appendChild(slot);
+
+    btn.addEventListener("click", async () => {
+      const mine = ++seq;
+      clear(slot);
+      if (!pickA.value || !pickB.value) {
+        slot.appendChild(msg("Select both targets.")); return;
+      }
+      if (pickA.value === pickB.value) {
+        slot.appendChild(msg("Pick two different targets.")); return;
+      }
+      const a = targets.find((t) => String(t.id) === pickA.value);
+      const b = targets.find((t) => String(t.id) === pickB.value);
+      if (a && b && a.dataset_id !== b.dataset_id) {
+        slot.appendChild(msg("Both targets must be from the same dataset.")); return;
+      }
+      const matchAId = pickA.value;
+      const matchBId = pickB.value;
+      btn.disabled = true;
+      slot.appendChild(loading("Comparing…"));
+      try {
+        const payload = await api.match(matchAId, matchBId);
+        if (mine !== seq) return;
+        clear(slot);
+        slot.appendChild(matchFindingsBlock(payload));
+        const save = el("button", { class: "btn btn-sm" }, "Save to export");
+        save.addEventListener("click", async () => {
+          save.disabled = true;
+          try {
+            await api.saveMatch(matchAId, matchBId);
+            save.textContent = "Saved ✓";
+            toast("Pair match saved to export");
+            refreshSavedCount();
+          } catch (e) {
+            toast(e.message, "error");
+            save.disabled = false;
+          }
+        });
+        slot.appendChild(el("div", { class: "form-actions" }, [
+          save,
+          el("span", { class: "hint" },
+            "Saving replaces any previous save of this pair in the export."),
+        ]));
+      } catch (e) {
+        if (mine !== seq) return;
+        clear(slot);
+        slot.appendChild(msg(e.message));
+      } finally {
+        if (mine === seq) btn.disabled = false;
+      }
+    });
+  };
+
+  return { card, refresh };
+}
+
+// ---- 5. pair record ledger (the records themselves) ----
+
+// A separate feature from the matcher: the matcher judges, this LISTS. Every
+// record linking two targets — direct calls, calls to shared contacts, and
+// records in shared areas (meet-up and non-meet-up) — with real dates and times.
+// Common contacts/areas are listed but LABELLED: they are not evidence of a link,
+// and they are not hidden either. No pills, no gates: nothing here is a verdict.
+function ledgerCard(datasets) {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("div", { class: "card-head" }, [
+    el("h3", {}, "Pair record ledger"),
+    el("span", { class: "kicker" }, "records · not a verdict"),
+  ]));
+  card.appendChild(el("p", { class: "hint" },
+    "Lists every record that links two targets: their direct calls, the calls " +
+    "either side made to a contact they share, and their records in shared areas. " +
+    "Dates and times included; capped listings are disclosed before export."));
+
+  const savedLine = el("p", { class: "hint saved-count" }, "");
+  card.appendChild(savedLine);
+  const refreshSavedCount = async () => {
+    try {
+      const saved = await api.savedLedgers();
+      const totalRows = saved.reduce((n, l) => n + (l.row_count || 0), 0);
+      const shownRows = saved.reduce(
+        (n, l) => n + (l.shown_row_count ?? l.row_count ?? 0), 0);
+      const rowSummary = shownRows === totalRows
+        ? `${totalRows} record${totalRows === 1 ? "" : "s"}`
+        : `${shownRows} of ${totalRows} records staged; capped`;
+      savedLine.textContent = saved.length === 0
+        ? "Nothing saved for export yet."
+        : `Saved for export: ${saved.length} ledger${saved.length === 1 ? "" : "s"} ` +
+          `(${rowSummary}; manage on the Export screen).`;
+    } catch (e) {
+      // a failed count must not break the card
+    }
+  };
+
+  const inner = el("div");
+  card.appendChild(inner);
+  let seq = 0;
+
+  const refresh = (targets) => {
+    refreshSavedCount();
+    const keepA = inner.querySelector("#lg-a") ? inner.querySelector("#lg-a").value : "";
+    const keepB = inner.querySelector("#lg-b") ? inner.querySelector("#lg-b").value : "";
+    clear(inner);
+    if (targets.length < 2) {
+      inner.appendChild(el("div", { class: "empty" },
+        "Needs at least two targets from the same dataset."));
+      return;
+    }
+    const option = (t) => targetOption(t, datasets);
+    const pickA = el("select", { id: "lg-a" },
+      [el("option", { value: "" }, "— target A —")].concat(targets.map(option)));
+    const pickB = el("select", { id: "lg-b" },
+      [el("option", { value: "" }, "— target B —")].concat(targets.map(option)));
+    if (keepA) pickA.value = keepA;
+    if (keepB) pickB.value = keepB;
+
+    const field = (labelText, forId, input) =>
+      el("div", {}, [el("label", { for: forId }, labelText), input]);
+    inner.appendChild(el("div", { class: "filter-grid" }, [
+      field("Target A", "lg-a", pickA),
+      field("Target B", "lg-b", pickB),
+    ]));
+
+    const btn = el("button", { class: "btn btn-primary" }, "List records");
+    const slot = el("div");
+    inner.appendChild(el("div", { class: "form-actions" }, [
+      btn,
+      el("span", { class: "hint" }, "Both targets must be from the same dataset."),
+    ]));
+    inner.appendChild(slot);
+
+    btn.addEventListener("click", async () => {
+      const mine = ++seq;
+      clear(slot);
+      if (!pickA.value || !pickB.value) {
+        slot.appendChild(msg("Select both targets.")); return;
+      }
+      if (pickA.value === pickB.value) {
+        slot.appendChild(msg("Pick two different targets.")); return;
+      }
+      const a = targets.find((t) => String(t.id) === pickA.value);
+      const b = targets.find((t) => String(t.id) === pickB.value);
+      if (a && b && a.dataset_id !== b.dataset_id) {
+        slot.appendChild(msg("Both targets must be from the same dataset.")); return;
+      }
+      const ledgerAId = pickA.value;
+      const ledgerBId = pickB.value;
+      btn.disabled = true;
+      slot.appendChild(loading("Listing records…"));
+      try {
+        const payload = await api.ledger(ledgerAId, ledgerBId);
+        if (mine !== seq) return;
+        clear(slot);
+        slot.appendChild(ledgerTable(payload));
+        if (payload.row_count > 0) {
+          const save = el("button", { class: "btn btn-sm" }, "Save to export");
+          save.addEventListener("click", async () => {
+            save.disabled = true;
+            try {
+              const saved = await api.saveLedger(ledgerAId, ledgerBId);
+              save.textContent = "Saved ✓";
+              toast(saved.cap_note || `Ledger saved to export (${saved.row_count} records)`);
+              refreshSavedCount();
+            } catch (e) {
+              toast(e.message, "error");
+              save.disabled = false;
+            }
+          });
+          slot.appendChild(el("div", { class: "form-actions" }, [
+            save,
+            el("span", { class: "hint" },
+              "Ledgers accumulate — saving the same pair again adds another copy."),
+          ]));
+        }
+      } catch (e) {
+        if (mine !== seq) return;
+        clear(slot);
+        slot.appendChild(msg(e.message));
+      } finally {
+        if (mine === seq) btn.disabled = false;
+      }
+    });
+  };
+
+  return { card, refresh };
+}
+
 // ---- 3. frequency explorer (filtered slice) ----
 
 function explorerCard(datasets) {
@@ -350,6 +618,22 @@ function explorerCard(datasets) {
     "Counts the most frequent value inside the current filter. This is a plain tally, " +
     "not a detection verdict — no confidence rating applies."));
 
+  // Same visible-staging rule as the matcher card: saves accumulate on the
+  // Export screen, so show the running count here where the saving happens.
+  const savedLine = el("p", { class: "hint saved-count" }, "");
+  card.appendChild(savedLine);
+  const refreshSavedCount = async () => {
+    try {
+      const saved = await api.savedTallies();
+      savedLine.textContent = saved.length === 0
+        ? "Nothing saved for export yet."
+        : `Saved for export: ${saved.length} count${saved.length === 1 ? "" : "s"} ` +
+          "(manage on the Export screen).";
+    } catch (e) {
+      // A failed count fetch must not break the card; leave the line as-is.
+    }
+  };
+
   const inner = el("div");
   card.appendChild(inner);
 
@@ -357,6 +641,7 @@ function explorerCard(datasets) {
                      "fx-from", "fx-to", "fx-hfrom", "fx-hto"];
 
   const refresh = (targets) => {
+    refreshSavedCount();
     // Preserve any in-progress filter values across a rebuild — refresh() fires
     // when a target is created by clicking a phone in the grid, and that click
     // was aimed at the Detection card, not at wiping the explorer the user set up.
@@ -422,6 +707,7 @@ function explorerCard(datasets) {
     btn.addEventListener("click", async () => {
       clear(slot);
       if (!target.value) { slot.appendChild(msg("Select a target.")); return; }
+      const tallyTargetId = target.value;
       const params = { rank_by: rankBy.value };
       if (callType.value) params.call_type = callType.value;
       if (area.value.trim()) params.area = area.value.trim();
@@ -433,9 +719,28 @@ function explorerCard(datasets) {
       btn.disabled = true;
       slot.appendChild(loading("Counting…"));
       try {
-        const res = await api.frequency(Number(target.value), params);
+        const res = await api.frequency(Number(tallyTargetId), params);
         clear(slot);
         renderTally(slot, res);
+        if (res.total_records > 0) {
+          // Click-to-save: exploring means throwaway runs; only what the user
+          // explicitly saves lands in the export workbook. The save endpoint
+          // recomputes from these SAME filters server-side.
+          const save = el("button", { class: "btn btn-sm" }, "Save to export");
+          save.addEventListener("click", async () => {
+            save.disabled = true;
+            try {
+              const saved = await api.saveTally(tallyTargetId, params);
+              save.textContent = "Saved ✓";
+              toast(`Count saved to export: ${saved.filter_label}`);
+              refreshSavedCount();
+            } catch (e) {
+              toast(e.message, "error");
+              save.disabled = false;
+            }
+          });
+          slot.appendChild(el("div", { class: "form-actions" }, [save]));
+        }
       } catch (e) {
         clear(slot);
         slot.appendChild(msg(e.message));

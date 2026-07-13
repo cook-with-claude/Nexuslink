@@ -39,7 +39,8 @@ export async function targetsScreen(app, params) {
   else if (store.counts) setStatusCounts(store.counts.datasets, allTargets.length);
   clear(body);
 
-  setCrumb(["Datasets", { text: dsName, sub: `${phones.length} numbers` }]);
+  setCrumb([{ text: "Datasets", href: "#/datasets" },
+            { text: dsName, sub: `${phones.length} numbers` }]);
 
   // --- add target form ---
   body.appendChild(addCard(app, datasetId, phones, targets));

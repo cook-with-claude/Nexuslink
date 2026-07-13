@@ -120,6 +120,28 @@ export const api = {
   },
   frequency: (targetId, params) =>
     request("GET", "/api/targets/" + targetId + "/frequency", { query: params }),
+  // contact matcher: run is a pure read; save recomputes SERVER-side (the
+  // client never uploads a result payload — nothing client-authored may enter
+  // the export) and replaces any previous save of the same pair.
+  match: (aId, bId) =>
+    request("POST", "/api/match", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
+  saveMatch: (aId, bId) =>
+    request("POST", "/api/match/save", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
+  savedMatches: () => request("GET", "/api/match/saved"),
+  deleteSavedMatch: (id) => request("DELETE", "/api/match/saved/" + id, {}),
+  // pair record ledger: the records themselves. Saved ledgers ACCUMULATE (the
+  // same pair may legitimately be staged twice), unlike pair matches.
+  ledger: (aId, bId) =>
+    request("POST", "/api/ledger", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
+  saveLedger: (aId, bId) =>
+    request("POST", "/api/ledger/save", { json: { target_a_id: Number(aId), target_b_id: Number(bId) } }),
+  savedLedgers: () => request("GET", "/api/ledger/saved"),
+  deleteSavedLedger: (id) => request("DELETE", "/api/ledger/saved/" + id, {}),
+  // saved explorer counts: same server-side recompute rule, from the filters.
+  saveTally: (targetId, params) =>
+    request("POST", "/api/frequency/save", { json: { target_id: Number(targetId), ...params } }),
+  savedTallies: () => request("GET", "/api/frequency/saved"),
+  deleteSavedTally: (id) => request("DELETE", "/api/frequency/saved/" + id, {}),
 };
 
 // Binary download (.xlsx), so it can't go through request()'s JSON envelope

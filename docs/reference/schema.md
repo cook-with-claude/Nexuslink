@@ -70,6 +70,50 @@ the phone-number rollup and per-target record reads.
 `GET /result` returns the highest-`id` row for the target (`ORDER BY id DESC LIMIT 1`). Re-analysis
 inserts a new row rather than updating — history is retained even though only the latest is surfaced.
 
+### `saved_pair_matches` — click-to-save export staging (contact matcher) — migration 2
+| Column | Type | Constraints |
+|---|---|---|
+| id | INTEGER | PK |
+| dataset_id | INTEGER | NOT NULL, FK → `datasets(id)` **ON DELETE CASCADE** |
+| target_a_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| target_b_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| created_at | TEXT | NOT NULL |
+| result_json | TEXT | NOT NULL (the full match payload, as shown on screen) |
+| — | — | **UNIQUE(target_a_id, target_b_id)** |
+
+Pair identity is **order-normalized by the writing repo** (`target_a_id < target_b_id`), so A↔B
+and B↔A occupy the same UNIQUE slot and re-saving **replaces**. The export's `Contact matches`
+sheet copies `result_json` — it never recomputes.
+
+### `saved_tallies` — click-to-save export staging (frequency explorer) — migration 2
+| Column | Type | Constraints |
+|---|---|---|
+| id | INTEGER | PK |
+| target_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| created_at | TEXT | NOT NULL |
+| filters_json | TEXT | NOT NULL (the validated filter set the server recomputed from) |
+| filter_label | TEXT | NOT NULL (human-readable filter description, shown in the export) |
+| tally_json | TEXT | NOT NULL (the stored tally payload) |
+
+Saved tallies accumulate (each is a different question) and are individually deletable from the
+Export screen.
+
+### `saved_ledgers` — click-to-save export staging (pair record ledger) — migration 3
+| Column | Type | Constraints |
+|---|---|---|
+| id | INTEGER | PK |
+| dataset_id | INTEGER | NOT NULL, FK → `datasets(id)` **ON DELETE CASCADE** |
+| target_a_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| target_b_id | INTEGER | NOT NULL, FK → `targets(id)` **ON DELETE CASCADE** |
+| created_at | TEXT | NOT NULL |
+| row_count | INTEGER | NOT NULL (the uncapped total, so truncation remains disclosed without decoding rows) |
+| rows_json | TEXT | NOT NULL (the first `LEDGER_ROW_CAP=50,000` rows, as computed server-side) |
+
+**No UNIQUE on the pair** — unlike `saved_pair_matches`, ledgers **accumulate**: a record listing is
+not a verdict, so saving the same pair twice is legitimate. The export streams `Pair records` in
+write-only mode, repeats an explicit “N of M rows shown; listing capped” note when needed, and guards
+the aggregate sheet against Excel's 1,048,576-row hard limit.
+
 ### `audit_log` — in-DB (encrypted) audit trail
 | Column | Type | Constraints |
 |---|---|---|
@@ -87,6 +131,9 @@ inserts a new row rather than updating — history is retained even though only 
 - A pre-versioning DB (`user_version == 0`, tables present) is *adopted* only after its full-DDL
   fingerprint matches the baseline (`_assert_matches_baseline`) — drift fails loudly.
 - Each migration's DDL + version bump run in one `BEGIN IMMEDIATE … COMMIT`.
-- **To evolve:** append `(2, "<ddl>")` to `MIGRATIONS`; never edit or reorder a released migration.
-- The runner is built (`migrate()`); it is **not yet auto-invoked on login** — that one-line wiring in
-  `app/api/guards.py:get_db()` is the first Phase-3 step (ADR 0002).
+- **To evolve:** append `(<n>, "<ddl>")` to `MIGRATIONS`; never edit or reorder a released migration.
+- The runner is auto-invoked on login via `app/api/guards.py:get_db()` (Phase 3 increment 3.1,
+  ADR 0002). **Migration 2** (contact-matcher feature) added `saved_pair_matches` +
+  `saved_tallies` — the seam's first real use; existing installs upgrade in place on next login.
+  **Migration 3** (pair record ledger) added `saved_ledgers`. **Migration 4** added dataset-scoped
+  `other_party`, `area`, and `(area, timestamp)` indexes for matcher group-bys and co-presence joins.

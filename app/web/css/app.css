@@ -630,3 +630,84 @@ input.col-filter { font-family: var(--mono); }
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   .spinner { animation: spin 0.7s linear infinite; }   /* keep the only progress signal */
 }
+
+/* Ancestor crumb parts navigate (Datasets ▸ <dataset> ▸ target) — same muted
+   look at rest so the bar stays calm; hover shows they are links. */
+.crumb a.ctx { text-decoration: none; }
+.crumb a.ctx:hover { color: var(--accent); text-decoration: underline; }
+/* contact-matcher findings: each is a <details> whose summary reads as a row
+   (label + strength pill + headline); reuses the .gate collapse styling. The
+   larger gap keeps a finding's strength pill from crowding the next finding. */
+.finding { margin-top: var(--s4); }
+.finding summary .dim { margin-left: var(--s2); }
+.finding table { margin-top: var(--s2); }
+
+/* Dataset-mode banner (adaptive gates): which rule-set judged the pair and how
+   confident the classification is. Deliberately louder than a .hint — the mode
+   changes what the mutual-relationship ratings MEAN. */
+.mode-note {
+  margin: var(--s3) 0 var(--s4);
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--fg);
+  font-size: var(--fs-body);
+}
+.mode-note strong { color: var(--accent); }
+.mode-note.mode-near-tie {
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.mode-note.mode-near-tie strong { color: var(--warn); }
+
+/* Gate-cliff near-boundary notes under a finding's binding line. */
+.near-note { margin: var(--s1) 0 0; }
+
+/* Pair record ledger: a record LISTING, not a verdict — no pills anywhere. Caps
+   its height so a heavy pair (thousands of rows) scrolls inside the card instead
+   of pushing the page; "Expand all" grows the viewport, not the row count. */
+.ledger-scroll {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: var(--s2);
+}
+.ledger-scroll.expanded { max-height: 70vh; }
+.ledger-table { width: 100%; }
+/* Two sticky header rows (column names + the in-header filters, the same pattern
+   the records sheet uses). The filter row parks directly under the names, so both
+   stay put while a long ledger scrolls beneath them. */
+.ledger-table thead tr:first-child th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  z-index: 2;
+}
+.ledger-table thead tr.filter-row th {
+  position: sticky;
+  top: 30px;
+  background: var(--bg-2);
+  z-index: 1;
+}
+.tag-target {
+  margin-left: var(--s2);
+  padding: 0 var(--s2);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+}
+
+/* Export screen: click-to-save staging list (saved matches + counts). */
+.saved-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.saved-item:last-child { border-bottom: 0; }
+

@@ -4,6 +4,32 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Claude: contact matcher PORTED onto the Phase-2 demo — scratch branch, NOT merged
+
+The contact matcher (built by Khaled/`smoky0y`, dual-reviewed + method-hardened, already on `main`)
+was **ported** onto the Phase-2 professor-demo line so the demo can show it while staying **pure
+Phase 2** — no Phase-3 auth (no server key / passphrase / login ceremony). Work is on scratch branch
+`claude/demo-matcher-port` off the demo tip `a4881b9`; the live demo branch + worktree
+`../la-passion-phase2` were left untouched.
+
+**Method:** brought the matcher's new files (`app/matching/`, `app/reporting/`, specs, sample xlsx,
+`tools/gen_matcher_scenarios.py`, `tests/phase2a/test_matching.py`) + the identical-on-demo modified
+files verbatim from the feature tip `67405f5`; re-applied targeted edits to the files that diverge on
+the Phase-2 line: `app/__init__.py` (register the two blueprints), `app/web/css/app.css` (append
+matcher styles), `pyproject.toml` (import-linter contracts + `app.analysis.export`→`app.reporting.export`),
+`tests/architecture/test_boundaries.py` (tools→phase1 guard), `tests/phase2a/test_export.py`
+(reporting import + new sheets + placeholder test). Adapted `test_matching.py` fixtures from the
+Phase-3 `bootstrap_key`/`DB_KEY` pattern to the demo's Phase-2 `account.authenticate(...)` pattern;
+skipped the Phase-3-only `test_migrate_on_login.py` (the demo migrates via `storage.py`).
+
+**Verified on the scratch branch:** pytest **254 passed**, `node --test` 36/36, every JS module parses,
+`git diff --stat <demo> -- phase1_cdr/` empty.
+
+**Left:** (1) live desktop launch on Nadim's machine — import `sample_matcher_scenarios.xlsx`, open the
+Spreadsheet tab, confirm the Compare + ledger cards work and there is still **no passphrase/login**;
+(2) then Nadim decides — fast-forward `claude/rebrand-nexuslink-phase2` to this scratch branch + repoint
+the worktree/shortcut, or keep it as a scratch line. Not merged to `main`, not pushed.
+
 ## 2026-07-04 - Claude: SESSION CLOSE — #10, README 2C, #16 all merged; native testing restored
 
 Everything this session is **landed on `main`** (`143a551`); the repo is a single branch again.

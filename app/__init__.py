@@ -47,5 +47,9 @@ def create_app() -> Flask:
     app.register_blueprint(targets_bp)
     from app.analysis.routes import bp as analysis_bp
     app.register_blueprint(analysis_bp)
+    from app.matching.routes import bp as matching_bp
+    app.register_blueprint(matching_bp)
+    from app.reporting.routes import bp as reporting_bp
+    app.register_blueprint(reporting_bp)
 
     return app
