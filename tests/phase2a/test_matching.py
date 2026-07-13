@@ -737,3 +737,29 @@ def test_export_carries_saved_matches_and_tallies(client, pair):
     saved = client.get("/api/frequency/saved").get_json()["data"][0]
     assert tallies[1][8] == saved["tally"]["top"][0]["value"]
     assert tallies[1][9] == saved["tally"]["top"][0]["count"]
+
+
+def test_export_evidence_counts_sheet(client, pair):
+    """The counts sheet: one row per saved pair, raw tallies, NO confidence
+    column anywhere (a count is not a gated verdict)."""
+    a, b = pair
+    client.post("/api/match/save", json={"target_a_id": a, "target_b_id": b})
+    wb = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
+    rows = list(wb["Evidence counts"].iter_rows(values_only=True))
+    assert rows[0][:6] == ("Pair ID", "Dataset", "Target A", "Target B", "Saved at",
+                           "Direct records")
+    assert not any("onfidence" in str(h) for h in rows[0])
+    row = rows[1]
+    assert "A (100)" in row[2] and "B (200)" in row[3]
+    assert row[5] == 4                       # direct records
+    assert (row[6], row[7]) == (2, 2)        # calls, SMS
+    assert (row[10], row[11]) == (3, 6)      # distinctive contacts / records
+    assert (row[12], row[13]) == (0, 0)      # common contacts / records
+    assert (row[14], row[15]) == (3, 7)      # meet-up areas / records
+    assert (row[16], row[17]) == (1, 2)      # shared-only areas / records
+
+
+def test_export_evidence_counts_placeholder_when_nothing_saved(client):
+    wb = load_workbook(io.BytesIO(client.post("/api/export/results.xlsx").data))
+    rows = list(wb["Evidence counts"].iter_rows(values_only=True))
+    assert rows[1][0] == "none saved"

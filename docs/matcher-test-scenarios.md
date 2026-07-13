@@ -19,8 +19,15 @@ real engine (`app.matching.service.compute_match`) before the workbooks were wri
 it fails if the tables drift from the engine). Import a file, open the Spreadsheet
 screen's **Contact matcher** card, and compare each pair against its row. The card
 also shows the **dataset-mode line** (strangers vs close-knit, with a
-High/Medium/Low classification confidence, or "near tie" on the boundary) and
+High/Medium/Low classification confidence, or "near tie" on the boundary), the
+**evidence strip** (raw tallies: direct records, mutual calls, mutual locations
+split meet-up / shared-only — no confidence, a count is not a verdict), and
 **≈ near-boundary notes** when a gate value sits close to a tier line.
+
+Worth comparing on purpose: **P01** (all three findings) has 12 direct records, 5
+shared contacts and 1 meet-up area; **P15** (no findings at all) still counts 1
+**shared-only** location — the pair frequents P15_STADIUM hours apart. That is the
+counter's whole point: evidence exists even where no verdict fires.
 
 Pair members share a phone prefix: `555PP01` vs `555PP02` where `PP` is the
 scenario number (compare `5550101` with `5550102`, and so on).

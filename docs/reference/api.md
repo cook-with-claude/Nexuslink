@@ -130,8 +130,11 @@ individually deletable. `export/results.xlsx` writes the **stored** latest answe
 (never recomputes); un-analyzed targets appear as `not analyzed`. Workbook layout: a styled
 `Summary` sheet (one row per target: home/work + confidence) plus `Frequent areas` and
 `Frequent contacts` detail sheets — tallies carry **no confidence columns**, same rule as the UI —
-plus the always-present `Contact matches` and `Frequency counts` sheets holding the click-to-save
-staged items (placeholder row when nothing is saved). The export route lives in `app/reporting/`
+plus the always-present `Contact matches`, `Evidence counts` (one row per saved pair: the raw
+tallies — direct records, mutual calls distinctive/common, mutual locations meet-up/shared-only —
+again with no confidence column) and `Frequency counts` sheets holding the click-to-save
+staged items (placeholder row when nothing is saved; pairs saved before the counters existed show
+em-dashes until re-saved). The export route lives in `app/reporting/`
 (the cross-domain composition surface), and the ?target_id scope applies to the detection sheets
 only — the two staged sheets always carry exactly the user's curated saves.
 
@@ -168,11 +171,30 @@ thresholds are proposals pending domain review). Payload shape:
     "headline": "<one-line summary>",
     "evidence": {…}                       // per-type: direct counts / shared_contacts / events (+gates)
   }],
+  "evidence_counts": {                    // RAW tallies — no gates, no confidence
+    "direct": {"records", "calls", "sms", "a_to_b", "b_to_a"},
+    "mutual_calls": {                     // buckets use the SAME distinctive/common
+      "distinctive": {"contacts", "records_a", "records_b", "records"},
+      "common":      {"contacts", "records_a", "records_b", "records"}
+    },
+    "mutual_locations": {                 // disjoint BY AREA (no double counting)
+      "meet_up":     {"areas", "records_a", "records_b", "records"},
+      "non_meet_up": {"areas", "records_a", "records_b", "records"}
+    }
+  },
   "caveats": ["<honesty notes: tiny window overlap, zero records, tiny population>"],
   "details": {"windows": {"a","b","overlap_ratio"}, "shared_areas_no_time_overlap": […]},
   "no_link": false                        // true when findings is empty
 }
 ```
+
+`evidence_counts` (spec `2026-07-13-matcher-evidence-counters-design.md`) are **descriptive
+tallies of the raw evidence** — no gates, no confidence, no pills (a count is not a gated verdict;
+same rule as the frequency explorer). They are built from the SAME facts as the findings, so the
+two can never disagree, and they can never change a rating. **Mutual locations ≠ meeting up**:
+"meet-up" areas are those where a co-presence event happened; "shared-only" areas are those both
+subscribers frequent at *different* times — a signal the findings only mention in passing. The two
+location buckets are disjoint by area, so they sum to the shared-area total.
 
 Gate design: *direct contact* is positive evidence rated by its own volume (never dragged down by
 the doubt gates); *mutual relationship* = min(sample N both sides, overlap share, distinctiveness,

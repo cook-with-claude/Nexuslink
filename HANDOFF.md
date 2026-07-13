@@ -4,6 +4,40 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Claude: matcher evidence counters — on `claude/contact-matcher`, NOT merged
+
+Brainstormed with Khaled, spec `docs/superpowers/specs/2026-07-13-matcher-evidence-counters-design.md`,
+plan `docs/superpowers/plans/2026-07-13-matcher-evidence-counters.md`. Suite **263 passed / 1
+skipped**, ruff clean, `node --test` 24/24, generator green, `git diff --stat main -- phase1_cdr/`
+empty.
+
+**What and why.** The matcher reported gated verdicts but never stated the raw evidence under
+them, and one signal barely existed: a shared area with no time overlap was a bare NAME in a
+footnote with no counts. **"Mutual locations" is a different claim from "meeting up"** — both
+frequent an area, not necessarily at the same time — and only the latter was measured. Now every
+match payload carries `evidence_counts`: direct records (total/calls/SMS/each direction), mutual
+calls split **distinctive/common**, and mutual locations split **meet-up/shared-only**, each
+bucket with item count + per-side record volume.
+
+**Design rules worth keeping:** (1) counts carry **NO confidence, no pills, no gates** — Khaled's
+existing rule (a count is not a gated verdict, same as the frequency explorer); they cannot change
+any rating. (2) The distinctive/common split reuses `gates.classify_shared_contacts`, extracted so
+the mutual finding and the counter can never label a contact differently (it stays dataset-mode
+aware). (3) Location buckets are **disjoint by area** — an area they met in is never also counted
+as shared-only, so the buckets sum to the shared total; the generator asserts this for every
+scenario pair. (4) Counts come from the same facts the gates use, so counter and verdict cannot
+disagree.
+
+**Surfaces:** `repo.area_tallies` (new: per-area record volume; `area_set` only gave the set, and
+`compute_match` now derives the sets from the tallies — one query per side, not two);
+`gates.build_evidence_counts` (pure); an expandable **evidence strip** in the matcher card above
+the findings; and a new **"Evidence counts"** export sheet (sixth), one row per saved pair. Pairs
+saved before this change carry no counts → the sheet prints em-dashes (NOT zeros: zero would read
+as "no evidence" when the truth is "not measured"); re-saving fills them in.
+
+**Note for review:** `tests/phase2a/test_export.py::test_export_detail_sheets` pins the full sheet
+list, so it was updated — that assertion is the intended tripwire for anyone adding a sheet.
+
 ## 2026-07-13 - Claude: adaptive matcher gates + test datasets + UX fixes — on `claude/contact-matcher`, NOT merged
 
 Extends the 2026-07-12 contact-matcher work on the same branch after a hands-on testing session

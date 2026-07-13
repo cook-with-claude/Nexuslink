@@ -64,7 +64,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **254 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **263 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
   every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's
