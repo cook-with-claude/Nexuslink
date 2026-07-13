@@ -1,6 +1,8 @@
 // Shared UI bits. Single source of truth for the confidence pill and the gate
 // trace, so the "no raw JSON / one visual language" rules hold everywhere.
 
+import { callTypeDisplay } from "./call-types.js";
+
 // --- small DOM helpers ---
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -241,6 +243,368 @@ export function frequentAreasBlock(areas, conf, wrapClass = "card") {
       el("td", { class: "num dim" }, pct(a.share)),
     ]))),
   ]));
+  return block;
+}
+
+// --- contact-matcher renderers ---
+// Typed findings, each an expandable <details>: the summary row is label +
+// strength pill + headline, the body is which gate(s) bound the weakest-link
+// rating plus the evidence for that finding type. Strength reuses the
+// confidence-pill classes deliberately: the matcher IS a gated inference
+// (unlike the tallies, which carry no pill anywhere).
+
+export function strengthPill(strength) {
+  const cls = PILL_CLASS[strength] || "pill-insufficient";
+  return el("span", { class: "pill " + cls }, strength || "n/a");
+}
+
+function kvRows(pairs) {
+  return el("div", { class: "gate-rows" }, pairs.flatMap(([k, v]) => [
+    el("span", { class: "k" }, k), el("span", { class: "v" }, String(v ?? "—")),
+  ]));
+}
+
+// Evidence tables are capped: a real pair can produce hundreds of co-presence
+// events (Phase-1's 6-month sample yields ~100 for two users), and dumping them
+// all makes the card scroll for pages. The count is already in the headline; the
+// table is a sample, so say so rather than pretending it's the whole list.
+const EVIDENCE_ROW_CAP = 20;
+
+function capped(rows) {
+  return { shown: rows.slice(0, EVIDENCE_ROW_CAP), hidden: Math.max(0, rows.length - EVIDENCE_ROW_CAP) };
+}
+
+function moreNote(hidden) {
+  if (!hidden) return null;
+  // Deliberately does NOT say "see the export" — the export's evidence cell is a
+  // digest too. The headline carries the complete count; this table is a sample.
+  return el("p", { class: "hint" }, `… and ${hidden} more (the headline count is the total).`);
+}
+
+function findingEvidence(f, pair) {
+  const ev = f.evidence || {};
+  const nameA = pair.target_a.name;
+  const nameB = pair.target_b.name;
+  if (f.type === "direct_contact") {
+    return [kvRows([
+      ["Total", ev.total], ["Calls", ev.calls], ["SMS", ev.sms],
+      [`${nameA} → ${nameB}`, ev.a_to_b], [`${nameB} → ${nameA}`, ev.b_to_a],
+      ["First", ev.first || "—"], ["Last", ev.last || "—"],
+    ])];
+  }
+  if (f.type === "mutual_contacts") {
+    const { shown, hidden } = capped(ev.shared_contacts || []);
+    return [
+      kvRows(Object.entries(ev.gates || {}).map(([k, v]) => ["gate: " + k, v])),
+      el("table", {}, [
+        el("thead", {}, el("tr", {}, [
+          el("th", {}, "Contact"), el("th", { class: "num" }, nameA + " ×"),
+          el("th", { class: "num" }, nameB + " ×"),
+          el("th", { class: "num" }, "Others with it"), el("th", {}, "Distinctive"),
+        ])),
+        el("tbody", {}, shown.map((c) => el("tr", {}, [
+          el("td", { class: "data" }, c.party),
+          el("td", { class: "num" }, String(c.count_a)),
+          el("td", { class: "num" }, String(c.count_b)),
+          el("td", { class: "num dim" }, String(c.other_users_with)),
+          el("td", { class: "dim" }, c.distinctive ? "yes" : "no (common)"),
+        ]))),
+      ]),
+      moreNote(hidden),
+    ];
+  }
+  if (f.type === "co_presence") {
+    const { shown, hidden } = capped(ev.events || []);
+    return [
+      kvRows(Object.entries(ev.gates || {}).map(([k, v]) => ["gate: " + k, v])),
+      el("table", {}, [
+        el("thead", {}, el("tr", {}, [
+          el("th", {}, "Area"), el("th", {}, "Day"),
+          el("th", {}, nameA + " time"), el("th", {}, nameB + " time"),
+          el("th", { class: "num" }, "Others seen there"),
+        ])),
+        el("tbody", {}, shown.map((e) => el("tr", {}, [
+          el("td", { class: "data" }, e.area),
+          el("td", { class: "data dim" }, e.day),
+          el("td", { class: "data dim" }, String(e.a_time || "—").replace("T", " ")),
+          el("td", { class: "data dim" }, String(e.b_time || "—").replace("T", " ")),
+          el("td", { class: "num dim" }, String(e.other_users_with)),
+        ]))),
+      ]),
+      moreNote(hidden),
+    ];
+  }
+  return [];
+}
+
+// The full findings block for one pair-match payload (the /api/match response
+// or a saved result_json). Used by the Spreadsheet matcher card; the export
+// sheet carries the same stored content.
+// The dataset-mode line (adaptive gates, spec 2026-07-13): which rule-set judged
+// this pair and how decisively the dataset sits on its side of the boundary.
+// The mode boundary is a cliff, so it is DISCLOSED with its own tier — and a
+// dataset sitting on the line says "near tie" instead of silently flipping
+// modes between imports. Old saved payloads without dataset_context render
+// exactly as before (returns null).
+export function datasetModeNote(ctx) {
+  if (!ctx || !ctx.mode) return null;
+  const label = ctx.mode === "close-knit"
+    ? "Close-knit / interconnected dataset" : "Strangers dataset";
+  if (ctx.classification === "Near tie") {
+    return el("div", { class: "mode-note mode-near-tie" }, [
+      el("strong", {}, "Near tie: "),
+      `this dataset sits ON the strangers ↔ close-knit line ` +
+      `(avg ${ctx.avg_shared_contacts_per_pair} shared contacts per pair vs ` +
+      `boundary ${ctx.boundary}). Mutual-contact ratings may flip with small ` +
+      `data changes.`,
+    ]);
+  }
+  return el("div", { class: "mode-note" }, [
+    el("strong", {}, label),
+    ` — ${ctx.classification} confidence in this reading ` +
+    `(avg ${ctx.avg_shared_contacts_per_pair} shared contacts per pair; ` +
+    `boundary ${ctx.boundary}).`,
+  ]);
+}
+
+export function matchFindingsBlock(payload, wrapClass = "det-block") {
+  const block = el("div", { class: wrapClass });
+  const modeNote = datasetModeNote(payload.dataset_context);
+  if (modeNote) block.appendChild(modeNote);
+  for (const c of payload.caveats || []) {
+    block.appendChild(el("p", { class: "hint" }, "⚠ " + c));
+  }
+  if (!payload.findings || payload.findings.length === 0) {
+    block.appendChild(el("div", { class: "empty" },
+      "No link found between these targets."));
+    return block;
+  }
+  for (const f of payload.findings) {
+    const d = el("details", { class: "gate finding" }, [
+      el("summary", {}, [
+        el("strong", {}, f.label), " ", strengthPill(f.strength),
+        " ", el("span", { class: "dim" }, f.headline),
+      ]),
+    ]);
+    if (f.strength !== "High" && f.bound_by && f.bound_by.length) {
+      d.appendChild(el("p", { class: "binding-note" },
+        `Held at ${f.strength} by: ${f.bound_by.join(", ")}.`));
+    }
+    // Gate-cliff disclosure: a raw value sitting near a tier line is worth a
+    // sentence — "Medium" alone hides whether it was 49-vs-50 or 20-vs-50.
+    for (const n of f.notes || []) {
+      d.appendChild(el("p", { class: "hint near-note" }, "≈ " + n));
+    }
+    findingEvidence(f, payload.pair)
+      .filter((node) => node !== null)   // moreNote() is null when nothing is capped
+      .forEach((node) => d.appendChild(node));
+    block.appendChild(d);
+  }
+  const alone = (payload.details || {}).shared_areas_no_time_overlap || [];
+  if (alone.length) {
+    block.appendChild(el("p", { class: "hint" },
+      `Also share ${alone.length} area(s) without time overlap ` +
+      `(too weak to be a finding): ${alone.join(", ")}`));
+  }
+  return block;
+}
+
+// --- pair record ledger (spec 2026-07-13-pair-record-ledger-design.md) ---
+// The RECORDS behind a pair, not a verdict about them: no strength pills, no
+// gates, no confidence anywhere. Shows LEDGER_PAGE rows; an Expand control
+// reveals the rest in a scrollable grid (a heavy pair runs to thousands of rows).
+// Server-side caps are disclosed by the payload and repeated above the table.
+
+export const LEDGER_PAGE = 50;
+
+// Sorting is client-side (the whole ledger is already in hand) but behaves like
+// the records sheet's server-side sort: click a header to toggle, an arrow shows
+// the active column and direction. Pure + exported so the ordering rules are
+// testable without a DOM. `null` column = the natural order the server returned
+// (grouped by category, then by time).
+export function sortLedgerRows(rows, col, dir = "asc") {
+  if (!col) return rows;
+  const sign = dir === "desc" ? -1 : 1;
+  const key = (r) => (col === "duration_seconds"
+    ? Number(r.duration_seconds ?? 0)
+    : String(r.timestamp ?? ""));
+  return [...rows].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (ka < kb) return -1 * sign;
+    if (ka > kb) return 1 * sign;
+    return 0;
+  });
+}
+
+function ledgerCell(r) {
+  const party = r.other_party_is_target
+    ? `${r.other_party_name} (${r.other_party})`
+    : (r.other_party || "—");
+  const distinctive = r.distinctive === null || r.distinctive === undefined
+    ? "—" : (r.distinctive ? "distinctive" : "common");
+  return [
+    el("td", {}, r.category_label),
+    el("td", { class: "data" }, `${r.who} (${r.who_phone})`),
+    el("td", { class: "data dim" }, String(r.timestamp || "").replace("T", " ")),
+    el("td", { class: "dim" }, callTypeDisplay(r.call_type)),
+    el("td", { class: "num dim" }, String(r.duration_seconds ?? 0)),
+    el("td", { class: "data" }, [
+      party,
+      r.other_party_is_target
+        ? el("span", { class: "tag tag-target" }, "target")
+        : null,
+    ].filter(Boolean)),
+    el("td", { class: "data" }, r.area || "—"),
+    el("td", { class: "dim" }, distinctive),
+  ];
+}
+
+// Client-side filtering: the ledger's full row set is already in hand, so a
+// filter is instant (no round trip, unlike the records sheet, which pages over a
+// whole dataset server-side). Pure and exported so the matching rules are
+// testable without a DOM. Text filters are case-insensitive "contains".
+export function filterLedgerRows(rows, f = {}) {
+  const has = (hay, needle) =>
+    !needle || String(hay ?? "").toLowerCase().includes(needle.toLowerCase());
+  return rows.filter((r) => {
+    if (f.category && r.category !== f.category) return false;
+    if (f.who && r.who_phone !== f.who) return false;
+    if (f.call_type && String(r.call_type) !== String(f.call_type)) return false;
+    if (f.distinctive === "distinctive" && r.distinctive !== true) return false;
+    if (f.distinctive === "common" && r.distinctive !== false) return false;
+    if (f.distinctive === "na" && r.distinctive !== null
+        && r.distinctive !== undefined) return false;
+    if (f.targets_only && !r.other_party_is_target) return false;
+    if (!has(r.timestamp, f.when)) return false;
+    if (!has(r.area, f.area)) return false;
+    // party matches the number OR the target name, so "carlos" finds his rows
+    if (f.party && !(has(r.other_party, f.party) || has(r.other_party_name, f.party))) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function ledgerTable(payload) {
+  const block = el("div", {});
+  const all = (payload && payload.rows) || [];
+  if (all.length === 0) {
+    block.appendChild(el("div", { class: "empty" },
+      "No records link these two targets."));
+    return block;
+  }
+
+  const counts = payload.category_counts || {};
+  if (payload.cap_note) {
+    block.appendChild(el("p", { class: "hint" }, payload.cap_note));
+  }
+  block.appendChild(el("p", { class: "hint" },
+    `${payload.row_count} record(s): ` +
+    Object.entries(counts).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(" · ")));
+
+  // --- column filters, in the header row (the records sheet's pattern) ---
+  const cats = [...new Set(all.map((r) => r.category))];
+  const fCat = el("select", { class: "col-filter", "aria-label": "filter category" },
+    [el("option", { value: "" }, "All")].concat(cats.map((c) =>
+      el("option", { value: c }, (all.find((r) => r.category === c) || {}).category_label))));
+  const whos = [...new Set(all.map((r) => r.who_phone))];
+  const fWho = el("select", { class: "col-filter", "aria-label": "filter who" },
+    [el("option", { value: "" }, "Both")].concat(whos.map((p) =>
+      el("option", { value: p }, (all.find((r) => r.who_phone === p) || {}).who))));
+  const fWhen = el("input", { class: "col-filter", type: "text",
+    placeholder: "2026-05-03…", "aria-label": "filter date" });
+  const types = [...new Set(all.map((r) => r.call_type))];
+  const fType = el("select", { class: "col-filter", "aria-label": "filter type" },
+    [el("option", { value: "" }, "Any")].concat(types.map((t) =>
+      el("option", { value: String(t) }, callTypeDisplay(t)))));
+  const fParty = el("input", { class: "col-filter", type: "text",
+    placeholder: "number or name…", "aria-label": "filter other party" });
+  const fArea = el("input", { class: "col-filter", type: "text",
+    placeholder: "contains…", "aria-label": "filter area" });
+  const fDist = el("select", { class: "col-filter", "aria-label": "filter distinctive" }, [
+    el("option", { value: "" }, "Any"),
+    el("option", { value: "distinctive" }, "distinctive"),
+    el("option", { value: "common" }, "common"),
+    el("option", { value: "na" }, "—"),
+  ]);
+  const controls = [fCat, fWho, fWhen, fType, fParty, fArea, fDist];
+
+  // Sortable headers (the records sheet's affordance): click toggles
+  // oldest/newest and shortest/longest; the arrow marks the active column.
+  let sortCol = "timestamp";
+  let sortDir = "asc";
+  const whenBtn = el("button", { class: "link", title: "Sort by time" }, "Date & time");
+  const durBtn = el("button", { class: "link", title: "Sort by duration" }, "Duration");
+  const sortMark = (col) => (sortCol !== col ? "" : (sortDir === "asc" ? " ↑" : " ↓"));
+
+  const body = el("tbody", {});
+  const wrap = el("div", { class: "ledger-scroll" }, el("table", { class: "ledger-table" }, [
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", {}, "Category"), el("th", {}, "Who"), el("th", {}, whenBtn),
+        el("th", {}, "Type"), el("th", { class: "num" }, durBtn),
+        el("th", {}, "Other party"), el("th", {}, "Area"), el("th", {}, "Distinctive"),
+      ]),
+      el("tr", { class: "filter-row" }, [
+        el("th", {}, fCat), el("th", {}, fWho), el("th", {}, fWhen),
+        el("th", {}, fType), el("th", {}),          // duration: nothing to filter
+        el("th", {}, fParty), el("th", {}, fArea), el("th", {}, fDist),
+      ]),
+    ]),
+    body,
+  ]));
+  block.appendChild(wrap);
+
+  const note = el("p", { class: "hint" }, "");
+  const expand = el("button", { class: "btn btn-sm" }, "Expand all");
+  const actions = el("div", { class: "form-actions" }, [expand, note]);
+  block.appendChild(actions);
+
+  let expanded = false;
+  const render = () => {
+    const rows = sortLedgerRows(filterLedgerRows(all, {
+      category: fCat.value, who: fWho.value, when: fWhen.value,
+      call_type: fType.value, party: fParty.value, area: fArea.value,
+      distinctive: fDist.value,
+    }), sortCol, sortDir);
+    const shown = expanded ? rows.length : Math.min(LEDGER_PAGE, rows.length);
+    clear(body);
+    for (const r of rows.slice(0, shown)) body.appendChild(el("tr", {}, ledgerCell(r)));
+    whenBtn.textContent = "Date & time" + sortMark("timestamp");
+    durBtn.textContent = "Duration" + sortMark("duration_seconds");
+
+    const filtered = rows.length !== all.length ? ` (filtered from ${all.length})` : "";
+    if (rows.length === 0) {
+      note.textContent = "No records match the current filter.";
+    } else if (shown < rows.length) {
+      note.textContent = `Showing the first ${shown} of ${rows.length}${filtered}.`;
+    } else {
+      note.textContent = `Showing all ${rows.length} record(s)${filtered}.`;
+    }
+    // The Expand control only means something while rows are still withheld.
+    expand.disabled = expanded || rows.length <= LEDGER_PAGE;
+  };
+
+  expand.addEventListener("click", () => {
+    expanded = true;
+    wrap.classList.add("expanded");
+    render();
+  });
+  const toggleSort = (col) => () => {
+    // Same toggle rule as the records sheet: a new column starts ascending; the
+    // active column flips direction.
+    sortDir = sortCol === col && sortDir === "asc" ? "desc" : "asc";
+    sortCol = col;
+    render();
+  };
+  whenBtn.addEventListener("click", toggleSort("timestamp"));
+  durBtn.addEventListener("click", toggleSort("duration_seconds"));
+  for (const c of controls) {
+    c.addEventListener("input", render);
+    c.addEventListener("change", render);
+  }
+  render();
   return block;
 }
 

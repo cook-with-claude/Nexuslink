@@ -49,10 +49,12 @@ def test_adopts_matching_v0_database(app_data_dir):
     assert migrations.current_version(conn) == 0
     assert _BASELINE_TABLES <= _tables(conn)
 
-    # Adoption stamps it to v1 without error or data loss.
-    assert migrations.migrate(conn) == 1
-    assert migrations.current_version(conn) == 1
+    # Adoption stamps it to v1, then the runner carries it on to the latest
+    # migration in the same pass (migration 2 adds the saved-export tables).
+    assert migrations.migrate(conn) == _LATEST
+    assert migrations.current_version(conn) == _LATEST
     assert _BASELINE_TABLES <= _tables(conn)
+    assert {"saved_pair_matches", "saved_tallies"} <= _tables(conn)
     conn.close()
 
 

@@ -115,15 +115,102 @@ dataset); the UI filters client-side (API-MISMATCH #3 in `main.py`).
 | POST | `/api/targets/<id>/analyze` | required | `top_n` (default 5, clamped ≥0) | `200 <payload>` (also persisted) | `404 NOT_FOUND` |
 | GET | `/api/targets/<id>/result` | required | — | `200 <payload>` | `404 NOT_FOUND` (no target, or no analysis yet) |
 | GET | `/api/targets/<id>/frequency` | required | `rank_by` (`area`\|`other_party`\|`call_type`, default `area`), filters: `call_type`, `area`, `date_from`/`date_to` (YYYY-MM-DD), `hour_from`/`hour_to` (0–23, may wrap midnight) | `200 {target,rank_by,total_records,top:[{value,count}]}` | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| POST | `/api/frequency/save` | required | JSON body: `target_id` + the same filter fields as `frequency` | `200 {id, filter_label, …tally}` (persisted) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| GET | `/api/frequency/saved` | required | — | `200 [{id,target_id,target_name,phone_number,dataset_name,created_at,filter_label,tally}]` | — |
+| DELETE | `/api/frequency/saved/<id>` | required | — | `200 {deleted}` | `404 NOT_FOUND` |
 | POST | `/api/export/results.xlsx` | required | `target_id` (int, or `all`/omitted for every target) | `200` .xlsx attachment | `404 NOT_FOUND`, `400 BAD_REQUEST` |
 
 `frequency` is the Spreadsheet tab's filtered explorer: a **plain descriptive count** over the
 target's filtered records. It deliberately returns no confidence/gates — filters are legitimate
 there precisely because a tally has no sample-size gate to distort (unlike `analyze`, which always
-runs on the full record set). `export/results.xlsx` writes the **stored** latest answers per target
+runs on the full record set). `frequency/save` is **click-to-save export staging**: it recomputes
+the tally server-side from the submitted filters (a client-supplied result payload is never
+accepted) and stores it with a human-readable `filter_label`; saved tallies accumulate and are
+individually deletable. `export/results.xlsx` writes the **stored** latest answers per target
 (never recomputes); un-analyzed targets appear as `not analyzed`. Workbook layout: a styled
 `Summary` sheet (one row per target: home/work + confidence) plus `Frequent areas` and
-`Frequent contacts` detail sheets — tallies carry **no confidence columns**, same rule as the UI.
+`Frequent contacts` detail sheets — tallies carry **no confidence columns**, same rule as the UI —
+plus the always-present `Contact matches` and `Frequency counts` sheets holding the click-to-save
+staged items (placeholder row when nothing is saved). The export route lives in `app/reporting/`
+(the cross-domain composition surface), and the ?target_id scope applies to the detection sheets
+only — the two staged sheets always carry exactly the user's curated saves.
+
+### Contact matcher
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| POST | `/api/match` | required | `{target_a_id, target_b_id}` (ints, distinct, same dataset) | `200 <match payload>` (stores nothing) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| POST | `/api/match/save` | required | same as `/api/match` | `200 <match payload>` (recomputed server-side, persisted; replaces a previous save of the same pair — order-normalized, so A↔B = B↔A) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| GET | `/api/match/saved` | required | — | `200 [{id,dataset_id,dataset_name,created_at,result}]` | — |
+| DELETE | `/api/match/saved/<id>` | required | — | `200 {deleted}` | `404 NOT_FOUND` |
+| POST | `/api/ledger` | required | `{target_a_id, target_b_id}` | `200 {pair, rows[], row_count, category_counts}` (stores nothing) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| POST | `/api/ledger/save` | required | same | `200 {id, …ledger}` (recomputed server-side; ledgers **accumulate**, they do not replace) | `404 NOT_FOUND`, `400 BAD_REQUEST` |
+| GET | `/api/ledger/saved` | required | — | `200 [{id,dataset_name,created_at,row_count,pair}]` (row counts only — the rows themselves go to the workbook) | — |
+| DELETE | `/api/ledger/saved/<id>` | required | — | `200 {deleted}` | `404 NOT_FOUND` |
+
+**Pair record ledger** (`app/matching/ledger.py`, spec `2026-07-13-pair-record-ledger-design.md`) —
+a separate feature from the matcher: it LISTS the records, it does not judge them (no strengths, no
+confidence anywhere). Each row is one CDR record in one of four categories — `direct` (the pair's own
+calls/SMS), `shared_contact` (calls from either side to a contact they both have),
+`meet_up_location` / `shared_location` (records in a shared area, split by whether a co-presence event
+happened there). Rows carry `who`/`who_phone`, `timestamp`, `call_type`, `duration_seconds`,
+`other_party` (+ `other_party_name` and `other_party_is_target` — a shared contact who is themselves a
+target is named and flagged), `area`, and `distinctive` (null on direct rows). Common contacts/areas
+are **listed and labelled**, never hidden and never called evidence; the label comes from the same
+`gates.classify_shared_contacts` / `classify_areas` the verdicts use, so the two cannot disagree.
+The UI pages at 50 rows with an Expand control, and filters/sorts **client-side** (the whole ledger is
+already in the response, so a round trip would be waste — unlike the records sheet, which pages over a
+whole dataset server-side); the workbook's **`Pair records`** sheet is exhaustive.
+
+The matcher is a **gated pair inference** (`app/matching/`): typed findings, each rated
+High/Medium/Low by the weakest of the gates applicable to that finding type (`gates.py`;
+thresholds are proposals pending domain review). Payload shape:
+
+```jsonc
+{
+  "pair": {"dataset_id", "target_a": {"id","name","phone_number"}, "target_b": {…}},
+  // pair is CANONICAL (sorted by phone number): A-vs-B and B-vs-A return
+  // byte-identical results regardless of which box each target was put in
+  "computed_at": "<iso>",
+  "dataset_context": {                    // adaptive gates (spec 2026-07-13)
+    "mode": "strangers" | "close-knit",   // which mutual-contact rule-set applied
+    "classification": "High" | "Medium" | "Low" | "Near tie",  // how decisively
+    "avg_shared_contacts_per_pair": 0.55, "boundary": 2.0, "subscribers": 40
+  },
+  "findings": [{
+    "type": "direct_contact" | "mutual_contacts" | "co_presence",
+    "label": "Direct contact" | "Mutual relationship" | "Meeting up",
+    "strength": "High" | "Medium" | "Low",
+    "bound_by": ["<gate name>", …],      // which gate(s) sit at the min()
+    "notes": ["sample is just short of High: 49 vs 50", …],  // cliff disclosure
+    "headline": "<one-line summary>",
+    "evidence": {…}                       // per-type: direct counts / shared_contacts / events (+gates)
+  }],
+  "caveats": ["<honesty notes: tiny window overlap, zero records, tiny population>"],
+  "details": {"windows": {"a","b","overlap_ratio"}, "shared_areas_no_time_overlap": […]},
+  "no_link": false                        // true when findings is empty
+}
+```
+
+Gate design: *direct contact* is positive evidence rated by deduplicated physical interaction
+volume (mirrored incoming/outgoing legs count once, and doubt gates never drag it down); *mutual
+relationship* = min(contact-record sample N both sides, overlap share, distinctiveness, window
+overlap); *meeting up* = min(located-record sample, event count, location distinctiveness, window
+overlap). Same-area hits within 60 minutes are grouped into temporal sessions per area; each event
+shows the closest actual matched time pair. Shared areas **without** time overlap remain a detail.
+
+**Distinctiveness is dataset-adaptive** (spec `2026-07-13-adaptive-matcher-gates.md`): the
+dataset's non-hub interconnectedness (average shared contacts per subscriber pair after excluding
+contacts used by more than 50% of subscribers, boundary 2.0) picks
+the rule-set, and the classification is disclosed with its own confidence tier ("Near tie" =
+right on the boundary; ratings may flip between imports). In **strangers** mode, contacts/areas
+that ≥ 20% of the other subscribers also have are discounted (pizza-place / busy-tower), with a
+floor: fewer than `COMMON_MIN_USERS=3` other subscribers never brand anything common, and a
+population under 10 other subscribers adds a caveat and caps indirect findings at Medium. In
+**close-knit** mode, hub-only overlap is suppressed: at least one contact rarer than the dataset's
+true median shared-contact spread is required. One rare contact rates Medium and ≥ 2 rate High
+before the other gates are applied. Area commonality stays absolute in both modes. Every threshold
+is a PROPOSAL flagged in `gates.py` for domain review.
 
 `analyze` runs the five frozen Phase-1 detectors via the `app/analysis/bridge.py` seam and stores the
 result JSON. Payload shape:
@@ -144,7 +231,9 @@ result JSON. Payload shape:
 
 Every state-changing endpoint writes an `audit_log` row inside the same transaction it commits
 (`app/audit/log.py`): `SETUP, LOGIN_SUCCESS, LOGOUT, CHANGE_PASSWORD, IMPORT, DATASET_DELETE,
-TARGET_CREATE, TARGET_DELETE, ANALYSIS, EXPORT`. `EXPORT` changes no app state, but detection
+TARGET_CREATE, TARGET_DELETE, ANALYSIS, EXPORT, PAIR_MATCH_SAVE, PAIR_MATCH_DELETE, TALLY_SAVE,
+TALLY_DELETE`. Running a match or a tally is a read and is **not** audited (like `frequency`);
+changing what the export will contain is a mutation and is. `EXPORT` changes no app state, but detection
 answers leaving the encrypted store is exactly what the trail is for; it is a **POST** (not a GET)
 precisely so the audited action can't be replayed by a browser/webview HEAD, prefetch, or reload.
 Failed logins can't reach the encrypted DB (no key), so they

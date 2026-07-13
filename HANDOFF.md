@@ -4,6 +4,262 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Claude+Codex: contact matcher — dual review + method hardening — ✅ MERGED to `main`
+
+**MERGED** with Nadim's explicit permission (3-way merge commit — main had 2026-07-12 UI polish the
+branch lacked; HANDOFF conflict resolved to keep both lines, `app/web/css/app.css` auto-merged the
+matcher styles alongside `.pw-criteria-note`). Re-verified on the branch tip: **277 passed / 1 skipped**,
+import-linter **4 kept / 0 broken**, `node --test` 36/36, `git diff --stat main -- phase1_cdr/` empty.
+
+**Origin.** Khaled (`smoky0y`) built the contact matcher on `claude/contact-matcher`: Spreadsheet cards
+comparing two targets into gated relationship FINDINGS (direct / mutual / co-presence), a per-pair RECORD
+LEDGER (ungated), and click-to-save export staging. New domains `app/matching/` + `app/reporting/`,
+migrations 2/3.
+
+**Dual independent review (2026-07-13).** Claude ran an 8-angle `/code-review`; Codex ran a fresh-eyes
+pass. Union split into Bucket A (mechanical) + method/scale.
+- **Bucket A** (Codex, `58b480b`): picker read stale values at Save; ledger cross-category double-count;
+  surfaced co-presence a_time/b_time; routed `tools/` through `infra/phase1`; ledger sort; backslash
+  path; UTC→local export timestamps.
+- **Method hardening** (Codex, 11 commits `430211a`..`67405f5`): the 8 accepted decisions in
+  `docs/superpowers/specs/2026-07-13-matcher-method-hardening-decisions.md` — migration-4 indexes;
+  hub-filtered density + distinctive-required close-knit finding (kills the strangers-sharing-service-
+  numbers false positive); read-time mirrored-leg dedup; finding-relevant sample bases; true median;
+  session-based co-presence with closest-pair times; small-population Medium cap; 50k ledger cap +
+  streamed workbook.
+
+**Claude verification of the hardening pass.** Re-ran the suite (277/1), confirmed Phase 1 frozen,
+diff-reviewed the two riskiest changes (hub conflation, session dedup) — correct; confirmed the
+regenerated fixture keeps the CK-standout pair at Mutual **High** (the hub fix does not suppress genuine
+close-knit links). Two Codex deviations accepted: request-scoped interconnectedness memoization skipped
+(already computed once per request → zero hits), and openpyxl write-only streams the whole workbook (its
+API is workbook-wide). All new thresholds (`HUB_UBIQUITY_FRACTION` 0.50, `SESSION_GAP_SECONDS` 3600,
+`LEDGER_ROW_CAP` 50000, small-N cap = Medium, recalibrated `DIRECT`/`N`) retained as **PROPOSALS pending
+co-founder review**. One shift beyond the literal memo: `CK_SOLID_MEDIUM` dropped (close-knit now rates
+purely on distinctive count) — **Khaled to sign off**.
+
+**NOT done — demo branch.** `claude/rebrand-nexuslink-phase2` (professor demo, worktree
+`../la-passion-phase2`) did **not** get the matcher: its base `6f36f96` predates Phase-3 migrate-on-login
+(3.1), which the matcher's migrations 2/3/4 require, so neither a merge nor a cherry-pick is clean — a
+full merge would drag all of Phase 3 (server-key/passphrase auth) into the no-passphrase demo. **Open
+decision for Nadim:** rebuild the demo off `main` (accepts Phase 3) or leave it matcher-free.
+
+## 2026-07-13 - Codex: accepted matcher method hardening — on `claude/contact-matcher`, NOT merged
+
+Implemented all eight accepted directions from
+`docs/superpowers/specs/2026-07-13-matcher-method-hardening-decisions.md` as incremental
+`claude:` commits: migration 4 query indexes; hub-filtered dataset density and a distinctive-contact
+requirement; read-time mirrored-leg dedup for findings and ledgers; finding-relevant sample bases; true
+median; temporal co-presence sessions with closest-pair representatives; the Medium small-population
+cap; and disclosed 50,000-row saved-ledger / aggregate Excel caps with write-only workbook generation.
+
+Threshold recalibration retained `DIRECT_HIGH/MEDIUM=10/3` and `N_HIGH/MEDIUM=50/15` as explicit
+proposals pending co-founder review. The new values are likewise named proposals: hub fraction 0.50,
+session gap 3,600 seconds, small-N cap Medium, and ledger cap 50,000.
+
+Two implementation notes were surfaced rather than hidden: (1) request-scoped memoization was not
+added because each `/match` or `/ledger` request already calls `dataset_interconnectedness` exactly
+once, while the two endpoints are separate requests; such a cache would have zero hits, and a
+cross-request cache needs invalidation absent from the memo. (2) openpyxl write-only mode is
+workbook-wide, not per-sheet through public APIs, so all six export sheets now stream with preserved
+header/number styling. Hub filtering applies to density only; the full shared spread supplies the true
+median, allowing the required `[2, 2, 100, 100] -> 51` scenario.
+
+Regenerated both fixture workbooks. The strangers fixture remains 1,716 rows / 40 subscribers with
+P01-P15 unchanged. The redesigned close-knit fixture is 720 rows / 12 subscribers, uses contacts held
+by at most six members, and reads close-knit at avg 3.26 shared contacts/pair. Seven isolated
+hardening scenarios run through the real engine before either workbook is written. Final verification
+after regeneration: **277 passed / 1 skipped**, Node **36/36**, Ruff clean (including `tools/`),
+import-linter **4 kept / 0 broken**, `git diff --check` clean, and
+`git diff --stat main -- phase1_cdr/` empty.
+
+## 2026-07-13 - Codex: contact-matcher mechanical review fixes — on `claude/contact-matcher`, NOT merged
+
+Applied only the mechanical items authorized after the independent review: picker saves now use the
+IDs captured when the result was run; ledger records are deduplicated across overlapping categories;
+co-presence evidence exposes each side's record time; the scenario generator reaches Phase 1 constants
+through `app.infra.phase1`; ledger rows initially sort oldest-first by timestamp; generator output paths
+are real `Path` values under the repository root; and export saved timestamps use the shared local-time
+`fmtDate` formatter. Added focused Python/Node/architecture regressions for each relevant behavior.
+
+No matcher method, threshold, or gate behavior changed. Findings 1/6/7/8/9/10 remain pending Nadim's
+decision; proposed changes and tradeoffs are recorded in
+`docs/superpowers/specs/2026-07-13-contact-matcher-method-decision-memo.md`.
+
+Verification after the final mechanical fix: **272 passed / 1 skipped**, Node **35/35**, Ruff clean
+(including `tools/`), import-linter **4 kept / 0 broken**, and
+`git diff --stat main...claude/contact-matcher -- phase1_cdr/` empty.
+
+## 2026-07-13 - Claude: pair record ledger — on `claude/contact-matcher`, NOT merged
+
+Brainstormed with Khaled. Spec `docs/superpowers/specs/2026-07-13-pair-record-ledger-design.md`.
+Suite **267 passed / 1 skipped**, ruff clean, `node --test` 28/28, phase1 byte-frozen.
+**NOTE for CI:** `pyproject.toml` gained `app.matching.ledger` to the import-linter layers contract
+(`lint-imports` can't run on this Windows box — watch the `boundaries` job).
+
+**A first attempt was REVERTED** (commit `3cdac0a`, kept in history deliberately): it shipped
+summary *evidence counts*, and Khaled rejected the shape outright — a count is not what was wanted,
+and folding non-distinctive contacts under the word "evidence" is wrong, since a number half the
+dataset calls is not evidence of a link between two people. **Do not rebuild it.**
+
+**What the ledger is:** every record LINKING two targets, listed individually — `direct` (their own
+calls/SMS), `shared_contact` (calls from EITHER side to a contact they both have), and
+`meet_up_location` / `shared_location` (records in shared areas, split by whether a co-presence event
+happened there — the latter being the "same place, different times" signal the verdicts only mention
+in passing). Real dates, times, call types, durations. **Nothing here is gated: no strengths, no
+confidence, no pills** — it lists records, it does not judge them.
+
+**Decisions worth keeping:**
+- **Naming (Khaled):** parties resolve to TARGET NAMES wherever the dataset has a target. Direct rows
+  name both sides. A shared contact who is **themselves a target** is flagged and named — an analyst
+  must not have to notice by eye that the third party is someone else under investigation.
+- **Common contacts/areas are LISTED but labelled** — never hidden (the analyst must be able to audit
+  what the matcher discounted), never presented as evidence.
+- **It lives in `app/matching/ledger.py`, NOT a new `app/ledger/` package.** It needs the same
+  shared-contact/co-presence facts AND the same distinctive/common classification the verdicts use
+  (`gates.classify_shared_contacts` + the new `classify_areas`, both extracted for this), so their
+  labels can never drift. A separate package would have had to either break the CI-enforced
+  domain-independence contract (a second exception on top of `app.reporting`'s) or duplicate the SQL.
+  Own feature, same domain — CLAUDE.md's "new endpoint in an existing domain" case.
+- **Migration 3** (`saved_ledgers`): ledgers **ACCUMULATE** (no UNIQUE on the pair) — saving the same
+  pair twice is legitimate for a record listing, unlike pair matches, which replace.
+- **UI**: fifth Spreadsheet card; 50 rows, then "Expand all" into a scrollable sticky-header grid.
+  **The Excel "Pair records" sheet is EXHAUSTIVE — no cap.** That is the point of it.
+- **Filtering + sorting are CLIENT-SIDE** (the records sheet does both server-side, because it pages
+  over a whole dataset; a ledger is already fully in hand, so a round trip would be waste). Same
+  affordances though: an in-header filter row (category / who / date-contains / call type / other
+  party — matching the NUMBER *or* the target NAME / area / distinctive-common-n_a) and click-to-sort
+  arrows on Date & time and Duration. The 50-row cap and Expand act on the FILTERED set, and the note
+  says when a count is filtered from the total. The rules are pure exported functions
+  (`filterLedgerRows`, `sortLedgerRows`) so they are unit-tested without a DOM shim.
+
+**Verified live:** migration 3 applied in place to an existing DB; david↔jeff yields 54 rows (12
+direct / 30 shared-contact / 12 meet-up); the workbook carries all 54, direct rows naming both
+parties. Suite 267 passed / 1 skipped, node 35/35.
+
+**Known fixture gap (not a bug):** no pair in either scenario dataset has a shared contact who is
+*also* a target, because their shared contacts (`777…`/`888…`) are pure counterparties, never
+subscribers — so the `other_party_is_target` flag, though covered by
+`test_ledger_flags_a_shared_contact_who_is_also_a_target` (which builds its own dataset), cannot be
+seen by clicking around. Adding a P16 scenario to `tools/gen_matcher_scenarios.py` would fix that;
+offered to Khaled, not yet done.
+
+**Open questions for Codex/Nadim:** (1) a heavy real pair could produce tens of thousands of rows —
+`rows_json` and the sheet are both unbounded; do we want a stored-row cap, a warning, or streaming?
+(2) `app.matching` now holds two features (verdicts + ledger) — right call, or should the ledger get
+its own domain if the independence contract is ever revisited?
+
+## 2026-07-13 - Claude: adaptive matcher gates + test datasets + UX fixes — on `claude/contact-matcher`, NOT merged
+
+Extends the 2026-07-12 contact-matcher work on the same branch after a hands-on testing session
+with Khaled. **Khaled explicitly authorized the gate-design changes on this branch** ("I take
+freedom in this branch") — the method change below is his call, flagged for Nadim's review like
+every threshold. Spec: `docs/superpowers/specs/2026-07-13-adaptive-matcher-gates.md`. Suite
+**254 passed / 1 skipped**, ruff clean (now incl. `tools/`), `node --test` 21/21, `node --check`
+all modules, `git diff --stat main -- phase1_cdr/` empty. `lint-imports` still CI-only (win).
+
+**1. Dataset-adaptive distinctiveness (the method change).** Khaled's key observation: our
+expected datasets are close-knit (everyone knows everyone), and there the fixed 20% commonality
+cutoff brands everyone's real mutual friends "common" — suppressing genuine mutual relationships,
+sometimes to "no link". Design (Khaled's two-mode structure): measure dataset interconnectedness
+(avg shared contacts per subscriber pair, one GROUP BY — `repo.dataset_interconnectedness`),
+classify strangers vs close-knit at `CLOSE_KNIT_BOUNDARY=2.0`. **Strangers mode = the old gate
+byte-identical** (plus floor, below). **Close-knit mode**: the mutual finding ALWAYS fires on
+shared contacts (a shared contact is a fact; suppression floor is strangers-only) and the
+distinctiveness gate grades pair-specificity instead: >=2 shared contacts rarer than the dataset's
+median SHARED-contact spread -> High, solid group-wide overlap -> Medium, trivial -> Low
+(count-based deliberately — extra group fabric must never LOWER a rating). Area commonality stays
+absolute in both modes (a busy mall is a busy mall).
+
+**2. Cliff disclosure (both cliffs).** The mode boundary is a hard line, so every match payload
+carries `dataset_context` {mode, classification High/Medium/Low/**"Near tie"**, metric, boundary},
+rendered as a styled banner in the matcher card (near-tie = warning-styled: "ratings may flip with
+small data changes"). Gate cliffs get per-finding `notes` ("sample is just short of High: 49 vs
+50") — ratings stay pure tiers, notes ride alongside (`gates._near_note`). Decision made WITH
+Khaled: cliffs are the accepted price of a legible tiered system; they get disclosed, not removed.
+
+**3. Commonality floor + small-population caveat.** `_is_common` now requires
+`max(COMMON_MIN_USERS=3, 20% × other_users)` — one coincidental other subscriber can no longer
+delete evidence in a tiny population (this flips P9/Downtown in the old hand-worked fixture test
+to distinctive, comments updated). Populations under `SMALL_POPULATION=10` other subscribers get
+an explicit caveat. **Density gate considered and REJECTED by Khaled** (it would cap true
+positives with legitimately concentrated evidence, e.g. a genuine 2-day visitor who met the
+target both days) — recorded here so it isn't re-proposed cold.
+
+**4. A↔B symmetry fix.** Co-presence events dedupe per (area, day) keyed to A's calendar day, so
+midnight-straddling meet-ups could COUNT differently depending on which picker each name was in.
+`service.compute_match` now canonicalizes the pair (sorted by phone number); response `pair`
+reflects canonical order; regression test proves ab == ba byte-identically.
+
+**5. Test datasets + committed generator.** `sample_matcher_scenarios.xlsx` (strangers, 40 subs,
+pairs P01–P15: every finding type at every strength, every gate binding, discount/floor, caveats,
+no-link, shared-area detail) + `sample_matcher_closeknit.xlsx` (12-member clique: any pair
+Medium, standout pair 11+12 High via 3 rare private mutuals). Expected-outcome tables in
+`docs/matcher-test-scenarios.md`; generator `tools/gen_matcher_scenarios.py` asserts every
+expectation against the REAL `compute_match` + every row against the import validator before
+writing, so files/docs cannot drift from the engine without regeneration failing.
+
+**6. UX/export fixes from Khaled's testing session:** save buttons now flip to "Saved ✓" with a
+live "Saved for export: N" count on both Spreadsheet cards (root cause of "saves are broken":
+the button died silently, prompting remove-and-retry loops that emptied staging — the audit
+trail showed every save had succeeded); breadcrumb ancestors are now links (Datasets ▸ dataset ▸
+target); more spacing between findings; export "Contact matches" sheet gains **"Dataset mode"**
+(mode + classification confidence) and **"Near-boundary notes"** columns (appended, existing
+column indices stable; pre-adaptive saved rows show "—" until re-saved).
+
+**Open questions for Codex/Nadim:** (1) all new constants are PROPOSALS (`gates.py` top):
+boundary 2.0, mode margins 2.0/1.4/1.15, floor 3, small-pop 10, near-boundary 10%, CK counts
+2/3 — calibrate against the real generator. (2) **"Medium" now means different things by mode**
+(strangers: moderately convincing link; close-knit: definite mutuals, nothing pair-specific) —
+the on-screen banner mitigates, and the export now carries the mode column, but is a shared
+strength scale across modes acceptable, or should close-knit use its own labels? (3) rarity =
+strictly-below-median-shared-spread is the crudest part of the design — better base welcome.
+
+## 2026-07-12 - Claude: Contact matcher + saved exports — BUILT on `claude/contact-matcher`, NOT merged
+
+**Built, not merged** (Nadim decides whether to merge). Brainstormed with Khaled this session; spec at
+`docs/superpowers/specs/2026-07-12-contact-matcher-design.md`. Branch `claude/contact-matcher`
+(base `main` `ccdade8`). Suite **241 passed / 1 skipped**, ruff clean, `node --check` all modules +
+`node --test` 15/15, `git diff --stat main -- phase1_cdr/` empty (Phase 1 byte-frozen).
+`lint-imports` NOT run locally (grimp has no win_arm64 wheel — CI ubuntu is the canonical gate).
+
+**What shipped:**
+- **New `app/matching/` domain** — `repo.py` (fact-gathering SQL: per-side contact tallies, direct
+  A↔B scan, co-presence pairing with a 60-min **inclusive** window deduped per (area, day), observation
+  spans, dataset-wide commonality), `gates.py` (**pure** weakest-link engine, no I/O — typed findings
+  `direct_contact`/`mutual_contacts`/`co_presence`, per-finding `min()` gates, `bound_by` transparency),
+  `service.py` (fact→findings orchestration). Direct contact is positive evidence rated by its own
+  volume — deliberately NOT folded into a `min()` with the doubt gates (test proves two heavy callers
+  who share nothing else still rate High, instead of the absurd "Low").
+- **Routes:** `POST /api/match` (pure read, unaudited like `frequency`), `POST /api/match/save`
+  (**recomputes server-side**, order-normalized replace-on-same-pair), `GET`/`DELETE /api/match/saved`;
+  and on the analysis blueprint `POST /api/frequency/save` (recompute from filters + human-readable
+  label), `GET`/`DELETE /api/frequency/saved`. Saves/deletes audited (`PAIR_MATCH_*`/`TALLY_*`).
+- **Migration 2** (`saved_pair_matches` + `saved_tallies`) — the ADR-0002 seam's **first real use**;
+  existing installs upgrade in place on next login. The v0-adoption tests now assert
+  adopt-then-upgrade-to-latest (they previously asserted a stop at v1).
+- **`app/reporting/`** — export moved out of `app/analysis/` because the workbook now composes rows
+  from two domains. It is the cross-domain composition surface, **deliberately outside** the
+  import-linter domain-independence set (its routes read both domains' public repo fns; the domains
+  still can't import each other). Workbook gains always-present `Contact matches` + `Frequency counts`
+  sheets fed from stored JSON only (placeholder row when nothing saved).
+- **Frontend:** 4th Spreadsheet card "Contact matcher" (inference styling), shared `matchFindingsBlock`
+  renderer, `Save to export` on both a pair comparison and an explorer tally, Export-screen
+  "Saved for export" curation card (list + inline-confirm Remove).
+
+**Decisions worth flagging:**
+- **Click-to-save on BOTH surfaces** (Khaled's call): nothing enters the export without an explicit
+  click, and the save endpoints **recompute server-side** so a client-authored payload can never enter
+  a report.
+- **Gate thresholds are PROPOSALS** (`app/matching/gates.py` top constants), flagged for Nadim/domain
+  review exactly like the Phase-1 thresholds (N reuses 50/15). Distinctiveness uses a
+  20%-of-other-subscribers "common" cutoff; the co-presence window is 60 min inclusive.
+- **Cross-dataset pairs rejected** for now (API shape doesn't preclude relaxing it later).
+
+**Open questions for Codex/Nadim:** (1) are the gate thresholds + the 60-min / 20% constants sensible
+on the real generator's distributions? (2) `app/reporting` sitting outside the independence set is a new
+architectural precedent — is that the right home for cross-domain composition, or should it be an ADR?
+
 ## 2026-07-12 - Claude: password/setup UI polish — ✅ MERGED to `main` + pushed
 
 Three small frontend-only fixes to the account-setup screen, prompted by Nadim testing the

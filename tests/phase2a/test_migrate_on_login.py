@@ -13,6 +13,11 @@ from app.api import guards
 from app.infra import migrations, storage
 
 _LATEST = migrations.MIGRATIONS[-1][0]
+_MATCHER_INDEXES = {
+    "idx_records_dataset_other_party",
+    "idx_records_dataset_area",
+    "idx_records_dataset_area_time",
+}
 
 
 @pytest.fixture()
@@ -32,9 +37,20 @@ def _open_raw(client):
     return storage.connect(key)
 
 
+def _drop_matcher_indexes(conn):
+    for name in _MATCHER_INDEXES:
+        conn.execute(f"DROP INDEX IF EXISTS {name}")
+
+
 def test_login_auto_upgrades_a_v0_database(client):
     # Simulate a pre-versioning install: valid baseline schema, version reset to 0.
+    # A real v0 install predates migration 2, so its tables must not be present or
+    # the adoption fingerprint (rightly) refuses the database.
     conn = _open_raw(client)
+    conn.execute("DROP TABLE IF EXISTS saved_pair_matches")
+    conn.execute("DROP TABLE IF EXISTS saved_tallies")
+    conn.execute("DROP TABLE IF EXISTS saved_ledgers")
+    _drop_matcher_indexes(conn)
     conn.execute("PRAGMA user_version = 0")
     conn.commit()
     conn.close()
@@ -67,6 +83,39 @@ def test_login_against_too_new_db_fails_closed(client):
     # get_db() -> migrate() raises SchemaTooNewError; TESTING=True surfaces it.
     with pytest.raises(migrations.SchemaTooNewError):
         client.get("/api/datasets")
+
+
+def test_v1_database_upgrades_in_place_to_latest(client):
+    """An existing v1 install walks the whole migration chain on next login without
+    touching its data — migration 2 (saved_pair_matches + saved_tallies) and
+    migration 3 (saved_ledgers), and migration 4 (matcher indexes). The ADR 0002
+    seam doing its job."""
+    conn = _open_raw(client)
+    # Rewind to a genuine v1 state: drop everything after migration 1, restamp.
+    conn.execute("DROP TABLE IF EXISTS saved_pair_matches")
+    conn.execute("DROP TABLE IF EXISTS saved_tallies")
+    conn.execute("DROP TABLE IF EXISTS saved_ledgers")
+    _drop_matcher_indexes(conn)
+    conn.execute("PRAGMA user_version = 1")
+    conn.execute(
+        "INSERT INTO datasets (name, filename, imported_at, row_count, skipped_count) "
+        "VALUES ('keep-me', 'k.xlsx', '2026-07-12T00:00:00+00:00', 0, 0)")
+    conn.commit()
+    conn.close()
+
+    assert client.get("/api/datasets").status_code == 200  # get_db() migrates
+
+    conn = _open_raw(client)
+    assert migrations.current_version(conn) == _LATEST
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert {"saved_pair_matches", "saved_tallies", "saved_ledgers"} <= tables
+    indexes = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+    assert _MATCHER_INDEXES <= indexes
+    kept = conn.execute("SELECT name FROM datasets WHERE name='keep-me'").fetchone()
+    assert kept is not None  # existing data survived the upgrade
+    conn.close()
 
 
 def test_get_db_closes_connection_when_migrate_raises(client, monkeypatch):
