@@ -41,8 +41,13 @@ DISTINCT_HIGH, DISTINCT_MEDIUM = 0.60, 0.30
 # A shared contact/area is "common" when >= this fraction of OTHER subscribers
 # also has it (the pizza-place / busy-tower discount).
 COMMON_USER_FRACTION = 0.20
-# Event-count gate (meet-up events, deduped per area+day).
+# Event-count gate (meet-up events, deduped into temporal sessions per area).
 EVENTS_HIGH, EVENTS_MEDIUM = 5, 2
+# Inclusive raw co-presence pairing window, plus the maximum gap between
+# consecutive hits in one temporal session. Both are PROPOSALS pending
+# co-founder review; the session gap intentionally reuses the one-hour window.
+CO_PRESENCE_WINDOW_SECONDS = 3600
+SESSION_GAP_SECONDS = 3600
 # Direct-contact volume rating.
 DIRECT_HIGH, DIRECT_MEDIUM = 10, 3
 # The mutual finding fires only from this many distinctive shared contacts

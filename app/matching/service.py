@@ -16,11 +16,9 @@ from app.matching import gates, repo
 def compute_match(conn, target_a: dict, target_b: dict) -> dict:
     """Full findings payload for two targets of the same dataset. Callers
     validate targets exist / same dataset / distinct before calling."""
-    # Canonical pair order: co-presence events are deduped per (area, day) keyed
-    # to A's calendar day, so midnight-straddling meet-ups could merge differently
-    # depending on which box each name was put in. Sorting here makes A-vs-B and
-    # B-vs-A byte-identical (the response's `pair` reflects canonical order; saved
-    # pair identity was already order-normalized).
+    # Canonical pair order keeps direction labels and representative co-presence
+    # a_time/b_time fields stable. The response's `pair` reflects canonical order;
+    # saved pair identity is order-normalized independently.
     if target_b["phone_number"] < target_a["phone_number"]:
         target_a, target_b = target_b, target_a
     dataset_id = target_a["dataset_id"]
@@ -33,7 +31,9 @@ def compute_match(conn, target_a: dict, target_b: dict) -> dict:
     shared_parties = set(contacts_a) & set(contacts_b)
     areas_a = repo.area_set(conn, dataset_id, phone_a)
     areas_b = repo.area_set(conn, dataset_id, phone_b)
-    co_events = repo.co_presence_events(conn, dataset_id, phone_a, phone_b)
+    co_events = repo.co_presence_events(
+        conn, dataset_id, phone_a, phone_b,
+        gates.CO_PRESENCE_WINDOW_SECONDS, gates.SESSION_GAP_SECONDS)
     co_areas = {e["area"] for e in co_events}
 
     facts = {

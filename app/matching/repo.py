@@ -11,10 +11,6 @@ from __future__ import annotations
 
 from statistics import median
 
-# Inclusive co-presence pairing window (seconds). 60 minutes, per the matcher
-# design spec; gates.py owns the *rating* thresholds, this is the raw pairing rule.
-CO_PRESENCE_WINDOW_SECONDS = 3600
-
 
 def get_target(conn, target_id) -> dict | None:
     row = conn.execute(
@@ -157,24 +153,57 @@ def direct_contact(conn, dataset_id, phone_a, phone_b) -> dict:
     return out
 
 
-def co_presence_events(conn, dataset_id, phone_a, phone_b) -> list[dict]:
-    """Meet-up events: both subscribers have a record in the same area within
-    CO_PRESENCE_WINDOW_SECONDS (inclusive). All pairings in the same (area, day)
-    collapse into ONE event -- a long call session must not inflate the count.
-    The day is taken from subscriber A's record (deterministic across runs)."""
-    rows = conn.execute(
-        "SELECT a.area AS area, substr(a.timestamp, 1, 10) AS day, "
-        "MIN(a.timestamp) AS a_time, MIN(b.timestamp) AS b_time "
+def co_presence_events(conn, dataset_id, phone_a, phone_b, window_seconds,
+                       session_gap_seconds) -> list[dict]:
+    """Meet-up sessions from actual same-area hits within the pairing window."""
+    hits = [dict(row) for row in conn.execute(
+        "SELECT a.area AS area, a.timestamp AS a_time, b.timestamp AS b_time, "
+        "CAST(strftime('%s', a.timestamp) AS INTEGER) AS a_epoch, "
+        "CAST(strftime('%s', b.timestamp) AS INTEGER) AS b_epoch "
         "FROM cdr_records a JOIN cdr_records b "
         "ON b.dataset_id = a.dataset_id AND b.area = a.area "
         "AND b.phone_number = ? "
         "AND abs(strftime('%s', a.timestamp) - strftime('%s', b.timestamp)) <= ? "
         "WHERE a.dataset_id = ? AND a.phone_number = ? "
-        "GROUP BY a.area, substr(a.timestamp, 1, 10) "
-        "ORDER BY day, a.area",
-        (phone_b, CO_PRESENCE_WINDOW_SECONDS, dataset_id, phone_a),
-    ).fetchall()
-    return [dict(r) for r in rows]
+        "ORDER BY a.area, a.timestamp, b.timestamp",
+        (phone_b, window_seconds, dataset_id, phone_a),
+    ).fetchall()]
+
+    by_area: dict[str, list[dict]] = {}
+    for hit in hits:
+        hit["hit_epoch"] = min(hit["a_epoch"], hit["b_epoch"])
+        by_area.setdefault(hit["area"], []).append(hit)
+
+    events: list[dict] = []
+    for area, area_hits in by_area.items():
+        area_hits.sort(key=lambda h: (h["hit_epoch"], h["a_time"], h["b_time"]))
+        sessions: list[list[dict]] = []
+        for hit in area_hits:
+            if not sessions or (
+                hit["hit_epoch"] - sessions[-1][-1]["hit_epoch"]
+                > session_gap_seconds
+            ):
+                sessions.append([])
+            sessions[-1].append(hit)
+        for session in sessions:
+            representative = min(
+                session,
+                key=lambda h: (
+                    abs(h["a_epoch"] - h["b_epoch"]),
+                    h["hit_epoch"],
+                    h["a_time"],
+                    h["b_time"],
+                ),
+            )
+            events.append({
+                "area": area,
+                "day": min(
+                    representative["a_time"], representative["b_time"]
+                )[:10],
+                "a_time": representative["a_time"],
+                "b_time": representative["b_time"],
+            })
+    return sorted(events, key=lambda e: (e["day"], e["area"], e["a_time"]))
 
 
 def direct_contact_records(conn, dataset_id, phone_a, phone_b) -> list[dict]:

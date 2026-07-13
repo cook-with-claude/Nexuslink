@@ -82,7 +82,9 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
     areas_a = repo.area_set(conn, dataset_id, phone_a)
     areas_b = repo.area_set(conn, dataset_id, phone_b)
     shared_areas = areas_a & areas_b
-    co_events = repo.co_presence_events(conn, dataset_id, phone_a, phone_b)
+    co_events = repo.co_presence_events(
+        conn, dataset_id, phone_a, phone_b,
+        gates.CO_PRESENCE_WINDOW_SECONDS, gates.SESSION_GAP_SECONDS)
     meet_up_areas = sorted({e["area"] for e in co_events} & shared_areas)
     shared_only_areas = sorted(shared_areas - set(meet_up_areas))
 
