@@ -64,7 +64,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **241 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **254 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
   every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests (Node's
@@ -75,7 +75,10 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - Boundaries: `lint-imports` (import-linter) — **enforcing** (CI `boundaries` job). grimp has no
   win_arm64 wheel, so it can't run on native Windows; it runs in CI on ubuntu x64 (and locally in WSL).
 - Desktop app: `.venv\Scripts\python.exe main.py` (needs the .NET Desktop Runtime on Windows; see
-  `README.md`). Import `sample_cdr_data.xlsx` (repo root) to seed data for manual testing.
+  `README.md`). Import `sample_cdr_data.xlsx` (repo root) to seed data for manual testing. For the
+  contact matcher, `sample_matcher_scenarios.xlsx` (strangers mode) + `sample_matcher_closeknit.xlsx`
+  (close-knit mode) cover every outcome — expected results per pair in `docs/matcher-test-scenarios.md`;
+  regenerate both via `tools/gen_matcher_scenarios.py` (it asserts the tables against the real engine).
 - **Local testing:** as of 2026-07-04 native Windows **runs the full suite** (`.venv` Python 3.11.9,
   pandas 3.0.3 — the earlier Smart App Control / `tslib` block is gone): `.venv\Scripts\python.exe -m
   pytest tests/phase2a tests/architecture phase1_cdr/tests` → 191 passed (~65s). **WSL2** (Ubuntu, venv
@@ -92,6 +95,9 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   design** (brainstormed 2026-07-04): LAN multi-user server, server-holds-master-key, browser
   clients, admin/analyst RBAC, dataset-access approval, tamper-evident activity log, CA-issued
   HTTPS, TOTP MFA. Decomposed into small increments 3.1→3.7. Read this before writing any Phase 3 plan.
+- `docs/superpowers/specs/2026-07-13-adaptive-matcher-gates.md` — the contact matcher's
+  **dataset-adaptive distinctiveness** (strangers vs close-knit modes, commonality floor, cliff
+  disclosure). Read alongside the 2026-07-12 matcher spec before touching `app/matching/gates.py`.
 - `docs/adr/` — Architecture Decision Records (start at `0001-modular-monolith.md`; ADR 0002
   `db-migration-seam`, **activated by increment 3.1** — `migrations.migrate()` now runs in
   `get_db()` on login; ADRs 0003 server-key/auth, 0004 approval to be authored per Phase 3 increment).

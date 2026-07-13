@@ -4,6 +4,72 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-13 - Claude: adaptive matcher gates + test datasets + UX fixes — on `claude/contact-matcher`, NOT merged
+
+Extends the 2026-07-12 contact-matcher work on the same branch after a hands-on testing session
+with Khaled. **Khaled explicitly authorized the gate-design changes on this branch** ("I take
+freedom in this branch") — the method change below is his call, flagged for Nadim's review like
+every threshold. Spec: `docs/superpowers/specs/2026-07-13-adaptive-matcher-gates.md`. Suite
+**254 passed / 1 skipped**, ruff clean (now incl. `tools/`), `node --test` 21/21, `node --check`
+all modules, `git diff --stat main -- phase1_cdr/` empty. `lint-imports` still CI-only (win).
+
+**1. Dataset-adaptive distinctiveness (the method change).** Khaled's key observation: our
+expected datasets are close-knit (everyone knows everyone), and there the fixed 20% commonality
+cutoff brands everyone's real mutual friends "common" — suppressing genuine mutual relationships,
+sometimes to "no link". Design (Khaled's two-mode structure): measure dataset interconnectedness
+(avg shared contacts per subscriber pair, one GROUP BY — `repo.dataset_interconnectedness`),
+classify strangers vs close-knit at `CLOSE_KNIT_BOUNDARY=2.0`. **Strangers mode = the old gate
+byte-identical** (plus floor, below). **Close-knit mode**: the mutual finding ALWAYS fires on
+shared contacts (a shared contact is a fact; suppression floor is strangers-only) and the
+distinctiveness gate grades pair-specificity instead: >=2 shared contacts rarer than the dataset's
+median SHARED-contact spread -> High, solid group-wide overlap -> Medium, trivial -> Low
+(count-based deliberately — extra group fabric must never LOWER a rating). Area commonality stays
+absolute in both modes (a busy mall is a busy mall).
+
+**2. Cliff disclosure (both cliffs).** The mode boundary is a hard line, so every match payload
+carries `dataset_context` {mode, classification High/Medium/Low/**"Near tie"**, metric, boundary},
+rendered as a styled banner in the matcher card (near-tie = warning-styled: "ratings may flip with
+small data changes"). Gate cliffs get per-finding `notes` ("sample is just short of High: 49 vs
+50") — ratings stay pure tiers, notes ride alongside (`gates._near_note`). Decision made WITH
+Khaled: cliffs are the accepted price of a legible tiered system; they get disclosed, not removed.
+
+**3. Commonality floor + small-population caveat.** `_is_common` now requires
+`max(COMMON_MIN_USERS=3, 20% × other_users)` — one coincidental other subscriber can no longer
+delete evidence in a tiny population (this flips P9/Downtown in the old hand-worked fixture test
+to distinctive, comments updated). Populations under `SMALL_POPULATION=10` other subscribers get
+an explicit caveat. **Density gate considered and REJECTED by Khaled** (it would cap true
+positives with legitimately concentrated evidence, e.g. a genuine 2-day visitor who met the
+target both days) — recorded here so it isn't re-proposed cold.
+
+**4. A↔B symmetry fix.** Co-presence events dedupe per (area, day) keyed to A's calendar day, so
+midnight-straddling meet-ups could COUNT differently depending on which picker each name was in.
+`service.compute_match` now canonicalizes the pair (sorted by phone number); response `pair`
+reflects canonical order; regression test proves ab == ba byte-identically.
+
+**5. Test datasets + committed generator.** `sample_matcher_scenarios.xlsx` (strangers, 40 subs,
+pairs P01–P15: every finding type at every strength, every gate binding, discount/floor, caveats,
+no-link, shared-area detail) + `sample_matcher_closeknit.xlsx` (12-member clique: any pair
+Medium, standout pair 11+12 High via 3 rare private mutuals). Expected-outcome tables in
+`docs/matcher-test-scenarios.md`; generator `tools/gen_matcher_scenarios.py` asserts every
+expectation against the REAL `compute_match` + every row against the import validator before
+writing, so files/docs cannot drift from the engine without regeneration failing.
+
+**6. UX/export fixes from Khaled's testing session:** save buttons now flip to "Saved ✓" with a
+live "Saved for export: N" count on both Spreadsheet cards (root cause of "saves are broken":
+the button died silently, prompting remove-and-retry loops that emptied staging — the audit
+trail showed every save had succeeded); breadcrumb ancestors are now links (Datasets ▸ dataset ▸
+target); more spacing between findings; export "Contact matches" sheet gains **"Dataset mode"**
+(mode + classification confidence) and **"Near-boundary notes"** columns (appended, existing
+column indices stable; pre-adaptive saved rows show "—" until re-saved).
+
+**Open questions for Codex/Nadim:** (1) all new constants are PROPOSALS (`gates.py` top):
+boundary 2.0, mode margins 2.0/1.4/1.15, floor 3, small-pop 10, near-boundary 10%, CK counts
+2/3 — calibrate against the real generator. (2) **"Medium" now means different things by mode**
+(strangers: moderately convincing link; close-knit: definite mutuals, nothing pair-specific) —
+the on-screen banner mitigates, and the export now carries the mode column, but is a shared
+strength scale across modes acceptable, or should close-knit use its own labels? (3) rarity =
+strictly-below-median-shared-spread is the crudest part of the design — better base welcome.
+
 ## 2026-07-12 - Claude: Contact matcher + saved exports — BUILT on `claude/contact-matcher`, NOT merged
 
 **Built, not merged** (Nadim decides whether to merge). Brainstormed with Khaled this session; spec at

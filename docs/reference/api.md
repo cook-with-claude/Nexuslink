@@ -151,16 +151,24 @@ thresholds are proposals pending domain review). Payload shape:
 ```jsonc
 {
   "pair": {"dataset_id", "target_a": {"id","name","phone_number"}, "target_b": {…}},
+  // pair is CANONICAL (sorted by phone number): A-vs-B and B-vs-A return
+  // byte-identical results regardless of which box each target was put in
   "computed_at": "<iso>",
+  "dataset_context": {                    // adaptive gates (spec 2026-07-13)
+    "mode": "strangers" | "close-knit",   // which mutual-contact rule-set applied
+    "classification": "High" | "Medium" | "Low" | "Near tie",  // how decisively
+    "avg_shared_contacts_per_pair": 0.55, "boundary": 2.0, "subscribers": 40
+  },
   "findings": [{
     "type": "direct_contact" | "mutual_contacts" | "co_presence",
     "label": "Direct contact" | "Mutual relationship" | "Meeting up",
     "strength": "High" | "Medium" | "Low",
     "bound_by": ["<gate name>", …],      // which gate(s) sit at the min()
+    "notes": ["sample is just short of High: 49 vs 50", …],  // cliff disclosure
     "headline": "<one-line summary>",
     "evidence": {…}                       // per-type: direct counts / shared_contacts / events (+gates)
   }],
-  "caveats": ["<honesty notes: tiny window overlap, zero records>"],
+  "caveats": ["<honesty notes: tiny window overlap, zero records, tiny population>"],
   "details": {"windows": {"a","b","overlap_ratio"}, "shared_areas_no_time_overlap": […]},
   "no_link": false                        // true when findings is empty
 }
@@ -170,9 +178,19 @@ Gate design: *direct contact* is positive evidence rated by its own volume (neve
 the doubt gates); *mutual relationship* = min(sample N both sides, overlap share, distinctiveness,
 window overlap); *meeting up* = min(sample, event count, location distinctiveness, window overlap).
 A meet-up event = both targets in the same area within 60 minutes (inclusive), deduped per
-(area, day). Distinctiveness discounts contacts/areas that ≥20 % of the dataset's other
-subscribers also have (pizza-place / busy-tower discount). Shared areas **without** time overlap
-are a detail row, never a finding.
+(area, day). Shared areas **without** time overlap are a detail row, never a finding.
+
+**Distinctiveness is dataset-adaptive** (spec `2026-07-13-adaptive-matcher-gates.md`): the
+dataset's interconnectedness (average shared contacts per subscriber pair, boundary 2.0) picks
+the rule-set, and the classification is disclosed with its own confidence tier ("Near tie" =
+right on the boundary; ratings may flip between imports). In **strangers** mode, contacts/areas
+that ≥ 20% of the other subscribers also have are discounted (pizza-place / busy-tower), with a
+floor: fewer than `COMMON_MIN_USERS=3` other subscribers never brand anything common, and a
+population under 10 other subscribers adds a caveat. In **close-knit** mode a shared contact is a
+fact — the mutual finding always fires; the distinctiveness gate grades pair-specificity instead:
+≥ 2 shared contacts *rarer than the dataset's median shared-contact spread* → High, solid
+group-wide overlap → Medium, trivial overlap → Low. Area commonality stays absolute in both
+modes. Every threshold is a PROPOSAL flagged in `gates.py` for domain review.
 
 `analyze` runs the five frozen Phase-1 detectors via the `app/analysis/bridge.py` seam and stores the
 result JSON. Payload shape:
