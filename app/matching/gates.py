@@ -190,6 +190,71 @@ def _direct_finding(facts: dict) -> dict | None:
     }
 
 
+def classify_shared_contacts(shared, commonality, other_users, mode,
+                             spread_median) -> list[str]:
+    """The DISTINCTIVE subset of `shared`, dataset-mode aware.
+
+    Strangers: common = the 20%-of-others discount (with the COMMON_MIN_USERS
+    floor). Close-knit: the fixed cutoff would brand everyone's real friends
+    common, so "rare" means shared by fewer subscribers than the dataset's
+    typical SHARED contact; the pair itself is part of a contact's spread while
+    `commonality` counts only OTHERS, so +2 puts both sides on the same base.
+
+    ONE classifier, two consumers (the mutual finding and the evidence counter) --
+    they must never label the same contact differently.
+    """
+    if mode == CLOSE_KNIT:
+        return [p for p in shared if commonality.get(p, 0) + 2 < spread_median]
+    return [p for p in shared if not _is_common(commonality.get(p, 0), other_users)]
+
+
+def _bucket(items, tallies_a: dict, tallies_b: dict, key: str) -> dict:
+    """One count bucket: how many items, and each side's record volume in them."""
+    records_a = sum(tallies_a.get(i, 0) for i in items)
+    records_b = sum(tallies_b.get(i, 0) for i in items)
+    return {key: len(items), "records_a": records_a, "records_b": records_b,
+            "records": records_a + records_b}
+
+
+def build_evidence_counts(facts: dict, mode: str, spread_median: int) -> dict:
+    """Descriptive tallies of the raw evidence -- NO gates, NO confidence (a count
+    is not a gated verdict; same rule as the frequency explorer's tallies). Built
+    from the SAME facts the findings use, so counter and verdict cannot disagree.
+
+    Mutual calls split distinctive/common; mutual locations split meet-up (a
+    co-presence event happened there) / shared-only. "Mutual locations" is a
+    different claim from "meeting up": both frequent the area, not necessarily at
+    the same time. The location buckets are DISJOINT BY AREA -- an area they met
+    in is never also counted as shared-only -- so the buckets sum to the shared
+    total without double counting.
+    """
+    contacts_a, contacts_b = facts["contacts_a"], facts["contacts_b"]
+    shared = sorted(set(contacts_a) & set(contacts_b))
+    distinctive = classify_shared_contacts(
+        shared, facts["contact_commonality"], facts["other_users"], mode, spread_median)
+    common = [p for p in shared if p not in set(distinctive)]
+
+    shared_areas = facts["areas_a"] & facts["areas_b"]
+    meet_up = sorted({e["area"] for e in facts["co_events"]} & shared_areas)
+    non_meet_up = sorted(shared_areas - set(meet_up))
+    areas_a = facts.get("area_tallies_a", {})
+    areas_b = facts.get("area_tallies_b", {})
+
+    d = facts["direct"]
+    return {
+        "direct": {"records": d["total"], "calls": d["calls"], "sms": d["sms"],
+                   "a_to_b": d["a_to_b"], "b_to_a": d["b_to_a"]},
+        "mutual_calls": {
+            "distinctive": _bucket(distinctive, contacts_a, contacts_b, "contacts"),
+            "common": _bucket(common, contacts_a, contacts_b, "contacts"),
+        },
+        "mutual_locations": {
+            "meet_up": _bucket(meet_up, areas_a, areas_b, "areas"),
+            "non_meet_up": _bucket(non_meet_up, areas_a, areas_b, "areas"),
+        },
+    }
+
+
 def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
                     mode: str, spread_median: int) -> dict | None:
     contacts_a, contacts_b = facts["contacts_a"], facts["contacts_b"]
@@ -198,16 +263,14 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
         return None
     commonality = facts["contact_commonality"]
     other_users = facts["other_users"]
+    distinctive = classify_shared_contacts(
+        shared, commonality, other_users, mode, spread_median)
     if mode == CLOSE_KNIT:
-        # In a clique the fixed cutoff brands everyone's real friends "common".
-        # Sharing contacts is a FACT there -- the finding always fires; what gets
-        # graded is how pair-specific the overlap is. "Rare" = shared by fewer
-        # subscribers than the dataset's typical SHARED contact. The pair itself
-        # is part of a shared contact's spread (commonality counts OTHERS), so
-        # +2 puts both sides of the comparison on the same base. Count-based:
-        # >= CK_RARE_HIGH rare mutuals -> High (a private link beyond the group
-        # fabric); solid but all group-wide -> Medium; trivial overlap -> Low.
-        distinctive = [p for p in shared if commonality.get(p, 0) + 2 < spread_median]
+        # Sharing contacts is a FACT in a clique -- the finding always fires; what
+        # gets graded is how pair-specific the overlap is. Count-based (not a
+        # ratio): extra group fabric on top of rare mutuals must never LOWER a
+        # rating. >= CK_RARE_HIGH rare mutuals -> High (a private link beyond the
+        # group fabric); solid but all group-wide -> Medium; trivial -> Low.
         if len(distinctive) >= CK_RARE_HIGH:
             distinct_rating = HIGH
         elif len(distinctive) == 1 or len(shared) >= CK_SOLID_MEDIUM:
@@ -217,8 +280,6 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
         distinct_note = _near_note("rare shared contacts", len(distinctive),
                                    CK_RARE_HIGH, CK_RARE_HIGH, integer=True)
     else:
-        distinctive = [p for p in shared
-                       if not _is_common(commonality.get(p, 0), other_users)]
         if len(distinctive) < MUTUAL_MIN_DISTINCTIVE:
             return None
         distinct_ratio = len(distinctive) / len(shared)
@@ -327,14 +388,19 @@ def build_findings(facts: dict) -> dict:
             f"Only {other_users} other subscriber(s) in this dataset — too few to "
             "reliably judge which contacts or places are common.")
 
+    counts = build_evidence_counts(facts, dataset_context["mode"], spread_median)
+
     empty = [name for name, n in
              ((facts["name_a"], facts["n_a"]), (facts["name_b"], facts["n_b"])) if n == 0]
     if empty:
         for name in empty:
             caveats.append(f"{name} has no records; absence of overlap is not meaningful.")
+        # A target with no records shares nothing, so the same call yields zeroed
+        # counts -- no special casing.
         return {"findings": [], "caveats": caveats,
                 "details": {"windows": None, "shared_areas_no_time_overlap": []},
                 "dataset_context": dataset_context,
+                "evidence_counts": counts,
                 "no_link": True}
 
     ratio = window_overlap_ratio(facts["span_a"], facts["span_b"])
@@ -363,5 +429,6 @@ def build_findings(facts: dict) -> dict:
             "shared_areas_no_time_overlap": shared_areas_only,
         },
         "dataset_context": dataset_context,
+        "evidence_counts": counts,
         "no_link": not findings,
     }

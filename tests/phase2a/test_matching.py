@@ -133,6 +133,8 @@ def _facts(**over):
         "other_users": 10,
         "contact_commonality": {"P1": 0, "P2": 0, "P3": 0},
         "area_commonality": {"X": 0},
+        "area_tallies_a": {"X": 10, "Y": 4},
+        "area_tallies_b": {"X": 8, "Z": 6},
     }
     base.update(over)
     return base
@@ -402,6 +404,82 @@ def test_no_notes_when_far_from_every_line():
     f = _by_type(gates.build_findings(_facts()))["mutual_contacts"]
     # n=60, share 1.0, distinctiveness 1.0, window 1.0: nothing near a boundary.
     assert f["notes"] == []
+
+
+# ---- evidence counters (spec 2026-07-13-matcher-evidence-counters-design.md) ----
+# Descriptive tallies of the raw evidence: NO gates, NO confidence (a count is not
+# a verdict -- same rule as the frequency explorer).
+
+def test_evidence_counts_direct_and_mutual_call_split():
+    facts = _facts(
+        contacts_a={"P1": 5, "P2": 4, "P9": 3},
+        contacts_b={"P1": 6, "P2": 2, "P9": 1},
+        contact_commonality={"P1": 0, "P2": 0, "P9": 9},  # P9 common (>= 20% of 10)
+    )
+    c = gates.build_findings(facts)["evidence_counts"]
+    assert c["direct"] == {"records": 12, "calls": 10, "sms": 2, "a_to_b": 6, "b_to_a": 6}
+    assert c["mutual_calls"]["distinctive"] == {
+        "contacts": 2, "records_a": 9, "records_b": 8, "records": 17}   # P1 + P2
+    assert c["mutual_calls"]["common"] == {
+        "contacts": 1, "records_a": 3, "records_b": 1, "records": 4}    # P9
+
+
+def test_evidence_counts_location_buckets_are_disjoint_by_area():
+    """An area where they MET is never also counted as shared-only: the buckets
+    partition the shared areas, so the totals sum without double counting."""
+    facts = _facts(
+        areas_a={"X", "Q", "SoloA"}, areas_b={"X", "Q", "SoloB"},
+        area_tallies_a={"X": 10, "Q": 7, "SoloA": 3},
+        area_tallies_b={"X": 8, "Q": 5, "SoloB": 2},
+        # the baseline co_events all sit in area X -> X is the meet-up bucket
+    )
+    loc = gates.build_findings(facts)["evidence_counts"]["mutual_locations"]
+    assert loc["meet_up"] == {"areas": 1, "records_a": 10, "records_b": 8, "records": 18}
+    assert loc["non_meet_up"] == {"areas": 1, "records_a": 7, "records_b": 5, "records": 12}
+    # SoloA / SoloB are not shared -> counted in neither bucket
+    assert loc["meet_up"]["areas"] + loc["non_meet_up"]["areas"] == 2
+
+
+def test_evidence_counts_use_the_same_classification_as_the_finding():
+    """Close-knit mode: the counter's distinctive/common split must match the
+    mutual finding's -- one classifier, two consumers."""
+    facts = _ck_facts(contact_commonality={"P1": 1, "P2": 8, "P3": 7})
+    result = gates.build_findings(facts)
+    counts = result["evidence_counts"]["mutual_calls"]
+    shared = _by_type(result)["mutual_contacts"]["evidence"]["shared_contacts"]
+    distinctive_in_finding = sum(1 for c in shared if c["distinctive"])
+    assert counts["distinctive"]["contacts"] == distinctive_in_finding == 1
+    assert counts["common"]["contacts"] == 2
+
+
+def test_evidence_counts_zero_when_nothing_shared():
+    facts = _facts(
+        contacts_a={"PA": 1}, contacts_b={"PB": 1}, contact_commonality={},
+        direct={"total": 0, "calls": 0, "sms": 0, "a_to_b": 0, "b_to_a": 0,
+                "first": None, "last": None},
+        co_events=[], areas_a={"A1"}, areas_b={"B1"},
+        area_tallies_a={"A1": 4}, area_tallies_b={"B1": 5})
+    c = gates.build_findings(facts)["evidence_counts"]
+    assert c["direct"]["records"] == 0
+    assert c["mutual_calls"]["distinctive"]["contacts"] == 0
+    assert c["mutual_locations"]["meet_up"]["areas"] == 0
+    assert c["mutual_locations"]["non_meet_up"]["areas"] == 0
+
+
+def test_evidence_counts_present_even_when_a_target_has_no_records():
+    """The zero-record early return still carries counts (no KeyError downstream).
+    Real facts for a record-less target are empty everywhere -- gathered here as
+    repo.py would produce them, since a fabricated dict could contradict itself."""
+    result = gates.build_findings(_facts(
+        n_b=0, span_b=None, contacts_b={}, areas_b=set(), area_tallies_b={},
+        co_events=[], contact_commonality={}, area_commonality={},
+        direct={"total": 0, "calls": 0, "sms": 0, "a_to_b": 0, "b_to_a": 0,
+                "first": None, "last": None}))
+    assert result["no_link"] is True
+    c = result["evidence_counts"]
+    assert c["direct"]["records"] == 0
+    assert c["mutual_calls"]["common"]["records"] == 0
+    assert c["mutual_locations"]["meet_up"]["areas"] == 0
 
 
 # ---- end-to-end: the fixture dataset through the API ----
