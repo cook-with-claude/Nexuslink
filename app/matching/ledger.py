@@ -35,6 +35,16 @@ CATEGORY_LABELS = {
     "shared_location": "Shared location",
 }
 
+# Maximum rows retained in a saved/exported ledger (PROPOSAL pending co-founder
+# review). The total and every category count remain disclosed when capped.
+LEDGER_ROW_CAP = 50_000
+
+
+def cap_note(shown: int, total: int) -> str | None:
+    if shown >= total:
+        return None
+    return f"{shown:,} of {total:,} rows shown; listing capped"
+
 
 def _row(record, category, targets, distinctive=None):
     """One ledger row. Parties are named by their TARGET name wherever the dataset
@@ -104,14 +114,20 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
 
     rows: list[dict] = []
     seen_record_ids: set[int] = set()
+    counts: dict[str, int] = {}
+    total_row_count = 0
 
     def append_once(record, category, distinctive=None):
         """Assign each source CDR to its most specific ledger category."""
+        nonlocal total_row_count
         record_id = record["record_id"]
         if record_id in seen_record_ids:
             return
         seen_record_ids.add(record_id)
-        rows.append(_row(record, category, targets, distinctive))
+        total_row_count += 1
+        counts[category] = counts.get(category, 0) + 1
+        if len(rows) < LEDGER_ROW_CAP:
+            rows.append(_row(record, category, targets, distinctive))
 
     for r in repo.direct_contact_records(conn, dataset_id, phone_a, phone_b):
         append_once(r, "direct")
@@ -123,10 +139,7 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
         for r in repo.records_for(conn, dataset_id, both, areas=areas):
             append_once(r, category, distinctive=r["area"] in distinctive_areas)
 
-    counts: dict[str, int] = {}
-    for r in rows:
-        counts[r["category"]] = counts.get(r["category"], 0) + 1
-
+    shown_row_count = len(rows)
     return {
         "pair": {
             "dataset_id": dataset_id,
@@ -137,6 +150,9 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
         },
         "computed_at": datetime.now(timezone.utc).isoformat(),
         "rows": rows,
-        "row_count": len(rows),
+        "row_count": total_row_count,
+        "shown_row_count": shown_row_count,
+        "truncated": shown_row_count < total_row_count,
+        "cap_note": cap_note(shown_row_count, total_row_count),
         "category_counts": counts,
     }

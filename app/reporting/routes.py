@@ -48,16 +48,27 @@ def export_results():
                     for r in matching_repo.saved_pair_matches(db)]
     tallies = [{**r, "tally": json.loads(r["tally_json"])}
                for r in analysis_repo.saved_tallies(db)]
-    ledgers = [{**r, "rows": json.loads(r["rows_json"]),
-                "pair": {"target_a": {"name": r["name_a"], "phone_number": r["phone_a"]},
-                         "target_b": {"name": r["name_b"], "phone_number": r["phone_b"]}}}
-               for r in matching_repo.saved_ledgers(db)]
-    body = export.build_results_workbook(rows, pair_matches, tallies, ledgers)
+    ledger_stats = matching_repo.saved_ledger_stats(db)
+
+    def decoded_ledgers():
+        for r in matching_repo.iter_saved_ledgers(db):
+            yield {
+                **r,
+                "rows": json.loads(r["rows_json"]),
+                "pair": {
+                    "target_a": {"name": r["name_a"], "phone_number": r["phone_a"]},
+                    "target_b": {"name": r["name_b"], "phone_number": r["phone_b"]},
+                },
+            }
+
+    body = export.build_results_workbook(
+        rows, pair_matches, tallies, decoded_ledgers(),
+        ledger_count=ledger_stats["ledger_count"])
     audit.write_audit(db, current_username(), audit.EXPORT,
                       {"target_id": target_id, "targets": len(rows),
                        "pair_matches": len(pair_matches), "tallies": len(tallies),
-                       "ledgers": len(ledgers),
-                       "ledger_rows": sum(x["row_count"] for x in ledgers)})
+                       "ledgers": ledger_stats["ledger_count"],
+                       "ledger_rows": ledger_stats["row_count"]})
     db.commit()
     return Response(body, mimetype=export.XLSX_MIMETYPE, headers={
         "Content-Disposition": 'attachment; filename="nexuslink_results.xlsx"',

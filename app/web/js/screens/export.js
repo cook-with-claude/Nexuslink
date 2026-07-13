@@ -152,7 +152,7 @@ async function savedItemsCard() {
         slot.appendChild(row(
           `${p.target_a.name} (${p.target_a.phone_number}) ↔ ` +
           `${p.target_b.name} (${p.target_b.phone_number}) — ${l.dataset_name}`,
-          `${l.row_count} record(s) · saved ${fmtDate(l.created_at)}`,
+          `${l.cap_note || `${l.row_count} record(s)`} · saved ${fmtDate(l.created_at)}`,
           async () => {
             try {
               await api.deleteSavedLedger(l.id);

@@ -372,7 +372,7 @@ def save_ledger(conn, dataset_id, target_a_id, target_b_id, created_at,
 
 def saved_ledgers(conn) -> list[dict]:
     rows = conn.execute(
-        "SELECT l.id, l.dataset_id, l.created_at, l.row_count, l.rows_json, "
+        "SELECT l.id, l.dataset_id, l.created_at, l.row_count, "
         "d.name AS dataset_name, "
         "ta.name AS name_a, ta.phone_number AS phone_a, "
         "tb.name AS name_b, tb.phone_number AS phone_b "
@@ -383,6 +383,31 @@ def saved_ledgers(conn) -> list[dict]:
         "ORDER BY l.id",
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def iter_saved_ledgers(conn):
+    """Yield full saved ledgers one at a time for the streaming workbook."""
+    rows = conn.execute(
+        "SELECT l.id, l.dataset_id, l.created_at, l.row_count, l.rows_json, "
+        "d.name AS dataset_name, "
+        "ta.name AS name_a, ta.phone_number AS phone_a, "
+        "tb.name AS name_b, tb.phone_number AS phone_b "
+        "FROM saved_ledgers l "
+        "JOIN datasets d ON d.id = l.dataset_id "
+        "JOIN targets ta ON ta.id = l.target_a_id "
+        "JOIN targets tb ON tb.id = l.target_b_id "
+        "ORDER BY l.id",
+    )
+    for row in rows:
+        yield dict(row)
+
+
+def saved_ledger_stats(conn) -> dict:
+    row = conn.execute(
+        "SELECT COUNT(*) AS ledger_count, COALESCE(SUM(row_count), 0) AS row_count "
+        "FROM saved_ledgers"
+    ).fetchone()
+    return dict(row)
 
 
 def delete_ledger(conn, ledger_id) -> bool:

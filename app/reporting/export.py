@@ -12,10 +12,10 @@ Layout: six sheets, always all present so the workbook shape is predictable.
 "Frequent contacts" hold the per-target tallies as real rows (deliberately NO
 confidence column -- a count is not a gated verdict, same rule as the UI).
 "Contact matches" holds one row per finding of each SAVED pair match;
-"Pair records" the EXHAUSTIVE record ledger of each SAVED pair (every call and
-every shared-area record, with dates/times -- no cap, and no confidence: these are
-records, not verdicts); "Frequency counts" one row per ranked value of each SAVED
-explorer tally. The staged sheets are click-to-save: nothing lands automatically.
+"Pair records" the capped, explicitly disclosed record ledger of each SAVED pair
+(with dates/times and no confidence: these are records, not verdicts); "Frequency
+counts" one row per ranked value of each SAVED explorer tally. The staged sheets
+are click-to-save: nothing lands automatically.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import io
 import json
 
 from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -40,13 +41,16 @@ MATCHES_HEADERS = ["Match ID", "Dataset", "Target A", "Target B", "Saved at",
                    "Dataset mode", "Near-boundary notes"]
 TALLIES_HEADERS = ["Count ID", "Target", "Phone number", "Dataset", "Saved at",
                    "Filters", "Total records", "Rank", "Value", "Count"]
-# The pair record ledger (spec 2026-07-13-pair-record-ledger-design): the actual
-# records behind a pair, EXHAUSTIVE -- no cap, that is the point of the sheet. No
-# confidence column: these are records, not verdicts.
+# The pair record ledger: actual records, with any cap disclosed in the final
+# column. No confidence column because records are not verdicts.
 LEDGER_HEADERS = ["Ledger ID", "Dataset", "Pair", "Saved at", "Category", "Who",
                   "Phone", "Date & time", "Call type", "Duration (s)",
                   "Other party", "Other party name", "Also a target", "Area",
-                  "Distinctive"]
+                  "Distinctive", "Listing note"]
+
+# Excel permits 1,048,576 rows per sheet. Reserve row 1 for the header and never
+# let aggregate saved ledgers cross the remaining hard limit.
+LEDGER_EXPORT_ROW_BUDGET = 1_048_575
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -70,25 +74,41 @@ def _fmt_when(iso: str | None) -> str:
     return (iso or "").replace("T", " ")[:16]
 
 
-def _finish_sheet(ws) -> None:
-    """Styled sticky header, autofilter, content-sized columns."""
-    for cell in ws[1]:
-        cell.font = _HEADER_FONT
-        cell.fill = _HEADER_FILL
-    ws.freeze_panes = "A2"
-    ws.auto_filter.ref = ws.dimensions
-    for col_idx in range(1, ws.max_column + 1):
-        letter = get_column_letter(col_idx)
-        longest = max(
-            (len(str(c.value)) for c in ws[letter] if c.value is not None),
-            default=0,
-        )
-        ws.column_dimensions[letter].width = min(max(longest + 3, 11), 44)
+class _StreamingSheet:
+    """Small write-only worksheet facade that preserves the export styling."""
+
+    def __init__(self, workbook, title: str, headers: list[str]):
+        self.ws = workbook.create_sheet(title)
+        self.headers = headers
+        self.row_count = 0
+        self.ws.freeze_panes = "A2"
+        for col_idx, header in enumerate(headers, start=1):
+            letter = get_column_letter(col_idx)
+            self.ws.column_dimensions[letter].width = min(max(len(header) + 3, 11), 44)
+        self.append(headers, header=True)
+
+    def append(self, values, *, header=False, italic_columns=(), percent_columns=()):
+        cells = []
+        for index, value in enumerate(values, start=1):
+            cell = WriteOnlyCell(self.ws, value=value)
+            if header:
+                cell.font = _HEADER_FONT
+                cell.fill = _HEADER_FILL
+            elif index in italic_columns:
+                cell.font = _NOT_ANALYZED_FONT
+            if index in percent_columns:
+                cell.number_format = "0.0%"
+            cells.append(cell)
+        self.ws.append(cells)
+        self.row_count += 1
+
+    def finish(self):
+        last_col = get_column_letter(len(self.headers))
+        self.ws.auto_filter.ref = f"A1:{last_col}{self.row_count}"
 
 
 def _placeholder(ws, text) -> None:
-    ws.append([text])
-    ws.cell(row=ws.max_row, column=1).font = _NOT_ANALYZED_FONT
+    ws.append([text], italic_columns=(1,))
 
 
 def _target_cell(t: dict) -> str:
@@ -137,8 +157,10 @@ def _append_match_rows(ws, saved: dict) -> None:
     findings = result.get("findings") or []
     if not findings:
         caveats = "; ".join(result.get("caveats") or [])
-        ws.append(base + ["No link found", "—", "", caveats, "", mode, ""])
-        ws.cell(row=ws.max_row, column=6).font = _NOT_ANALYZED_FONT
+        ws.append(
+            base + ["No link found", "—", "", caveats, "", mode, ""],
+            italic_columns=(6,),
+        )
         return
     for f in findings:
         ws.append(base + [
@@ -157,24 +179,35 @@ def _call_type_cell(code) -> str:
     return f"{_CALL_TYPES.get(code, 'unknown')} ({code})"
 
 
-def _append_ledger_rows(ws, saved: dict) -> None:
-    """EVERY record of one saved ledger -- no cap. The on-screen table pages at 50
-    rows; the workbook is where the exhaustive listing lives.
+def _cap_note(shown: int, total: int) -> str | None:
+    if shown >= total:
+        return None
+    return f"{shown:,} of {total:,} rows shown; listing capped"
 
-    `distinctive` is None for direct rows (the pair themselves are not a "shared"
-    item to judge), so it renders as an em-dash rather than a misleading "no".
-    """
+
+def _append_ledger_rows(ws, saved: dict, row_allowance: int) -> int:
+    """Stream one saved ledger within its remaining Excel row allowance."""
+    if row_allowance <= 0:
+        return 0
     pair = saved["pair"]
     pair_cell = (f"{pair['target_a']['name']} ({pair['target_a']['phone_number']}) ↔ "
                  f"{pair['target_b']['name']} ({pair['target_b']['phone_number']})")
     base = [saved["id"], saved.get("dataset_name"), pair_cell,
             _fmt_when(saved.get("created_at"))]
     rows = saved.get("rows") or []
+    total = max(saved.get("row_count") or 0, len(rows))
     if not rows:
-        ws.append(base + ["no records"] + [""] * (len(LEDGER_HEADERS) - len(base) - 1))
-        ws.cell(row=ws.max_row, column=5).font = _NOT_ANALYZED_FONT
-        return
-    for r in rows:
+        note = _cap_note(0, total)
+        label = "listing capped" if note else "no records"
+        ws.append(
+            base + [label] + [""] * (len(LEDGER_HEADERS) - len(base) - 2) + [note or ""],
+            italic_columns=(5,),
+        )
+        return 1
+
+    shown = min(len(rows), row_allowance)
+    note = _cap_note(shown, total)
+    for index, r in enumerate(rows[:shown]):
         distinctive = r.get("distinctive")
         ws.append(base + [
             r.get("category_label"), r.get("who"), r.get("who_phone"),
@@ -184,7 +217,9 @@ def _append_ledger_rows(ws, saved: dict) -> None:
             "yes" if r.get("other_party_is_target") else "",
             r.get("area"),
             "—" if distinctive is None else ("distinctive" if distinctive else "common"),
+            note if index == 0 and note else "",
         ])
+    return shown
 
 
 def _append_tally_rows(ws, saved: dict) -> None:
@@ -196,38 +231,39 @@ def _append_tally_rows(ws, saved: dict) -> None:
     ]
     top = tally.get("top") or []
     if not top:
-        ws.append(base + ["—", "no rankable values", ""])
-        ws.cell(row=ws.max_row, column=9).font = _NOT_ANALYZED_FONT
+        ws.append(base + ["—", "no rankable values", ""], italic_columns=(9,))
         return
     for rank, row in enumerate(top, start=1):
         ws.append(base + [rank, row.get("value"), row.get("count")])
 
 
 def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
-                           tallies: list[dict] = (), ledgers: list[dict] = ()) -> bytes:
+                           tallies: list[dict] = (), ledgers=(), *,
+                           ledger_count: int | None = None) -> bytes:
     """rows: targets_with_latest_result() output. pair_matches / tallies / ledgers:
     the SAVED items, already JSON-decoded ({"result": …} / {"tally": …} /
     {"rows": […], "pair": {…}})."""
-    wb = Workbook()
-    summary = wb.active
-    summary.title = "Summary"
-    areas_ws = wb.create_sheet("Frequent areas")
-    contacts_ws = wb.create_sheet("Frequent contacts")
-    matches_ws = wb.create_sheet("Contact matches")
-    ledger_ws = wb.create_sheet("Pair records")
-    tallies_ws = wb.create_sheet("Frequency counts")
-    summary.append(HEADERS)
-    areas_ws.append(AREAS_HEADERS)
-    contacts_ws.append(CONTACTS_HEADERS)
-    matches_ws.append(MATCHES_HEADERS)
-    ledger_ws.append(LEDGER_HEADERS)
-    tallies_ws.append(TALLIES_HEADERS)
+    if ledger_count is None:
+        try:
+            ledger_count = len(ledgers)
+        except TypeError as exc:
+            raise ValueError("ledger_count is required for a ledger iterator") from exc
+
+    wb = Workbook(write_only=True)
+    summary = _StreamingSheet(wb, "Summary", HEADERS)
+    areas_ws = _StreamingSheet(wb, "Frequent areas", AREAS_HEADERS)
+    contacts_ws = _StreamingSheet(wb, "Frequent contacts", CONTACTS_HEADERS)
+    matches_ws = _StreamingSheet(wb, "Contact matches", MATCHES_HEADERS)
+    ledger_ws = _StreamingSheet(wb, "Pair records", LEDGER_HEADERS)
+    tallies_ws = _StreamingSheet(wb, "Frequency counts", TALLIES_HEADERS)
 
     for row in rows:
         base = [row["id"], row["name"], row["phone_number"]]
         if row["result_json"] is None:
-            summary.append(base + [row["dataset_name"], "not analyzed"] + [""] * 5)
-            summary.cell(row=summary.max_row, column=5).font = _NOT_ANALYZED_FONT
+            summary.append(
+                base + [row["dataset_name"], "not analyzed"] + [""] * 5,
+                italic_columns=(5,),
+            )
             continue
         payload = json.loads(row["result_json"])
         home = _detection(payload.get("home"))
@@ -242,8 +278,10 @@ def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
             ", ".join(f"{a.get('area')} ({a.get('count')})" for a in frequent),
         ])
         for rank, a in enumerate(frequent, start=1):
-            areas_ws.append(base + [rank, a.get("area"), a.get("count"), a.get("share")])
-            areas_ws.cell(row=areas_ws.max_row, column=7).number_format = "0.0%"
+            areas_ws.append(
+                base + [rank, a.get("area"), a.get("count"), a.get("share")],
+                percent_columns=(7,),
+            )
         for c in payload.get("frequent_contacts") or []:
             contacts_ws.append(base + [c.get("number"), c.get("total"),
                                        c.get("call_out"), c.get("call_in"),
@@ -253,9 +291,16 @@ def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
         _append_match_rows(matches_ws, saved)
     if not pair_matches:
         _placeholder(matches_ws, "none saved")
+    remaining_rows = LEDGER_EXPORT_ROW_BUDGET
+    remaining_ledgers = ledger_count
     for saved in ledgers:
-        _append_ledger_rows(ledger_ws, saved)
-    if not ledgers:
+        remaining_ledgers -= 1
+        # Reserve one row for each later ledger so aggregate truncation remains
+        # disclosed per ledger instead of silently dropping a saved item.
+        allowance = max(0, remaining_rows - remaining_ledgers)
+        used = _append_ledger_rows(ledger_ws, saved, allowance)
+        remaining_rows -= used
+    if ledger_count == 0:
         _placeholder(ledger_ws, "none saved")
     for saved in tallies:
         _append_tally_rows(tallies_ws, saved)
@@ -263,7 +308,7 @@ def build_results_workbook(rows: list[dict], pair_matches: list[dict] = (),
         _placeholder(tallies_ws, "none saved")
 
     for ws in (summary, areas_ws, contacts_ws, matches_ws, ledger_ws, tallies_ws):
-        _finish_sheet(ws)
+        ws.finish()
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

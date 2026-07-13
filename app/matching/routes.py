@@ -139,6 +139,7 @@ def save_ledger():
     )
     audit.write_audit(db, current_username(), audit.LEDGER_SAVE,
                       {"ledger_id": ledger_id, "rows": payload["row_count"],
+                       "stored_rows": payload["shown_row_count"],
                        "target_a_id": payload["pair"]["target_a"]["id"],
                        "target_b_id": payload["pair"]["target_b"]["id"]})
     db.commit()
@@ -158,6 +159,10 @@ def saved_ledgers():
         "dataset_name": r["dataset_name"],
         "created_at": r["created_at"],
         "row_count": r["row_count"],
+        "shown_row_count": min(r["row_count"], ledger.LEDGER_ROW_CAP),
+        "truncated": r["row_count"] > ledger.LEDGER_ROW_CAP,
+        "cap_note": ledger.cap_note(
+            min(r["row_count"], ledger.LEDGER_ROW_CAP), r["row_count"]),
         "pair": {
             "target_a": {"name": r["name_a"], "phone_number": r["phone_a"]},
             "target_b": {"name": r["name_b"], "phone_number": r["phone_b"]},

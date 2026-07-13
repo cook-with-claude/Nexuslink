@@ -491,18 +491,23 @@ function ledgerCard(datasets) {
   card.appendChild(el("p", { class: "hint" },
     "Lists every record that links two targets: their direct calls, the calls " +
     "either side made to a contact they share, and their records in shared areas. " +
-    "Dates and times included; the export carries every row."));
+    "Dates and times included; capped listings are disclosed before export."));
 
   const savedLine = el("p", { class: "hint saved-count" }, "");
   card.appendChild(savedLine);
   const refreshSavedCount = async () => {
     try {
       const saved = await api.savedLedgers();
-      const rows = saved.reduce((n, l) => n + (l.row_count || 0), 0);
+      const totalRows = saved.reduce((n, l) => n + (l.row_count || 0), 0);
+      const shownRows = saved.reduce(
+        (n, l) => n + (l.shown_row_count ?? l.row_count ?? 0), 0);
+      const rowSummary = shownRows === totalRows
+        ? `${totalRows} record${totalRows === 1 ? "" : "s"}`
+        : `${shownRows} of ${totalRows} records staged; capped`;
       savedLine.textContent = saved.length === 0
         ? "Nothing saved for export yet."
         : `Saved for export: ${saved.length} ledger${saved.length === 1 ? "" : "s"} ` +
-          `(${rows} record${rows === 1 ? "" : "s"}; manage on the Export screen).`;
+          `(${rowSummary}; manage on the Export screen).`;
     } catch (e) {
       // a failed count must not break the card
     }
@@ -575,7 +580,7 @@ function ledgerCard(datasets) {
             try {
               const saved = await api.saveLedger(ledgerAId, ledgerBId);
               save.textContent = "Saved ✓";
-              toast(`Ledger saved to export (${saved.row_count} records)`);
+              toast(saved.cap_note || `Ledger saved to export (${saved.row_count} records)`);
               refreshSavedCount();
             } catch (e) {
               toast(e.message, "error");

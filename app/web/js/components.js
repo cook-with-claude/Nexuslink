@@ -413,7 +413,7 @@ export function matchFindingsBlock(payload, wrapClass = "det-block") {
 // The RECORDS behind a pair, not a verdict about them: no strength pills, no
 // gates, no confidence anywhere. Shows LEDGER_PAGE rows; an Expand control
 // reveals the rest in a scrollable grid (a heavy pair runs to thousands of rows).
-// The export is the exhaustive artifact — say so rather than implying rows are lost.
+// Server-side caps are disclosed by the payload and repeated above the table.
 
 export const LEDGER_PAGE = 50;
 
@@ -496,6 +496,9 @@ export function ledgerTable(payload) {
   }
 
   const counts = payload.category_counts || {};
+  if (payload.cap_note) {
+    block.appendChild(el("p", { class: "hint" }, payload.cap_note));
+  }
   block.appendChild(el("p", { class: "hint" },
     `${payload.row_count} record(s): ` +
     Object.entries(counts).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(" · ")));
@@ -575,8 +578,7 @@ export function ledgerTable(payload) {
     if (rows.length === 0) {
       note.textContent = "No records match the current filter.";
     } else if (shown < rows.length) {
-      note.textContent = `Showing the first ${shown} of ${rows.length}${filtered}. ` +
-        "The export contains every record.";
+      note.textContent = `Showing the first ${shown} of ${rows.length}${filtered}.`;
     } else {
       note.textContent = `Showing all ${rows.length} record(s)${filtered}.`;
     }
