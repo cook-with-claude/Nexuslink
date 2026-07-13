@@ -28,7 +28,8 @@ from datetime import date
 HIGH, MEDIUM, LOW = "High", "Medium", "Low"
 _ORDER = {LOW: 0, MEDIUM: 1, HIGH: 2}
 
-# Sample gate (records per side; the weaker-observed target caps everything).
+# Sample gate (finding-relevant records per side; PROPOSAL pending co-founder
+# review against the stricter contact/located evidence populations).
 N_HIGH, N_MEDIUM = 50, 15
 # Window-overlap gate: overlapping days / the shorter observation span's days.
 WINDOW_HIGH, WINDOW_MEDIUM = 0.60, 0.20
@@ -249,7 +250,10 @@ def _mutual_finding(facts: dict, window_rating: str, window_ratio: float,
 
     smaller_circle = min(len(contacts_a), len(contacts_b))
     share_ratio = len(shared) / smaller_circle
-    sample = min(facts["n_a"], facts["n_b"])
+    sample = min(
+        facts.get("contact_n_a", facts["n_a"]),
+        facts.get("contact_n_b", facts["n_b"]),
+    )
     ratings = {
         "sample": _tier(sample, N_HIGH, N_MEDIUM),
         "overlap share": _tier(share_ratio, SHARE_HIGH, SHARE_MEDIUM),
@@ -298,7 +302,10 @@ def _co_presence_finding(facts: dict, window_rating: str,
         e for e in events if not _is_common(commonality.get(e["area"], 0), other_users)
     ]
     days = {e["day"] for e in events}
-    sample = min(facts["n_a"], facts["n_b"])
+    sample = min(
+        facts.get("located_n_a", facts["n_a"]),
+        facts.get("located_n_b", facts["n_b"]),
+    )
     distinct_ratio = len(distinctive_events) / len(events)
     ratings = {
         "sample": _tier(sample, N_HIGH, N_MEDIUM),

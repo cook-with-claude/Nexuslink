@@ -29,6 +29,24 @@ def record_count(conn, dataset_id, phone_number) -> int:
     ).fetchone()["n"]
 
 
+def contact_record_count(conn, dataset_id, phone_number) -> int:
+    """Rows that can support a contact-overlap finding."""
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM cdr_records "
+        "WHERE dataset_id = ? AND phone_number = ? AND other_party IS NOT NULL",
+        (dataset_id, phone_number),
+    ).fetchone()["n"]
+
+
+def located_record_count(conn, dataset_id, phone_number) -> int:
+    """Rows that can support an area/co-presence finding."""
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM cdr_records "
+        "WHERE dataset_id = ? AND phone_number = ? AND area IS NOT NULL",
+        (dataset_id, phone_number),
+    ).fetchone()["n"]
+
+
 def observation_span(conn, dataset_id, phone_number) -> tuple[str, str] | None:
     """(first, last) record timestamp, or None when the target has no records."""
     row = conn.execute(
