@@ -4,6 +4,24 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-14 - Claude: right-click Rename PORTED onto the Phase-2 demo
+
+Ported the datasets/targets **right-click → Rename** feature from `main` (`4df8230`) onto the demo
+line so the professor demo matches the product. Stays pure Phase 2 (no login/passphrase ceremony).
+
+**How it was ported:** the 9 backend + frontend-JS files had a byte-identical pre-image on both lines
+(verified `git diff 37249c3 <demo>` = empty), so they were copied **wholesale** from main
+(`app/audit/log.py`, `app/{datasets,targets}/{repo,routes}.py`, `app/web/js/api.js`,
+`components.js`, `screens/{datasets,targets}.js`). The three diverged files were hand-applied over the
+demo's own divergence: `app/web/css/app.css` (reordered — the additive `.ctx-menu`/`.rename-input`
+block re-inserted after `.inline-confirm`), and `tests/phase2a/test_{imports,targets}.py` (demo's
+keyless `client` fixture — the target-rename audit test uses `account.authenticate("nadim","hunter2")`
+for the DB key instead of main's `bootstrap_key`).
+
+**Verified:** 265 passed (was 258; +7: 3 dataset + 4 target rename), node 38/38, ruff clean, phase1
+diff empty, JS `node --check` clean. CLAUDE.md test count refreshed 187 → 265 (was stale). Committed
+on the demo branch `claude/rebrand-nexuslink-phase2`; worktree `la-passion-phase2`.
+
 ## 2026-07-13 - Claude: contact matcher PORTED onto the Phase-2 demo — scratch branch, NOT merged
 
 The contact matcher (built by Khaled/`smoky0y`, dual-reviewed + method-hardened, already on `main`)

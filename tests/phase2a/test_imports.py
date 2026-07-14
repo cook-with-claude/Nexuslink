@@ -76,3 +76,23 @@ def test_delete_dataset_cascades(client, sample_xlsx):
     assert client.delete(f"/api/datasets/{ds_id}").status_code == 200
     assert client.get("/api/datasets").get_json()["data"] == []
     assert client.get(f"/api/datasets/{ds_id}/phone-numbers").status_code == 404
+
+
+def test_rename_dataset_updates_label_and_trims(client, sample_xlsx):
+    ds_id = _upload(client, sample_xlsx, name="before").get_json()["data"]["dataset_id"]
+    r = client.patch(f"/api/datasets/{ds_id}", json={"name": "  after  "})
+    assert r.status_code == 200
+    assert r.get_json()["data"] == {"id": ds_id, "name": "after"}
+    ds = next(d for d in client.get("/api/datasets").get_json()["data"] if d["id"] == ds_id)
+    assert ds["name"] == "after"
+    assert ds["filename"] == "sample.xlsx"   # only the label changes
+
+
+def test_rename_dataset_blank_name_400(client, sample_xlsx):
+    ds_id = _upload(client, sample_xlsx).get_json()["data"]["dataset_id"]
+    assert client.patch(f"/api/datasets/{ds_id}", json={"name": "  "}).status_code == 400
+    assert client.patch(f"/api/datasets/{ds_id}", json={}).status_code == 400
+
+
+def test_rename_unknown_dataset_404(client):
+    assert client.patch("/api/datasets/9999", json={"name": "x"}).status_code == 404

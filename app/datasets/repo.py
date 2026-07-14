@@ -55,6 +55,14 @@ def delete_dataset(conn, dataset_id) -> int:
     return cur.rowcount
 
 
+def rename_dataset(conn, dataset_id, name) -> int:
+    """Rename a dataset's display label. Returns rowcount (0 = no such dataset)."""
+    cur = conn.execute(
+        "UPDATE datasets SET name = ? WHERE id = ?", (name, dataset_id)
+    )
+    return cur.rowcount
+
+
 def _like_pattern(text: str) -> str:
     """Substring match with LIKE wildcards in the user's text made literal."""
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
