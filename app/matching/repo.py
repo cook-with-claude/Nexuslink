@@ -273,32 +273,48 @@ _CONTACT_SPREAD = (
 _SHARED_SPREAD = _CONTACT_SPREAD + " HAVING COUNT(DISTINCT phone_number) >= 2"
 
 
-def dataset_interconnectedness(conn, dataset_id, hub_ubiquity_fraction) -> dict:
-    """Dataset-level facts for the adaptive mode (spec 2026-07-13).
+def dataset_interconnectedness(conn, dataset_id, mega_fraction,
+                               many_min, many_fraction) -> dict:
+    """Dataset-level facts for the adaptive mode (spec 2026-07-13, amended by the
+    2026-07-14 conditional-hub-counting design).
 
-    dataset_density: average non-hub shared contacts per subscriber pair = sum
-    over contacts of C(k, 2) / C(n, 2), where k = subscribers contacting that
-    party. One GROUP BY, no O(n^2) pass. contact_spread_median: the typical
-    SHARED contact's k (the close-knit rarity base); hubs remain in this spread
-    so an even population such as [2, 2, 100, 100] has its true median of 51."""
+    dataset_density: average shared contacts per subscriber pair = sum over
+    contacts of C(k, 2) / C(n, 2), where k = subscribers contacting that party.
+    One GROUP BY, no O(n^2) pass. Mega-popular contacts (spread >= mega_fraction
+    of n) are counted CONDITIONALLY: when there are many of them (>= the
+    many/few line) they are group fabric and count; when there are few they are
+    lone services and are excluded. contact_spread_median: the typical SHARED
+    contact's k (the close-knit rarity base); mega-populars ALWAYS remain in this
+    spread so an even population such as [2, 2, 100, 100] has its true median of
+    51 regardless of the many/few decision."""
     n = conn.execute(
         "SELECT COUNT(DISTINCT phone_number) AS n FROM cdr_records WHERE dataset_id = ?",
         (dataset_id,),
     ).fetchone()["n"]
-    hub_ceiling = round(hub_ubiquity_fraction * n)
     spreads = [
         row["k"] for row in conn.execute(
             f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k",
             (dataset_id,),
         ).fetchall()
     ]
-    non_hub_spreads = [k for k in spreads if k <= hub_ceiling]
-    overlap = sum(k * (k - 1) // 2 for k in non_hub_spreads)
+    # Mega-popular: spread reaches mega_fraction of subscribers. Integer-safe
+    # (2*k >= n for the 0.50 default) so a contact held by exactly half counts.
+    mega_count = sum(1 for k in spreads if k >= mega_fraction * n)
+    many_line = max(many_min, many_fraction * n)
+    mega_included = mega_count >= many_line
+    if mega_included:
+        counted = spreads
+    else:
+        counted = [k for k in spreads if k < mega_fraction * n]
+    overlap = sum(k * (k - 1) // 2 for k in counted)
     pairs = n * (n - 1) // 2
     spread_median = median(spreads) if spreads else 2
     return {
         "dataset_density": (overlap / pairs) if pairs else 0.0,
         "contact_spread_median": spread_median,
+        "mega_popular_count": mega_count,
+        "mega_many_line": many_line,
+        "mega_included": mega_included,
     }
 
 

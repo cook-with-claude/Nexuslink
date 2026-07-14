@@ -367,10 +367,25 @@ export function datasetModeNote(ctx) {
   ]);
 }
 
+// A lighter supporting line under the mode note: the dataset's mode depends on
+// how many near-universal contacts it has (group fabric vs lone services), and
+// when that count sits near the cutoff the mode could flip. The backend writes
+// the full sentence into ctx.mode_note; we only render it (with a bold lead-in
+// so it doesn't rely on colour alone). Absent on datasets nowhere near the line.
+export function datasetModeCliffNote(ctx) {
+  if (!ctx || !ctx.mode_note) return null;
+  return el("p", { class: "mode-cliff-note" }, [
+    el("strong", {}, "Group-fabric cutoff: "),
+    ctx.mode_note,
+  ]);
+}
+
 export function matchFindingsBlock(payload, wrapClass = "det-block") {
   const block = el("div", { class: wrapClass });
   const modeNote = datasetModeNote(payload.dataset_context);
   if (modeNote) block.appendChild(modeNote);
+  const cliffNote = datasetModeCliffNote(payload.dataset_context);
+  if (cliffNote) block.appendChild(cliffNote);
   for (const c of payload.caveats || []) {
     block.appendChild(el("p", { class: "hint" }, "⚠ " + c));
   }
