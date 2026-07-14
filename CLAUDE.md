@@ -67,11 +67,11 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - New infrastructure (DB, crypto, paths, migrations) → `app/infra/`.
 
 ## Running things
-- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **277 passing**;
+- Backend tests: `pytest tests/phase2a tests/architecture phase1_cdr/tests` (currently **281 passing**;
   `tests/architecture/` holds the AST boundary checks).
 - Frontend tests: the SPA is vanilla no-build JS, so there's no framework — `node --check` syntax-checks
   every module, and `node --test app/web/js/components.test.mjs` runs the behavioural smoke tests
-  (Node's built-in runner; **36 currently**). Both run in the CI `frontend` job. Logic worth testing is
+  (Node's built-in runner; **38 currently**). Both run in the CI `frontend` job. Logic worth testing is
   extracted as a pure exported function (`bindingGates`, `filterLedgerRows`, `sortLedgerRows`) rather
   than tested through the minimal DOM shim. NOTE: a JS refactor that renames/removes an
   exported symbol can still break **pytest** — `tests/phase2a/test_ui.py` greps served JS for symbol
@@ -86,7 +86,7 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   regenerate both via `tools/gen_matcher_scenarios.py` (it asserts the tables against the real engine).
 - **Local testing:** as of 2026-07-04 native Windows **runs the full suite** (`.venv` Python 3.11.9,
   pandas 3.0.3 — the earlier Smart App Control / `tslib` block is gone): `.venv\Scripts\python.exe -m
-  pytest tests/phase2a tests/architecture phase1_cdr/tests` → 277 passed (~68s). **WSL2** (Ubuntu, venv
+  pytest tests/phase2a tests/architecture phase1_cdr/tests` → 281 passed (~68s). **WSL2** (Ubuntu, venv
   at `/root/lp-venv`) still works as a fallback; CI (Ubuntu) is the canonical gate. See the
   `local-testing-wsl` auto-memory.
 

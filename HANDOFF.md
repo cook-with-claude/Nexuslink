@@ -7,9 +7,13 @@ disagreement or open question. See `COLLAB.md` for the protocol.
 ## 2026-07-14 - FOR KHALED: conditional hub counting is READY FOR YOUR FINAL REVIEW
 
 Khaled — your conditional-count design is built and ready for your sign-off (Nadim's request). It's
-on `claude/conditional-hub-counting` (tip `0043863`, pushed, CI-relevant checks green locally); the
-full what-changed + rationale is the entry directly below, and the design authority is
+on `claude/conditional-hub-counting` (tip pushed, CI-relevant checks green locally) and open as
+**draft PR #18** (https://github.com/cook-with-claude/Nexuslink/pull/18) for inline review. The full
+what-changed + rationale is the entry directly below, and the design authority is
 `docs/superpowers/specs/2026-07-14-conditional-hub-counting-design.md` (now marked IMPLEMENTED).
+
+**Two reviews expected before merge** (same dual-review as the original matcher): your co-founder /
+domain sign-off **and** a Codex fresh-eyes pass. Merge waits on both.
 
 **What we did with your verdict:** dropped the unconditional exclusion; mega-popular contacts
 (spread ≥ 50%) now count toward the mode density when many (`M ≥ max(2, 0.15·n)` = group fabric) and
