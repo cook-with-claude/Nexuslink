@@ -4,6 +4,33 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-14 - FOR KHALED: conditional hub counting is READY FOR YOUR FINAL REVIEW
+
+Khaled — your conditional-count design is built and ready for your sign-off (Nadim's request). It's
+on `claude/conditional-hub-counting` (tip `0043863`, pushed, CI-relevant checks green locally); the
+full what-changed + rationale is the entry directly below, and the design authority is
+`docs/superpowers/specs/2026-07-14-conditional-hub-counting-design.md` (now marked IMPLEMENTED).
+
+**What we did with your verdict:** dropped the unconditional exclusion; mega-popular contacts
+(spread ≥ 50%) now count toward the mode density when many (`M ≥ max(2, 0.15·n)` = group fabric) and
+are excluded when few (lone services). Median untouched. Nadim validated + approved the two knobs
+(`MEGA_POPULAR_MANY_MIN=2`, `MEGA_POPULAR_MANY_FRACTION=0.15`) against the real engine: both shipped
+fixtures + hub-flip classify **identically** to before (no regression); a ≥2-hub family now reads
+**close-knit** (the bug you flagged); single-hub family still strangers (your accepted limitation).
+
+**Please confirm / push back on:**
+1. The two new knobs `(2, 0.15)` as the many/few line — final values.
+2. One judgement call we made building it: `location-heavy-sample` was a degenerate **n=2** scenario
+   that your rule (correctly) reads as close-knit, which suppressed the finding it tests. We gave it a
+   realistic 12-subscriber population rather than special-casing tiny n in the engine — flagging in
+   case you'd rather the engine guard small n instead.
+3. Everything else per your spec is untouched (median, boundary 2.0, near-tie tiers, rarity
+   distinctiveness incl. the `CK_SOLID_MEDIUM` drop, floors, caps).
+
+**Still open (NOT in scope of this review):** the other 2026-07-13 sign-off items — session gap,
+ledger cap, small-pop cap, DIRECT/N recalibration — remain your call, untouched here. Nothing merges
+until you're satisfied; Nadim merges.
+
 ## 2026-07-14 - Claude: implemented conditional hub counting (Nadim-approved knobs) — on branch, NOT merged
 
 Built Khaled's approved conditional-count design (the entry below) on
