@@ -7,13 +7,14 @@ dataset whose expected findings are worked out by hand below.
 """
 
 import io
+import sqlite3
 
 import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
 from app import create_app
-from app.matching import gates, ledger
+from app.matching import gates, ledger, repo
 from app.reporting import export as reporting_export
 
 COLUMNS = ["phone_number", "imei", "area", "timestamp", "call_type",
@@ -393,6 +394,73 @@ def test_strangers_mode_still_suppresses_all_common_shared():
     facts = _facts(dataset_density=0.3,
                    contact_commonality={"P1": 6, "P2": 8, "P3": 7})
     assert "mutual_contacts" not in _by_type(gates.build_findings(facts))
+
+
+# ---- conditional mega-popular counting (spec 2026-07-14) ----
+# Mega-popular contacts (spread >= 50%) count toward the mode density when there
+# are MANY of them (group fabric) and are excluded when there are FEW (lone
+# services). The median always keeps them so the close-knit rarity base is stable.
+
+def _mode_conn(rows):
+    """In-memory cdr_records with just the columns dataset_interconnectedness
+    reads. `rows` is a list of (phone_number, other_party)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE cdr_records (id INTEGER PRIMARY KEY, "
+                 "dataset_id INTEGER, phone_number TEXT, other_party TEXT)")
+    conn.executemany(
+        "INSERT INTO cdr_records (dataset_id, phone_number, other_party) "
+        "VALUES (1, ?, ?)", rows)
+    return conn
+
+
+def _interconnect(rows):
+    return repo.dataset_interconnectedness(
+        _mode_conn(rows), 1, gates.MEGA_POPULAR_FRACTION,
+        gates.MEGA_POPULAR_MANY_MIN, gates.MEGA_POPULAR_MANY_FRACTION)
+
+
+def test_many_mega_populars_are_counted_as_group_fabric():
+    # 8 subscribers, 2 hubs each called by all 8: M=2 >= line max(2, 1.2)=2 ->
+    # included -> density = 2 * C(8,2)/C(8,2) = 2.0 (a family reads close-knit).
+    rows = [(f"m{i}", h) for i in range(8) for h in ("HUB1", "HUB2")]
+    facts = _interconnect(rows)
+    assert facts["mega_popular_count"] == 2
+    assert facts["mega_included"] is True
+    assert facts["dataset_density"] == pytest.approx(2.0)
+
+
+def test_few_mega_populars_are_excluded_as_lone_services():
+    # 20 subscribers, 1 service called by all 20: M=1 < line max(2, 3)=3 ->
+    # excluded -> the lone service cannot flip the dataset to close-knit.
+    rows = [(f"m{i}", "SERVICE") for i in range(20)]
+    facts = _interconnect(rows)
+    assert facts["mega_popular_count"] == 1
+    assert facts["mega_included"] is False
+    assert facts["dataset_density"] == 0.0
+
+
+def test_mega_populars_always_stay_in_the_spread_median():
+    # 20 subscribers: one service held by all 20 (mega, excluded from density as
+    # "few") plus two rare contacts each held by 2. The median must still see the
+    # hub -> median([2, 2, 20]) = 2, while density counts only the two rares.
+    rows = [(f"m{i}", "SERVICE") for i in range(20)]
+    rows += [("m0", "RARE1"), ("m1", "RARE1"), ("m2", "RARE2"), ("m3", "RARE2")]
+    facts = _interconnect(rows)
+    assert facts["mega_included"] is False                     # M=1 < line 3
+    assert facts["contact_spread_median"] == 2                 # hub still in median
+    assert facts["dataset_density"] == pytest.approx(2 / 190)  # 2*C(2,2)/C(20,2)
+
+
+def test_mega_cliff_note_discloses_a_near_line_flip():
+    # M within 1 of the many/few line -> dataset_context carries a disclosure.
+    r = gates.build_findings(_facts(
+        mega_popular_count=2, mega_many_line=2, mega_included=True))
+    assert "group fabric" in r["dataset_context"].get("mode_note", "")
+    # Comfortably clear of the line -> no note.
+    r = gates.build_findings(_facts(
+        mega_popular_count=0, mega_many_line=6, mega_included=False))
+    assert "mode_note" not in r["dataset_context"]
 
 
 def test_near_boundary_notes_flag_cliff_cases():
@@ -948,7 +1016,11 @@ def test_export_carries_saved_matches_and_tallies(client, pair):
     # Adaptive-gates columns: the dataset mode (with its classification
     # confidence) and any near-boundary cliff notes travel with every row.
     assert matches[0][10] == "Dataset mode" and matches[0][11] == "Near-boundary notes"
-    assert findings["Direct contact"][10] == "strangers (High confidence)"
+    # This 7-subscriber fixture has one near-universal contact (M=1) sitting one
+    # below the many/few line of 2, so the mode cell carries the group-fabric
+    # cutoff disclosure alongside the mode + confidence.
+    assert findings["Direct contact"][10].startswith("strangers (High confidence)")
+    assert "near the cutoff of 2" in findings["Direct contact"][10]
     # direct volume 4 sits one above DIRECT_MEDIUM=3 -> a "barely clears" note
     assert "barely clears Medium" in findings["Direct contact"][11]
 

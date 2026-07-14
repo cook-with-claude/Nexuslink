@@ -55,9 +55,11 @@ def compute_match(conn, target_a: dict, target_b: dict) -> dict:
             conn, dataset_id, shared_parties, phone_a, phone_b),
         "area_commonality": repo.area_commonality(
             conn, dataset_id, co_areas, phone_a, phone_b),
-        # Dataset-level mode facts (adaptive gates, spec 2026-07-13).
+        # Dataset-level mode facts (adaptive gates, spec 2026-07-13; conditional
+        # mega-popular counting, spec 2026-07-14).
         **repo.dataset_interconnectedness(
-            conn, dataset_id, gates.HUB_UBIQUITY_FRACTION),
+            conn, dataset_id, gates.MEGA_POPULAR_FRACTION,
+            gates.MEGA_POPULAR_MANY_MIN, gates.MEGA_POPULAR_MANY_FRACTION),
     }
 
     result = gates.build_findings(facts)

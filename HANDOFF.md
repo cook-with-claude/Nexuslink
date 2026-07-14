@@ -4,6 +4,40 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-14 - Claude: implemented conditional hub counting (Nadim-approved knobs) — on branch, NOT merged
+
+Built Khaled's approved conditional-count design (the entry below) on
+`claude/conditional-hub-counting`. **Nadim signed off the two new knobs** after a validation pass I
+ran against the real engine: both shipped fixtures + the hub-flip lone-services case classify
+**identically** to the merged unconditional rule (no regression), while a hub-and-spoke family with
+≥2 near-universal contacts now correctly reads **close-knit** (was "strangers" — the bug Khaled
+flagged). The single-hub family (M=1) still reads strangers — the accepted, documented limitation.
+
+**What changed:**
+- `app/matching/gates.py`: `HUB_UBIQUITY_FRACTION` → `MEGA_POPULAR_FRACTION`; new
+  `MEGA_POPULAR_MANY_MIN = 2`, `MEGA_POPULAR_MANY_FRACTION = 0.15` (PROPOSALS, Nadim-approved);
+  `_mega_cliff_note` → `dataset_context.mode_note` when the many/few count sits within 1 of the line.
+- `app/matching/repo.py` `dataset_interconnectedness`: conditional counting — mega-populars
+  (spread ≥ 50%) COUNT toward density when `M ≥ max(2, 0.15·n)` (group fabric), are EXCLUDED when
+  fewer (lone services). The spread **median is untouched** (mega-populars always stay in it, so the
+  `[2,2,100,100] → 51` invariant holds). Now returns `mega_popular_count` / `mega_many_line` /
+  `mega_included`.
+- `app/matching/service.py` + `ledger.py`: pass the three knobs.
+- `tools/gen_matcher_scenarios.py`: new engine-verified `family-two-hubs` (must read close-knit) +
+  `family-one-hub` (must stay strangers) hardening scenarios; **`location-heavy-sample` given a
+  12-subscriber surrounding population** — at its old degenerate n=2 the pair's own 2 shared contacts
+  looked 100%-ubiquitous and conditional counting (correctly) flipped it close-knit, suppressing the
+  mutual finding the scenario tests. Both fixtures regenerated (content identical; xlsx re-timestamped).
+- Tests: `test_matching.py` — conditional counting (many/few), median-untouched invariant, cliff-note
+  appearance (now **65 passed** in that file). `components.test.mjs` — `datasetModeCliffNote` renders
+  when near the line, absent otherwise (**38 node tests**). Frontend renders the cutoff note as a
+  lighter supporting line under the mode banner (`.mode-cliff-note`, reuses the warn treatment);
+  `app/reporting/export.py` folds `mode_note` into the Dataset-mode cell.
+
+**Thresholds remain PROPOSALS** pending Khaled's final review; the other 2026-07-13 sign-off items
+(session gap, ledger cap, small-pop cap, DIRECT/N recalibration) are still open and untouched here.
+**Not merged** — Nadim merges. Full verification results in the commit.
+
 ## 2026-07-14 - Khaled review verdict: conditional hub counting — DESIGN ONLY, for Nadim
 
 Khaled reviewed the merged hardening pass (the sign-off request one entry down). Verdict on the

@@ -1,8 +1,9 @@
 # Conditional hub counting for the dataset mode
 
-**Date:** 2026-07-14 · **Status:** DESIGN ONLY — approved by Khaled (co-founder/domain), NOT
-implemented; flagged for Nadim before any code changes · **Amends:**
-2026-07-13-adaptive-matcher-gates.md and the hub-exclusion decision in
+**Date:** 2026-07-14 · **Status:** IMPLEMENTED — approved by Khaled (co-founder/domain), knobs
+`(MEGA_POPULAR_MANY_MIN=2, MEGA_POPULAR_MANY_FRACTION=0.15)` signed off by Nadim; built on branch
+`claude/conditional-hub-counting` (thresholds remain PROPOSALS pending final co-founder review) ·
+**Amends:** 2026-07-13-adaptive-matcher-gates.md and the hub-exclusion decision in
 2026-07-13-matcher-method-hardening-decisions.md
 
 ## Khaled's review verdict (2026-07-14)
@@ -74,10 +75,23 @@ floor, and the small-population cap.
 - `HUB_UBIQUITY_FRACTION`'s sign-off question in the 2026-07-13 handoff is answered by this
   design rather than by picking a new fraction.
 
-## Not implemented
+## Implemented (2026-07-14)
 
-Per Khaled's instruction (2026-07-14): flag and document only. No code, threshold, fixture, or
-test changes on this branch. Implementation waits for Nadim's agreement per the method-change
-protocol (`COLLAB.md`); it touches `app/matching/repo.py` (`dataset_interconnectedness`),
-`app/matching/gates.py` constants, both sample fixtures, and `tools/gen_matcher_scenarios.py`
-when it happens.
+Nadim signed off the two knobs after a validation pass (both real fixtures + hub-flip unchanged;
+2-hub / 3-hub families now correctly read close-knit; single-hub family still strangers, as
+documented). Built on branch `claude/conditional-hub-counting`:
+
+- `app/matching/gates.py`: `HUB_UBIQUITY_FRACTION` → `MEGA_POPULAR_FRACTION`; added
+  `MEGA_POPULAR_MANY_MIN=2`, `MEGA_POPULAR_MANY_FRACTION=0.15`; `_mega_cliff_note` + `build_findings`
+  attaches `dataset_context.mode_note` when the many/few count is within 1 of the line.
+- `app/matching/repo.py` `dataset_interconnectedness`: conditional counting (many → include mega,
+  few → exclude); median untouched (mega-populars always stay in it).
+- `app/matching/service.py` + `ledger.py`: pass the three knobs.
+- `tools/gen_matcher_scenarios.py`: `family-two-hubs` (close-knit) + `family-one-hub` (strangers)
+  regression scenarios; `location-heavy-sample` given a realistic population so its degenerate n=2
+  no longer reads close-knit; both fixtures regenerated.
+- Tests: `tests/phase2a/test_matching.py` (conditional counting + median invariant + cliff note),
+  `app/web/js/components.test.mjs` (`datasetModeCliffNote`); frontend renders the cutoff note under
+  the mode banner; `app/reporting/export.py` folds it into the Dataset-mode cell.
+
+Thresholds remain PROPOSALS pending final co-founder review; **not merged** (Nadim merges).

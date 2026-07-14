@@ -71,9 +71,26 @@ CK_RARE_HIGH = 2
 # "near tie" out loud instead of silently flipping modes between imports.
 CLOSE_KNIT, STRANGERS = "close-knit", "strangers"
 CLOSE_KNIT_BOUNDARY = 2.0            # avg shared contacts per pair (PROPOSAL)
-# Contacts used by more than this fraction of all subscribers are service-like
-# hubs, not social fabric (PROPOSAL pending co-founder review).
-HUB_UBIQUITY_FRACTION = 0.50
+# A contact whose spread (distinct subscribers contacting it) reaches this
+# fraction of the dataset is "mega-popular" -- either group fabric (mom, the
+# family group chat) or a lone service (a taxi line). The mode metric tells them
+# apart by PREVALENCE, not by excluding them outright (spec 2026-07-14): many
+# mega-populars are group fabric and COUNT toward density; a few are lone
+# services and are excluded. (PROPOSAL pending co-founder review; approved by
+# Khaled 2026-07-14. Same measurement the old HUB_UBIQUITY_FRACTION named, kept
+# under a name that no longer implies unconditional exclusion.)
+MEGA_POPULAR_FRACTION = 0.50
+# Many/few line for the conditional count: mega-populars are group fabric when
+# there are at least max(MEGA_POPULAR_MANY_MIN, MEGA_POPULAR_MANY_FRACTION * n)
+# of them. MEGA_POPULAR_MANY_MIN = 2 is the safety floor -- it stops a single
+# lone service from ever flipping a small dataset to close-knit (the cost is that
+# a family whose ONLY shared number is one universal hub still reads strangers;
+# accepted, documented limitation). The fraction only bites on large datasets,
+# where it demands proportionally more near-universal contacts before calling the
+# dataset close-knit (erring safe: genuinely close-knit populations are small).
+# Both PROPOSALS, approved by Khaled 2026-07-14.
+MEGA_POPULAR_MANY_MIN = 2
+MEGA_POPULAR_MANY_FRACTION = 0.15
 MODE_MARGIN_HIGH, MODE_MARGIN_MEDIUM = 2.0, 1.4   # classification confidence
 MODE_NEAR_TIE = 1.15                 # within 15% of the boundary = near tie
 # Commonality floor: a contact/area is never "common" on the say-so of fewer
@@ -187,6 +204,20 @@ def classify_dataset(density: float) -> dict:
         classification = LOW
     return {"mode": mode, "classification": classification,
             "avg_shared_contacts_per_pair": round(density, 2), "boundary": boundary}
+
+
+def _mega_cliff_note(count: int, line: float, included: bool) -> str | None:
+    """Disclosure for the conditional-count many/few cliff (spec 2026-07-14).
+
+    Crossing `line` flips whether mega-popular contacts are counted as group
+    fabric or dropped as lone services -- which can flip the whole dataset mode.
+    When `count` sits within 1 of the line the flip is close, so say so out loud
+    (same spirit as the near-tie and per-gate near notes)."""
+    if abs(count - line) > 1:
+        return None
+    side = "counted as group fabric" if included else "treated as lone services"
+    return (f"{count} near-universal contact(s) {side}; this is near the cutoff "
+            f"of {line:g}, so the dataset mode could flip with small data changes.")
 
 
 def _near_note(label: str, value: float, high: float, medium: float,
@@ -362,6 +393,12 @@ def build_findings(facts: dict) -> dict:
     caveats: list[str] = []
     dataset_context = classify_dataset(facts.get("dataset_density", 0.0))
     dataset_context["subscribers"] = facts.get("other_users", 0) + 2
+    mode_note = _mega_cliff_note(
+        facts.get("mega_popular_count", 0),
+        facts.get("mega_many_line", MEGA_POPULAR_MANY_MIN),
+        facts.get("mega_included", False))
+    if mode_note:
+        dataset_context["mode_note"] = mode_note
     spread_median = facts.get("contact_spread_median", 2)
 
     other_users = facts.get("other_users", 0)

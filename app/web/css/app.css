@@ -640,6 +640,15 @@ input[type="date"]:focus, input[type="number"]:focus { outline: none; border-col
   background: color-mix(in srgb, var(--warn) 8%, transparent);
 }
 .mode-note.mode-near-tie strong { color: var(--warn); }
+/* Supporting line under the mode note: the many/few group-fabric cutoff is near,
+   so the mode could flip. Lighter than the mode note itself (one primary signal
+   + one detail); the bold lead carries the meaning without relying on colour. */
+.mode-cliff-note {
+  margin: calc(-1 * var(--s3)) 0 var(--s4) var(--s3);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+.mode-cliff-note strong { color: var(--warn); }
 
 /* Gate-cliff near-boundary notes under a finding's binding line. */
 .near-note { margin: var(--s1) 0 0; }
