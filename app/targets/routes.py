@@ -72,6 +72,25 @@ def list_targets():
     return ok(repo.list_targets(get_db()))
 
 
+@bp.patch("/targets/<int:target_id>")
+@login_required
+def rename_target(target_id: int):
+    """Rename a target's label (right-click → Rename in the SPA). Only the label
+    is mutable; phone_number/dataset_id are the identity and stay fixed."""
+    name = json_body().get("name")
+    if not isinstance(name, str) or not name.strip():
+        return err("BAD_REQUEST", "a name is required", 400)
+    name = name.strip()
+
+    db = get_db()
+    if repo.rename_target(db, target_id, name) == 0:
+        return err("NOT_FOUND", "target not found", 404)
+    audit.write_audit(db, current_username(), audit.TARGET_RENAME,
+                      {"target_id": target_id})
+    db.commit()
+    return ok({"id": target_id, "name": name})
+
+
 @bp.delete("/targets/<int:target_id>")
 @login_required
 def delete_target(target_id: int):

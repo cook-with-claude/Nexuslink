@@ -13,7 +13,7 @@ import pandas as pd
 from flask import Blueprint, request
 
 from app.api.guards import current_username, get_db, login_required
-from app.api.responses import err, ok
+from app.api.responses import err, json_body, ok
 from app.audit import log as audit
 from app.datasets import repo, validation
 
@@ -131,6 +131,25 @@ def dataset_records(dataset_id: int):
         "rows": repo.read_records_page(db, dataset_id, offset, limit, **filters,
                                        sort=sort, descending=descending),
     })
+
+
+@bp.patch("/datasets/<int:dataset_id>")
+@login_required
+def rename_dataset(dataset_id: int):
+    """Rename a dataset's display label (right-click → Rename in the SPA). The
+    only mutable field; filename/counts/imported_at are immutable facts."""
+    name = json_body().get("name")
+    if not isinstance(name, str) or not name.strip():
+        return err("BAD_REQUEST", "a dataset name is required", 400)
+    name = name.strip()
+
+    db = get_db()
+    if repo.rename_dataset(db, dataset_id, name) == 0:
+        return err("NOT_FOUND", "dataset not found", 404)
+    audit.write_audit(db, current_username(), audit.DATASET_RENAME,
+                      {"dataset_id": dataset_id})
+    db.commit()
+    return ok({"id": dataset_id, "name": name})
 
 
 @bp.delete("/datasets/<int:dataset_id>")

@@ -89,6 +89,7 @@ the account is recoverable via `/api/login` (whose audit write builds the DB).
 | GET | `/api/datasets` | required | — | `200 [{id,name,filename,imported_at,row_count,skipped_count}]` | — |
 | GET | `/api/datasets/<id>/phone-numbers` | required | — | `200 [{phone_number,count}]` | `404 NOT_FOUND` |
 | GET | `/api/datasets/<id>/records` | required | query: `offset` (≥0, default 0), `limit` (1–500, default 100), filters (all optional, composable): `phone_number` + `call_type` exact, `area` + `other_party` substring (LIKE wildcards literal); `sort` (`timestamp`\|`duration_seconds`, whitelisted) + `dir` (`asc` default\|`desc`); empty/malformed filter or sort = ignored | `200 {total,offset,limit,phone_number,rows:[...]}` (`total` counts the filtered set) | `404 NOT_FOUND` |
+| PATCH | `/api/datasets/<id>` | required | `{name}` (non-empty, trimmed) | `200 {id,name}` | `400 BAD_REQUEST` (blank name), `404 NOT_FOUND` |
 | DELETE | `/api/datasets/<id>` | required | — | `200 {}` | `404 NOT_FOUND` |
 
 Import validates every row (`app/datasets/validation.py`): required non-empty `phone_number`/`area`,
@@ -102,11 +103,15 @@ Deleting a dataset cascades to `cdr_records`, `targets`, and `analysis_results` 
 |---|---|---|---|---|---|
 | POST | `/api/targets` | required | `{name, dataset_id:int, phone_number:str}` | `201 {id,name,dataset_id,phone_number}` | `400 BAD_REQUEST` (type check), `404 NOT_FOUND` (dataset or phone), `409 CONFLICT` (dup) |
 | GET | `/api/targets` | required | — | `200 [{id,name,dataset_id,phone_number,created_at}]` | — |
+| PATCH | `/api/targets/<id>` | required | `{name}` (non-empty, trimmed) | `200 {id,name}` | `400 BAD_REQUEST` (blank name), `404 NOT_FOUND` |
 | DELETE | `/api/targets/<id>` | required | — | `200 {}` | `404 NOT_FOUND` |
 
 One target per `(dataset_id, phone_number)` — enforced both by a pre-check and the DB `UNIQUE`
 constraint (the route maps `IntegrityError → 409`). `GET /api/targets` is **global** (not filtered by
-dataset); the UI filters client-side (API-MISMATCH #3 in `main.py`).
+dataset); the UI filters client-side (API-MISMATCH #3 in `main.py`). `PATCH` renames the **label
+only** — `phone_number`/`dataset_id` are the identity and stay fixed, so a rename can never collide
+with the UNIQUE constraint. Both PATCH renames are surfaced in the SPA via a right-click → Rename
+context menu on the dataset and target rows.
 
 ### Analysis
 
@@ -237,8 +242,8 @@ result JSON. Payload shape:
 
 Every state-changing endpoint writes an `audit_log` row inside the same transaction it commits
 (`app/audit/log.py`): `SETUP, LOGIN_SUCCESS, LOGOUT, CHANGE_PASSWORD, IMPORT, DATASET_DELETE,
-TARGET_CREATE, TARGET_DELETE, ANALYSIS, EXPORT, PAIR_MATCH_SAVE, PAIR_MATCH_DELETE, TALLY_SAVE,
-TALLY_DELETE`. Running a match or a tally is a read and is **not** audited (like `frequency`);
+DATASET_RENAME, TARGET_CREATE, TARGET_DELETE, TARGET_RENAME, ANALYSIS, EXPORT, PAIR_MATCH_SAVE,
+PAIR_MATCH_DELETE, TALLY_SAVE, TALLY_DELETE`. Running a match or a tally is a read and is **not** audited (like `frequency`);
 changing what the export will contain is a mutation and is. `EXPORT` changes no app state, but detection
 answers leaving the encrypted store is exactly what the trail is for; it is a **POST** (not a GET)
 precisely so the audited action can't be replayed by a browser/webview HEAD, prefetch, or reload.

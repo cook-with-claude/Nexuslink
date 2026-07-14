@@ -77,3 +77,43 @@ def test_missing_dataset_or_number_is_404(client, dataset_id):
 
 def test_delete_unknown_target_404(client):
     assert client.delete("/api/targets/9999").status_code == 404
+
+
+def test_rename_target_updates_only_the_label(client, dataset_id):
+    tid = client.post("/api/targets", json={"name": "old label",
+                      "dataset_id": dataset_id, "phone_number": "01000001"}
+                      ).get_json()["data"]["id"]
+    r = client.patch(f"/api/targets/{tid}", json={"name": "  new label  "})
+    assert r.status_code == 200
+    assert r.get_json()["data"] == {"id": tid, "name": "new label"}  # trimmed
+    t = next(t for t in client.get("/api/targets").get_json()["data"] if t["id"] == tid)
+    assert t["name"] == "new label"
+    assert t["phone_number"] == "01000001"   # identity untouched
+
+
+def test_rename_target_blank_name_400(client, dataset_id):
+    tid = client.post("/api/targets", json={"name": "x",
+                      "dataset_id": dataset_id, "phone_number": "01000001"}
+                      ).get_json()["data"]["id"]
+    assert client.patch(f"/api/targets/{tid}", json={"name": "   "}).status_code == 400
+    assert client.patch(f"/api/targets/{tid}", json={}).status_code == 400
+
+
+def test_rename_unknown_target_404(client):
+    assert client.patch("/api/targets/9999", json={"name": "x"}).status_code == 404
+
+
+def test_rename_target_writes_audit(client, dataset_id, bootstrap_key):
+    from app.audit import log as audit
+    from app.infra import storage
+
+    tid = client.post("/api/targets", json={"name": "x",
+                      "dataset_id": dataset_id, "phone_number": "01000001"}
+                      ).get_json()["data"]["id"]
+    client.patch(f"/api/targets/{tid}", json={"name": "renamed"})
+
+    conn = storage.connect(bootstrap_key)
+    events = [r["event_type"] for r in conn.execute(
+        "SELECT event_type FROM audit_log ORDER BY id").fetchall()]
+    conn.close()
+    assert audit.TARGET_RENAME in events

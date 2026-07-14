@@ -4,6 +4,41 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-14 - Claude: right-click Rename for datasets + targets (branch `claude/rename-context-menu`, FOR REVIEW)
+
+Nadim asked for a way to rename a dataset or a target (the label only), kept out of the
+always-visible chrome — surfaced on a **right-click context menu** (his explicit choice:
+Rename-only, right-click only, no keyboard affordance added). Built on `claude/rename-context-menu`,
+**not merged** (awaiting Codex fresh-eyes + Nadim merge, per COLLAB).
+
+**Backend (new PATCH endpoints, existing domain, existing patterns):**
+- `PATCH /api/datasets/<id>` and `PATCH /api/targets/<id>`, body `{name}` (non-empty, trimmed) →
+  `200 {id,name}`, `400` blank, `404` unknown. Routes own the unit-of-work (repo → audit → commit).
+- `datasets/repo.rename_dataset` + `targets/repo.rename_target` (pure `UPDATE ... SET name`, rowcount
+  in / dict-free scalar out). Target rename touches the label only; the `UNIQUE(dataset_id,
+  phone_number)` identity is untouched, so a rename can never collide.
+- Two audit events: `DATASET_RENAME`, `TARGET_RENAME` (`app/audit/log.py`).
+
+**Frontend (vanilla SPA):**
+- Two shared helpers in `components.js`: `contextMenu(event, items)` (pointer-anchored menu, no native
+  contextmenu — same "no native dialog" rule as `confirmInline`; dismissed by outside click / Esc /
+  scroll / resize / selection) and `inlineRename(cell, current, onSave)` (swaps the name cell for an
+  input; Enter/blur commits, Esc cancels; blank or unchanged cancels; stops click propagation so it
+  doesn't fire the row's navigate handler).
+- `api.renameDataset` / `api.renameTarget`; rows in `screens/datasets.js` + `screens/targets.js` get
+  an `oncontextmenu` → Rename. CSS `.ctx-menu` / `.ctx-item` / `.rename-input`.
+
+**Tests / gates:** 288 passed (was 281; +4 target rename, +3 dataset rename in `test_targets.py` /
+`test_imports.py`), node 38/38, ruff clean, phase1 diff empty. The new JS helpers are DOM-glue (not
+pure logic) so no `components.test.mjs` additions — consistent with the "extract pure functions"
+rule. Docs: `docs/reference/api.md` (both PATCH rows + audit-event list) and CLAUDE.md test counts
+updated. NOTE: import-linter (`boundaries`) not run locally (no grimp win_arm64 wheel) — CI is the gate;
+the change adds no new cross-layer imports (routes→repo→infra only, as before).
+
+**For Codex / open:** nothing outstanding. One judgement call: keyboard users can open the menu via the
+OS menu key only where rows are focusable (`navigableRows` — datasets/dashboard, NOT targets), which
+matches Nadim's "right-click only" choice; not treated as a gap.
+
 ## 2026-07-14 - Claude: conditional hub counting MERGED to main + ported to the Phase-2 demo
 
 Both reviews cleared, so **PR #18 is MERGED to `main` (`dc73ec2`)** and the branch is deleted.

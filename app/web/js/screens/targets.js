@@ -6,7 +6,7 @@
 import { api, ApiError } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, fmtDate, confirmInline, toast, msg, icon } from "../components.js";
+import { el, loading, clear, fmtDate, confirmInline, contextMenu, inlineRename, toast, msg, icon } from "../components.js";
 import { setStatusCounts, setActiveDatasetLabel } from "../statusbar.js";
 
 export async function targetsScreen(app, params) {
@@ -76,8 +76,17 @@ export async function targetsScreen(app, params) {
         catch (err) { toast(err.message, "error"); }
       }, "Remove target?"));
 
-      tbody.appendChild(el("tr", {}, [
-        el("td", { class: "data" }, t.name),
+      const nameCell = el("td", { class: "data" }, t.name);
+      const startRename = () => inlineRename(nameCell, t.name, async (name) => {
+        await api.renameTarget(t.id, name);
+        toast("Target renamed");
+        targetsScreen(app, params);
+      });
+
+      tbody.appendChild(el("tr", {
+        oncontextmenu: (e) => contextMenu(e, [{ label: "Rename", onSelect: startRename }]),
+      }, [
+        nameCell,
         el("td", { class: "data" }, t.phone_number),
         el("td", { class: "data dim" }, fmtDate(t.created_at)),
         el("td", { class: "right" }, el("div", { class: "row-actions" }, [analyzeBtn, delBtn])),

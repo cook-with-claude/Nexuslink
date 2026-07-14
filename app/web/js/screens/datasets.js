@@ -4,7 +4,7 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { shell } from "../layout.js";
-import { el, loading, clear, fmtDate, confirmInline, toast, navigableRows, icon } from "../components.js";
+import { el, loading, clear, fmtDate, confirmInline, contextMenu, inlineRename, toast, navigableRows, icon } from "../components.js";
 import { setStatusCounts } from "../statusbar.js";
 
 export async function datasetsScreen(app) {
@@ -48,8 +48,19 @@ export async function datasetsScreen(app) {
 
     const actions = el("td", { class: "right", onclick: (e) => e.stopPropagation() }, [delBtn]);
 
-    tbody.appendChild(el("tr", { class: "clickable", onclick: open }, [
-      el("td", { class: "data" }, d.name),
+    const nameCell = el("td", { class: "data" }, d.name);
+    const startRename = () => inlineRename(nameCell, d.name, async (name) => {
+      await api.renameDataset(d.id, name);
+      toast("Dataset renamed");
+      datasetsScreen(app);
+    });
+
+    tbody.appendChild(el("tr", {
+      class: "clickable",
+      onclick: open,
+      oncontextmenu: (e) => contextMenu(e, [{ label: "Rename", onSelect: startRename }]),
+    }, [
+      nameCell,
       el("td", { class: "data dim" }, d.filename),
       el("td", { class: "num" }, Number(d.row_count).toLocaleString()),
       el("td", { class: "num dim" }, String(d.skipped_count)),

@@ -47,3 +47,13 @@ def list_targets(conn) -> list[dict]:
 def delete_target(conn, target_id) -> int:
     cur = conn.execute("DELETE FROM targets WHERE id = ?", (target_id,))
     return cur.rowcount
+
+
+def rename_target(conn, target_id, name) -> int:
+    """Rename a target's label. The UNIQUE constraint is on (dataset_id,
+    phone_number), not name, so a label change can never collide. Returns
+    rowcount (0 = no such target)."""
+    cur = conn.execute(
+        "UPDATE targets SET name = ? WHERE id = ?", (name, target_id)
+    )
+    return cur.rowcount

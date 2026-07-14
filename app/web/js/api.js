@@ -96,6 +96,7 @@ export const api = {
   // datasets
   datasets: () => request("GET", "/api/datasets"),
   deleteDataset: (id) => request("DELETE", "/api/datasets/" + id, {}),
+  renameDataset: (id, name) => request("PATCH", "/api/datasets/" + id, { json: { name } }),
   phoneNumbers: (id) => request("GET", "/api/datasets/" + id + "/phone-numbers"),
   importDataset: (formData) => request("POST", "/api/imports", { form: formData }),
   // targets
@@ -104,6 +105,7 @@ export const api = {
     // dataset_id sent as a Number — backend rejects string ids (API-MISMATCH #4).
     request("POST", "/api/targets", { json: { name, dataset_id: Number(dataset_id), phone_number } }),
   deleteTarget: (id) => request("DELETE", "/api/targets/" + id, {}),
+  renameTarget: (id, name) => request("PATCH", "/api/targets/" + id, { json: { name } }),
   // analysis
   analyze: (id, top_n = 5) =>
     request("POST", "/api/targets/" + id + "/analyze", { query: { top_n } }),

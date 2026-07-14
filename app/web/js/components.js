@@ -634,6 +634,113 @@ export function confirmInline(triggerBtn, onConfirm, label = "Delete?") {
   triggerBtn.replaceWith(wrap);
 }
 
+// --- right-click context menu ---
+// A small menu anchored at the pointer, one <button> per {label, onSelect}. No
+// native contextmenu (consistent with the "no native dialogs" rule) — opened on
+// a row's `contextmenu` event, so a right-click (or the keyboard menu key while a
+// row is focused) reveals actions that are deliberately kept out of the
+// always-visible chrome. Dismissed by an outside click, Escape, scroll, resize,
+// or picking an item. Only one is ever open.
+let openMenu = null;
+
+function closeContextMenu() {
+  if (!openMenu) return;
+  const { node, cleanup } = openMenu;
+  openMenu = null;
+  cleanup();
+  node.remove();
+}
+
+export function contextMenu(event, items) {
+  event.preventDefault();
+  closeContextMenu();
+  const node = el("div", { class: "ctx-menu", role: "menu" },
+    items.map((it) => el("button", {
+      class: "ctx-item", role: "menuitem", type: "button",
+      onclick: () => { const fn = it.onSelect; closeContextMenu(); fn(); },
+    }, it.label)));
+  document.body.appendChild(node);
+
+  // Clamp into the viewport so a row near an edge doesn't push the menu offscreen.
+  const rect = node.getBoundingClientRect();
+  const x = Math.max(4, Math.min(event.clientX, window.innerWidth - rect.width - 4));
+  const y = Math.max(4, Math.min(event.clientY, window.innerHeight - rect.height - 4));
+  node.style.left = x + "px";
+  node.style.top = y + "px";
+
+  const onDown = (e) => { if (!node.contains(e.target)) closeContextMenu(); };
+  const onKey = (e) => { if (e.key === "Escape") closeContextMenu(); };
+  const onMove = () => closeContextMenu();   // scroll/resize invalidates the anchor
+  document.addEventListener("mousedown", onDown, true);
+  document.addEventListener("keydown", onKey, true);
+  window.addEventListener("scroll", onMove, true);
+  window.addEventListener("resize", onMove, true);
+  openMenu = {
+    node,
+    cleanup: () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove, true);
+    },
+  };
+
+  // Focus the first item so a keyboard-opened menu is operable; harmless for mouse.
+  const first = node.querySelector(".ctx-item");
+  if (first) first.focus();
+}
+
+// --- inline rename editor ---
+// Swaps a table cell's text for an input seeded with the current value; Enter or
+// blur commits, Escape cancels. `onSave(newName)` does the API call + refresh (it
+// throws to signal failure); the editor only owns the in-cell interaction. Same
+// "no native prompt" spirit as confirmInline. A blank or unchanged value cancels.
+export function inlineRename(cell, current, onSave) {
+  const prevText = cell.textContent;
+  const input = el("input", { type: "text", class: "rename-input mono", value: current });
+  let settled = false;
+
+  const restore = () => {
+    clear(cell);
+    cell.appendChild(document.createTextNode(prevText));
+  };
+  const cancel = () => {
+    if (settled) return;
+    settled = true;
+    restore();
+  };
+  const commit = async () => {
+    if (settled) return;
+    const name = input.value.trim();
+    if (!name || name === current) { cancel(); return; }
+    settled = true;
+    try {
+      await onSave(name);   // typically re-renders the whole screen
+    } catch (err) {
+      // Keep the editor open so the user can fix it rather than losing their text.
+      settled = false;
+      toast(err.message, "error");
+      input.focus();
+      input.select();
+    }
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  });
+  input.addEventListener("blur", () => commit());
+  // The editing cell may live inside a clickable row; keep clicks from bubbling
+  // up and firing the row's navigate handler.
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+
+  clear(cell);
+  cell.appendChild(input);
+  input.focus();
+  input.select();
+}
+
 // --- toast ---
 export function toast(message, kind = "ok") {
   const root = document.getElementById("toast-root");

@@ -520,6 +520,49 @@ details.gate[open] > summary { border-bottom: 1px solid var(--border); }
 .inline-confirm { display: inline-flex; gap: var(--s2); align-items: center; }
 .inline-confirm .q { color: var(--warn); font-size: var(--fs-sm); }
 
+/* ---- right-click context menu ---- */
+.ctx-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 160px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+  padding: var(--s1) 0;
+}
+.ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  padding: var(--s2) var(--s4);
+  cursor: pointer;
+}
+.ctx-item:hover, .ctx-item:focus {
+  background: var(--bg-hover);
+  color: var(--fg);
+  border-left-color: var(--accent);
+  outline: none;
+}
+
+/* ---- inline rename editor (in-cell) ---- */
+.rename-input {
+  width: 100%;
+  min-width: 8ch;
+  padding: var(--s1) var(--s2);
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--fg);
+  font: inherit;
+}
+.rename-input:focus { outline: none; }
+
 /* ---- password strength meter ---- */
 /* Informational only; lives under a new-password field. State colors here ARE
    the signal (red→green), the one place that's intentional. */
