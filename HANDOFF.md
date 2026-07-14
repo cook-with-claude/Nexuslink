@@ -26,8 +26,8 @@ fixtures + hub-flip classify **identically** to before (no regression); a ≥2-h
 1. The two new knobs `(2, 0.15)` as the many/few line — final values.
 2. One judgement call we made building it: `location-heavy-sample` was a degenerate **n=2** scenario
    that your rule (correctly) reads as close-knit, which suppressed the finding it tests. We gave it a
-   realistic 12-subscriber population rather than special-casing tiny n in the engine — flagging in
-   case you'd rather the engine guard small n instead.
+   realistic surrounding population of 12 fillers (14 subscribers total, incl. the pair) rather than
+   special-casing tiny n in the engine — flagging in case you'd rather the engine guard small n instead.
 3. Everything else per your spec is untouched (median, boundary 2.0, near-tie tiers, rarity
    distinctiveness incl. the `CK_SOLID_MEDIUM` drop, floors, caps).
 
@@ -56,7 +56,7 @@ flagged). The single-hub family (M=1) still reads strangers — the accepted, do
 - `app/matching/service.py` + `ledger.py`: pass the three knobs.
 - `tools/gen_matcher_scenarios.py`: new engine-verified `family-two-hubs` (must read close-knit) +
   `family-one-hub` (must stay strangers) hardening scenarios; **`location-heavy-sample` given a
-  12-subscriber surrounding population** — at its old degenerate n=2 the pair's own 2 shared contacts
+  surrounding population of 12 fillers (14 subscribers total)** — at its old degenerate n=2 the pair's own 2 shared contacts
   looked 100%-ubiquitous and conditional counting (correctly) flipped it close-knit, suppressing the
   mutual finding the scenario tests. Both fixtures regenerated (content identical; xlsx re-timestamped).
 - Tests: `test_matching.py` — conditional counting (many/few), median-untouched invariant, cliff-note
