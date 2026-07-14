@@ -100,7 +100,8 @@ def compute_ledger(conn, target_a: dict, target_b: dict) -> dict:
 
     other_users = repo.other_user_count(conn, dataset_id, phone_a, phone_b)
     mode_facts = repo.dataset_interconnectedness(
-        conn, dataset_id, gates.HUB_UBIQUITY_FRACTION)
+        conn, dataset_id, gates.MEGA_POPULAR_FRACTION,
+        gates.MEGA_POPULAR_MANY_MIN, gates.MEGA_POPULAR_MANY_FRACTION)
     mode = gates.classify_dataset(mode_facts["dataset_density"])["mode"]
     distinctive_parties = set(gates.classify_shared_contacts(
         shared_parties,

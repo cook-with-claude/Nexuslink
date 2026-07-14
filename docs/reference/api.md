@@ -172,10 +172,12 @@ thresholds are proposals pending domain review). Payload shape:
   // pair is CANONICAL (sorted by phone number): A-vs-B and B-vs-A return
   // byte-identical results regardless of which box each target was put in
   "computed_at": "<iso>",
-  "dataset_context": {                    // adaptive gates (spec 2026-07-13)
+  "dataset_context": {                    // adaptive gates (spec 2026-07-13/-07-14)
     "mode": "strangers" | "close-knit",   // which mutual-contact rule-set applied
     "classification": "High" | "Medium" | "Low" | "Near tie",  // how decisively
-    "avg_shared_contacts_per_pair": 0.55, "boundary": 2.0, "subscribers": 40
+    "avg_shared_contacts_per_pair": 0.55, "boundary": 2.0, "subscribers": 40,
+    "mode_note": "<optional>"             // present only when the mega-popular
+                                          // many/few cutoff is near (mode could flip)
   },
   "findings": [{
     "type": "direct_contact" | "mutual_contacts" | "co_presence",
@@ -199,12 +201,16 @@ overlap); *meeting up* = min(located-record sample, event count, location distin
 overlap). Same-area hits within 60 minutes are grouped into temporal sessions per area; each event
 shows the closest actual matched time pair. Shared areas **without** time overlap remain a detail.
 
-**Distinctiveness is dataset-adaptive** (spec `2026-07-13-adaptive-matcher-gates.md`): the
-dataset's non-hub interconnectedness (average shared contacts per subscriber pair after excluding
-contacts used by more than 50% of subscribers, boundary 2.0) picks
-the rule-set, and the classification is disclosed with its own confidence tier ("Near tie" =
-right on the boundary; ratings may flip between imports). In **strangers** mode, contacts/areas
-that ≥ 20% of the other subscribers also have are discounted (pizza-place / busy-tower), with a
+**Distinctiveness is dataset-adaptive** (specs `2026-07-13-adaptive-matcher-gates.md` +
+`2026-07-14-conditional-hub-counting-design.md`): the dataset's interconnectedness (average shared
+contacts per subscriber pair, boundary 2.0) picks the rule-set. Mega-popular contacts (spread ≥ 50%
+of subscribers) are counted **conditionally** — included as group fabric when many of them exist
+(≥ max(2, 0.15·n)), excluded as lone services when few — so a hub-and-spoke family reads close-knit
+while a stray service line can't flip a strangers dataset. The classification is disclosed with its
+own confidence tier ("Near tie" = right on the boundary; ratings may flip between imports), and
+`dataset_context.mode_note` fires when the many/few count itself sits near its cutoff. In
+**strangers** mode, contacts/areas that ≥ 20% of the other subscribers also have are discounted
+(pizza-place / busy-tower), with a
 floor: fewer than `COMMON_MIN_USERS=3` other subscribers never brand anything common, and a
 population under 10 other subscribers adds a caveat and caps indirect findings at Medium. In
 **close-knit** mode, hub-only overlap is suppressed: at least one contact rarer than the dataset's

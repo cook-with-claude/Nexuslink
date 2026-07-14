@@ -326,6 +326,14 @@ def build_location_heavy_sample():
                home(phone_a), 1, None)
         ds.add(phone_b, day, 8 + index % 10, index % 60,
                home(phone_b), 1, None)
+    # A realistic surrounding population: without it n=2 makes the pair's own two
+    # shared contacts look 100%-ubiquitous, and conditional counting reads the
+    # degenerate dataset as close-knit. Each filler holds only personal (k=1,
+    # non-shared) contacts, so the dataset stays decisively strangers and the
+    # scenario keeps testing the sample gate, not the mode.
+    for index in range(12):
+        filler = f"9031{index:03d}"
+        ds.own_traffic(filler, home(filler), own_contacts(filler, 2), 6)
     return ds, phone_a, phone_b
 
 
@@ -372,6 +380,28 @@ def build_two_meetings_one_day():
         ds.add(phone_a, 8, hour, 0, "DAY_CAFE", 1, "9079001")
         ds.add(phone_b, 8, hour, 10, "DAY_CAFE", 1, "9079002")
     return ds, phone_a, phone_b
+
+
+def _build_family(n_members, hub_count):
+    """A hub-and-spoke family: every member calls `hub_count` near-universal
+    numbers (mom/dad/group chat) plus two personal contacts. With >= 2 hubs the
+    conditional count treats them as group fabric (close-knit); with 1 the
+    MANY_MIN=2 floor drops it (strangers). Members 1 and 2 are the compared pair."""
+    ds = Dataset(f"family-{hub_count}hub")
+    members = [f"908{i:04d}" for i in range(n_members)]
+    hubs = [f"9089{h:03d}" for h in range(hub_count)]
+    for m, phone in enumerate(members):
+        contacts = list(hubs) + [f"9088{m:02d}{j}" for j in (1, 2)]
+        ds.own_traffic(phone, home(phone), contacts, 40)
+    return ds, members[0], members[1]
+
+
+def build_family_two_hubs():
+    return _build_family(8, 2)
+
+
+def build_family_one_hub():
+    return _build_family(8, 1)
 
 
 # ============================================================= verification ==
@@ -428,6 +458,8 @@ def verify_hardening_scenarios():
         ("small-N-cap", build_small_n_cap),
         ("midnight-straddle", build_midnight_straddle),
         ("two-meetings-one-day", build_two_meetings_one_day),
+        ("family-two-hubs", build_family_two_hubs),
+        ("family-one-hub", build_family_one_hub),
     ]
     for scenario, builder in cases:
         ds, phone_a, phone_b = builder()
@@ -461,9 +493,18 @@ def verify_hardening_scenarios():
                       f"location-heavy-sample: bound_by {mutual['bound_by']}")
         elif scenario == "even-median-spread":
             mode_facts = repo.dataset_interconnectedness(
-                conn, 1, gates.HUB_UBIQUITY_FRACTION)
+                conn, 1, gates.MEGA_POPULAR_FRACTION,
+                gates.MEGA_POPULAR_MANY_MIN, gates.MEGA_POPULAR_MANY_FRACTION)
             check(mode_facts["contact_spread_median"] == 51,
                   f"even-median-spread: median {mode_facts['contact_spread_median']}")
+        elif scenario == "family-two-hubs":
+            check(result["dataset_context"]["mode"] == "close-knit",
+                  "family-two-hubs: 2 universal family hubs did NOT read close-knit "
+                  "(the bug the conditional count fixes)")
+        elif scenario == "family-one-hub":
+            check(result["dataset_context"]["mode"] == "strangers",
+                  "family-one-hub: a single universal hub flipped the dataset "
+                  "(the MANY_MIN=2 floor should keep it strangers)")
         elif scenario == "small-N-cap":
             mutual = got.get("mutual_contacts")
             check(mutual is not None, "small-N-cap: mutual finding absent")

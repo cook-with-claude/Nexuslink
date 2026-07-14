@@ -274,6 +274,28 @@ test("matchFindingsBlock: a near-tie dataset says so instead of picking a side q
   assert.match(block.textContent, /may flip with small data changes/);
 });
 
+test("matchFindingsBlock: the group-fabric cutoff note renders when the mode is near the many/few line", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], no_link: false, details: {},
+    dataset_context: { mode: "close-knit", classification: "Near tie",
+                       avg_shared_contacts_per_pair: 2.0, boundary: 2,
+                       mode_note: "2 near-universal contact(s) counted as group fabric; "
+                                  + "this is near the cutoff of 2, so the dataset mode could "
+                                  + "flip with small data changes." },
+  });
+  assert.match(block.textContent, /Group-fabric cutoff:/);
+  assert.match(block.textContent, /counted as group fabric/);
+});
+
+test("matchFindingsBlock: no group-fabric cutoff note when the mode isn't near the line", () => {
+  const block = matchFindingsBlock({
+    pair: PAIR, findings: [FINDING()], caveats: [], no_link: false, details: {},
+    dataset_context: { mode: "strangers", classification: "High",
+                       avg_shared_contacts_per_pair: 0.4, boundary: 2 },
+  });
+  assert.doesNotMatch(block.textContent, /Group-fabric cutoff/);
+});
+
 test("matchFindingsBlock: near-boundary gate notes render under the finding", () => {
   const block = matchFindingsBlock({
     pair: PAIR, caveats: [], no_link: false, details: {},

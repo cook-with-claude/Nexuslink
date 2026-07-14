@@ -141,7 +141,12 @@ def _mode_cell(result: dict) -> str:
     ctx = result.get("dataset_context") or {}
     if not ctx.get("mode"):
         return "—"
-    return f"{ctx['mode']} ({ctx.get('classification')} confidence)"
+    cell = f"{ctx['mode']} ({ctx.get('classification')} confidence)"
+    # The many/few group-fabric cutoff disclosure rides in the same cell -- it is
+    # a mode-level caveat, not a per-finding near note.
+    if ctx.get("mode_note"):
+        cell += f" — {ctx['mode_note']}"
+    return cell
 
 
 def _append_match_rows(ws, saved: dict) -> None:

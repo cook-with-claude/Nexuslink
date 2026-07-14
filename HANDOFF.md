@@ -4,6 +4,96 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-07-14 - FOR KHALED: conditional hub counting is READY FOR YOUR FINAL REVIEW
+
+Khaled — your conditional-count design is built and ready for your sign-off (Nadim's request). It's
+on `claude/conditional-hub-counting` (tip pushed, CI-relevant checks green locally) and open as
+**draft PR #18** (https://github.com/cook-with-claude/Nexuslink/pull/18) for inline review. The full
+what-changed + rationale is the entry directly below, and the design authority is
+`docs/superpowers/specs/2026-07-14-conditional-hub-counting-design.md` (now marked IMPLEMENTED).
+
+**Two reviews expected before merge** (same dual-review as the original matcher): your co-founder /
+domain sign-off **and** a Codex fresh-eyes pass. Merge waits on both.
+
+**What we did with your verdict:** dropped the unconditional exclusion; mega-popular contacts
+(spread ≥ 50%) now count toward the mode density when many (`M ≥ max(2, 0.15·n)` = group fabric) and
+are excluded when few (lone services). Median untouched. Nadim validated + approved the two knobs
+(`MEGA_POPULAR_MANY_MIN=2`, `MEGA_POPULAR_MANY_FRACTION=0.15`) against the real engine: both shipped
+fixtures + hub-flip classify **identically** to before (no regression); a ≥2-hub family now reads
+**close-knit** (the bug you flagged); single-hub family still strangers (your accepted limitation).
+
+**Please confirm / push back on:**
+1. The two new knobs `(2, 0.15)` as the many/few line — final values.
+2. One judgement call we made building it: `location-heavy-sample` was a degenerate **n=2** scenario
+   that your rule (correctly) reads as close-knit, which suppressed the finding it tests. We gave it a
+   realistic surrounding population of 12 fillers (14 subscribers total, incl. the pair) rather than
+   special-casing tiny n in the engine — flagging in case you'd rather the engine guard small n instead.
+3. Everything else per your spec is untouched (median, boundary 2.0, near-tie tiers, rarity
+   distinctiveness incl. the `CK_SOLID_MEDIUM` drop, floors, caps).
+
+**Still open (NOT in scope of this review):** the other 2026-07-13 sign-off items — session gap,
+ledger cap, small-pop cap, DIRECT/N recalibration — remain your call, untouched here. Nothing merges
+until you're satisfied; Nadim merges.
+
+## 2026-07-14 - Claude: implemented conditional hub counting (Nadim-approved knobs) — on branch, NOT merged
+
+Built Khaled's approved conditional-count design (the entry below) on
+`claude/conditional-hub-counting`. **Nadim signed off the two new knobs** after a validation pass I
+ran against the real engine: both shipped fixtures + the hub-flip lone-services case classify
+**identically** to the merged unconditional rule (no regression), while a hub-and-spoke family with
+≥2 near-universal contacts now correctly reads **close-knit** (was "strangers" — the bug Khaled
+flagged). The single-hub family (M=1) still reads strangers — the accepted, documented limitation.
+
+**What changed:**
+- `app/matching/gates.py`: `HUB_UBIQUITY_FRACTION` → `MEGA_POPULAR_FRACTION`; new
+  `MEGA_POPULAR_MANY_MIN = 2`, `MEGA_POPULAR_MANY_FRACTION = 0.15` (PROPOSALS, Nadim-approved);
+  `_mega_cliff_note` → `dataset_context.mode_note` when the many/few count sits within 1 of the line.
+- `app/matching/repo.py` `dataset_interconnectedness`: conditional counting — mega-populars
+  (spread ≥ 50%) COUNT toward density when `M ≥ max(2, 0.15·n)` (group fabric), are EXCLUDED when
+  fewer (lone services). The spread **median is untouched** (mega-populars always stay in it, so the
+  `[2,2,100,100] → 51` invariant holds). Now returns `mega_popular_count` / `mega_many_line` /
+  `mega_included`.
+- `app/matching/service.py` + `ledger.py`: pass the three knobs.
+- `tools/gen_matcher_scenarios.py`: new engine-verified `family-two-hubs` (must read close-knit) +
+  `family-one-hub` (must stay strangers) hardening scenarios; **`location-heavy-sample` given a
+  surrounding population of 12 fillers (14 subscribers total)** — at its old degenerate n=2 the pair's own 2 shared contacts
+  looked 100%-ubiquitous and conditional counting (correctly) flipped it close-knit, suppressing the
+  mutual finding the scenario tests. Both fixtures regenerated (content identical; xlsx re-timestamped).
+- Tests: `test_matching.py` — conditional counting (many/few), median-untouched invariant, cliff-note
+  appearance (now **65 passed** in that file). `components.test.mjs` — `datasetModeCliffNote` renders
+  when near the line, absent otherwise (**38 node tests**). Frontend renders the cutoff note as a
+  lighter supporting line under the mode banner (`.mode-cliff-note`, reuses the warn treatment);
+  `app/reporting/export.py` folds `mode_note` into the Dataset-mode cell.
+
+**Thresholds remain PROPOSALS** pending Khaled's final review; the other 2026-07-13 sign-off items
+(session gap, ledger cap, small-pop cap, DIRECT/N recalibration) are still open and untouched here.
+**Not merged** — Nadim merges. Full verification results in the commit.
+
+## 2026-07-14 - Khaled review verdict: conditional hub counting — DESIGN ONLY, for Nadim
+
+Khaled reviewed the merged hardening pass (the sign-off request one entry down). Verdict on the
+hub rule: **rejects the unconditional `HUB_UBIQUITY_FRACTION` exclusion** from the mode metric.
+Grounds: finding-level protection already comes from rarity/commonality (a taxi line is never
+"rare", so strangers sharing it get no finding in either mode — the exclusion only stabilized
+the banner), and the exclusion deletes real family fabric: mom, contacted by everyone, is
+exactly the evidence that a dataset IS close-knit, and a hub-and-spoke family could read
+"strangers".
+
+**Approved replacement (design only, NOT implemented):** conditional counting — mega-popular
+contacts (spread ≥ 50% of subscribers, same measurement, renamed so it no longer implies
+exclusion) are **counted** in the density sum when there are many of them
+(`M ≥ max(2, 0.15 × n)`, both PROPOSALS) and **excluded** when there are few (lone services).
+Median, boundary 2.0, near-tie tiers, rarity-based distinctiveness (including the
+`CK_SOLID_MEDIUM` drop — consistent with Khaled's "stick to distinctiveness" direction), floors
+and caps all untouched. Full rationale, worked examples, accepted limitations (single-hub
+family; the new many/few cliff gets a disclosure note) in
+`docs/superpowers/specs/2026-07-14-conditional-hub-counting-design.md`.
+
+**For Nadim:** agree/adjust the two new proposals (`MEGA_POPULAR_MANY_MIN = 2`,
+`MEGA_POPULAR_MANY_FRACTION = 0.15`) and green-light implementation. The other 2026-07-13
+sign-off items (session gap, ledger cap, small-pop cap, DIRECT/N recalibration) remain open —
+this verdict covers the hub rule only. No code changed on this branch.
+
 ## 2026-07-13 - HANDOFF for Khaled's review (Nadim + Claude) — main MERGED + demo PORTED
 
 **For Khaled to review before we call this final.** The contact matcher you built (git author
