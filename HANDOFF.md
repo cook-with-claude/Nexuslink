@@ -4,12 +4,14 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-14 - Claude: right-click Rename for datasets + targets (branch `claude/rename-context-menu`, FOR REVIEW)
+## 2026-07-14 - Claude: right-click Rename for datasets + targets ✅ MERGED to main (`4df8230`)
 
 Nadim asked for a way to rename a dataset or a target (the label only), kept out of the
 always-visible chrome — surfaced on a **right-click context menu** (his explicit choice:
-Rename-only, right-click only, no keyboard affordance added). Built on `claude/rename-context-menu`,
-**not merged** (awaiting Codex fresh-eyes + Nadim merge, per COLLAB).
+Rename-only, right-click only, no keyboard affordance added). **MERGED to `main` via fast-forward
+(`4df8230`) with Nadim's explicit permission — he waived the Codex review for this one.** Verified
+live in the real WebView2 window (right-click → Rename menu appeared and worked); full suite re-run on
+main = 288 passed. Feature branch `claude/rename-context-menu` deleted (never pushed to origin).
 
 **Backend (new PATCH endpoints, existing domain, existing patterns):**
 - `PATCH /api/datasets/<id>` and `PATCH /api/targets/<id>`, body `{name}` (non-empty, trimmed) →
