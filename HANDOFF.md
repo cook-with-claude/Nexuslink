@@ -4,7 +4,37 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
-## 2026-07-14 - FOR KHALED: conditional hub counting is READY FOR YOUR FINAL REVIEW
+## 2026-07-14 - Claude: conditional hub counting MERGED to main + ported to the Phase-2 demo
+
+Both reviews cleared, so **PR #18 is MERGED to `main` (`dc73ec2`)** and the branch is deleted.
+- **Khaled** (co-founder/domain): signed off the conditional-count design + knobs.
+- **Codex** (fresh-eyes): green on SHA `2a4b1c1` — verified the exact-half mega boundary, the
+  included/excluded partition consistency, the `[2,2,100,100]→51` median invariant, degenerate-`n`
+  safety, and cliff-note agreement. One **low** finding: the `location-heavy-sample` scenario was
+  mis-described as "12-subscriber" when it's 12 fillers + the 2 targets = **14**. Fixed in the PR body
+  and `HANDOFF.md`/gen-script comment (`a8f2d1d`); documentation-only, no engine change.
+- CI green on all four jobs (`phase2a`, `boundaries`, `frontend`, `test`) at the merge.
+
+**Ported into the Phase-2 professor demo** (`claude/rebrand-nexuslink-phase2` → `fb40394`, worktree
+`la-passion-phase2`, pushed; CI green). Stays pure Phase 2 (no login/passphrase): core matching /
+reporting / frontend-JS / fixture / gen files taken wholesale from main (identical pre-image); the
+`app.css` cliff-note rule and the `test_matching.py` additions were hand-applied over the demo's own
+divergence (reordered CSS, auth-free fixtures); `api.md` skipped (demo reference doc already diverged,
+no runtime effect). Demo verified **258 passed** (was 254; +4) / node **38/38**, phase1 frozen.
+
+**Architecture check (post-merge):** placement is correct and CI's import-linter `boundaries` job
+passed — logic in `matching/repo.py` (SQL facts, `conn`-in/dict-out, imports stdlib only), knobs +
+disclosure in the pure `matching/gates.py`, knobs threaded through `service.py`/`ledger.py`
+(same-domain only), note folded into `reporting/export.py` (the sanctioned cross-domain reader). No
+routes changed; unit-of-work ownership untouched.
+
+**Still open (unchanged, out of scope here):** the other 2026-07-13 matcher sign-off items — session
+gap, ledger cap, small-pop cap, DIRECT/N recalibration. Thresholds `(2, 0.15)` / `0.50` remain
+PROPOSAL-labelled in code (status marker only).
+
+---
+
+## 2026-07-14 - FOR KHALED: conditional hub counting is READY FOR YOUR FINAL REVIEW (SUPERSEDED — merged, see above)
 
 Khaled — your conditional-count design is built and ready for your sign-off (Nadim's request). It's
 on `claude/conditional-hub-counting` (tip pushed, CI-relevant checks green locally) and open as
