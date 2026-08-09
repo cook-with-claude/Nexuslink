@@ -64,10 +64,12 @@ def contact_tallies(conn, dataset_id, phone_number, exclude=()) -> dict[str, int
     not_in = ""
     binds: list = [dataset_id, phone_number]
     if exclude:
+        # Only `?` placeholders are interpolated -- the excluded values themselves
+        # are bound, so the concatenation is not an injection vector (`# nosec`).
         not_in = f" AND other_party NOT IN ({','.join('?' * len(exclude))})"
         binds.extend(exclude)
     rows = conn.execute(
-        "SELECT other_party AS party, COUNT(*) AS n FROM cdr_records "
+        "SELECT other_party AS party, COUNT(*) AS n FROM cdr_records "  # nosec B608
         "WHERE dataset_id = ? AND phone_number = ? AND other_party IS NOT NULL"
         + not_in + " GROUP BY other_party",
         binds,
@@ -228,7 +230,9 @@ def records_for(conn, dataset_id, phones, parties=None, areas=None) -> list[dict
     """
     if not phones or (parties is not None and not parties) or (areas is not None and not areas):
         return []
-    sql = ("SELECT id AS record_id, phone_number, timestamp, call_type, "
+    # Every interpolation below expands to `?` placeholders only; the values are
+    # bound. Not an injection vector (`# nosec B608`).
+    sql = ("SELECT id AS record_id, phone_number, timestamp, call_type, "  # nosec B608
            "duration_seconds, other_party, area "
            "FROM cdr_records WHERE dataset_id = ? "
            f"AND phone_number IN ({','.join('?' * len(phones))})")
@@ -292,8 +296,9 @@ def dataset_interconnectedness(conn, dataset_id, mega_fraction,
         (dataset_id,),
     ).fetchone()["n"]
     spreads = [
+        # _SHARED_SPREAD is a module-level constant, not caller data (`# nosec B608`).
         row["k"] for row in conn.execute(
-            f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k",
+            f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k",  # nosec B608
             (dataset_id,),
         ).fetchall()
     ]
@@ -322,8 +327,11 @@ def _commonality(conn, dataset_id, column, values, phone_a, phone_b) -> dict[str
     if not values:
         return {}
     marks = ",".join("?" * len(values))
+    # `column` is a literal supplied by this module's two callers (contact_commonality
+    # -> "other_party", area_commonality -> "area"), never caller/user data, and a
+    # column name cannot be bound as a parameter; `marks` is placeholders only.
     rows = conn.execute(
-        f"SELECT {column} AS value, COUNT(DISTINCT phone_number) AS users "
+        f"SELECT {column} AS value, COUNT(DISTINCT phone_number) AS users "  # nosec B608
         f"FROM cdr_records WHERE dataset_id = ? AND {column} IN ({marks}) "
         "AND phone_number NOT IN (?, ?) "
         f"GROUP BY {column}",

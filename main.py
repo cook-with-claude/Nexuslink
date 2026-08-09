@@ -211,7 +211,10 @@ def wait_until_ready(port: int, timeout: float = 10.0) -> None:
     url = f"http://127.0.0.1:{port}/api/health"
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url) as r:
+            # `url` is the literal loopback address built from the port we just
+            # bound above -- never caller-supplied -- so the audited "permitted
+            # schemes" concern (file:/ or a custom scheme) cannot arise here.
+            with urllib.request.urlopen(url) as r:  # nosec B310
                 if r.status == 200:
                     return
         except Exception:
@@ -290,7 +293,11 @@ def _install_winforms_coreclr_shim() -> None:
             with open(self._origin, "r", encoding="utf-8") as f:
                 source = f.read()
             module.__file__ = self._origin
-            exec(compile(_patch_winforms_source(source), self._origin, "exec"), module.__dict__)
+            # Executing module source IS the importlib Loader contract (it is what
+            # the stock SourceFileLoader does). `source` is pywebview's own installed
+            # module file, read from the path importlib resolved -- not external input.
+            code = compile(_patch_winforms_source(source), self._origin, "exec")
+            exec(code, module.__dict__)  # nosec B102
 
     if not any(isinstance(f, _Finder) for f in sys.meta_path):
         sys.meta_path.insert(0, _Finder())

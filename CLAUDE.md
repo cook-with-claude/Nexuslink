@@ -79,6 +79,18 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - Lint: `ruff check app tests main.py` (config in `pyproject.toml`; excludes `phase1_cdr/`, `vendor/`).
 - Boundaries: `lint-imports` (import-linter) — **enforcing** (CI `boundaries` job). grimp has no
   win_arm64 wheel, so it can't run on native Windows; it runs in CI on ubuntu x64 (and locally in WSL).
+- Security: the CI `security` job runs three scanners, all **enforcing**, all installable via
+  `requirements-dev.txt` — `pip-audit --strict --no-deps -r constraints.txt` (known CVEs in the pinned
+  runtime lock), `bandit -c pyproject.toml -r app main.py tools --severity-level medium
+  --confidence-level medium` (Python SAST), and `gitleaks git . --redact` (secrets across **all** git
+  history, not just the tip). The workflow also ticks **weekly** (Mon 06:00 UTC) so a newly-disclosed
+  CVE surfaces without anyone pushing. Reviewed bandit false positives carry an inline `# nosec <ID>`
+  with the reasoning directly above it — no check is skipped wholesale, so a genuinely new B608/B102
+  still fails the build. Deliberately not a SaaS analyzer (DeepSource/CodeRabbit): ruff +
+  import-linter + `tests/architecture/` already cover style and structure, so these three add only
+  what nothing else checks, in-repo, with no third-party token on the repository.
+  On Windows, prefix `pip-audit --desc on` with `PYTHONIOENCODING=utf-8` — its output contains `→`,
+  which crashes the cp1252 console.
 - Desktop app: `.venv\Scripts\python.exe main.py` (needs the .NET Desktop Runtime on Windows; see
   `README.md`). Import `sample_cdr_data.xlsx` (repo root) to seed data for manual testing. For the
   contact matcher, `sample_matcher_scenarios.xlsx` (strangers mode) + `sample_matcher_closeknit.xlsx`

@@ -4,6 +4,85 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+## 2026-08-09 - Claude: CI `security` job (pip-audit + bandit + gitleaks) — on branch, NOT merged
+
+Nadim asked what I thought of wiring **DeepSource** and **CodeRabbit** into the repo for security bugs
+and vulnerabilities, then said to go ahead with what I recommended instead. Branch
+`claude/ci-security-scanning`, not pushed, **not merged** — Nadim merges.
+
+**The recommendation, and why it isn't DeepSource.** DeepSource's Python analyzer is largely the rule
+families ruff already runs (`E,F,I,W`), and its config here would consist mostly of *exclusions* —
+`phase1_cdr/` is FROZEN, `vendor/` is third-party, `app/web/` is no-build JS — i.e. it would generate
+findings we are contractually not allowed to fix. **CodeRabbit** is an LLM PR reviewer: the same
+category as the Claude + Codex dual review in `COLLAB.md`, so it duplicates rather than extends. Also
+worth naming: neither is a vulnerability scanner in the sense asked for, and the surface that actually
+deserves scanning (LAN server, TLS, TOTP, RBAC, sessions) is **Phase 3, not yet written**. My advice
+to Nadim was to defer CodeRabbit to a Phase-3 trial and skip DeepSource; he can still overrule either.
+
+**What went in instead — three focused scanners covering the three gaps nothing else checks** (ruff =
+style, import-linter + `tests/architecture/` = structure, pytest = behaviour; none look at dependency
+CVEs, insecure patterns in our own Python, or credentials in git history):
+- `pip-audit --strict --no-deps -r constraints.txt`. `--no-deps` is right because the lock IS the full
+  pinned transitive set, so it audits exactly what CI installs with no resolution round-trip, and
+  covers the Phase 1 job too (the lock is a superset of its deps). `--strict` so a silent skip can't
+  read as a pass.
+- `bandit -c pyproject.toml -r app main.py tools --severity-level medium --confidence-level medium`.
+- `gitleaks git . --redact` over **full** history (`fetch-depth: 0`) — a secret deleted in a later
+  commit is still leaked. Ran locally over all 242 commits: **no leaks**, so no allowlist was needed.
+- The workflow now also ticks **weekly** (Mon 06:00 UTC): a CVE is disclosed on the advisory DB's
+  clock, not ours, so without a cron pip-audit is a merge-time snapshot rather than monitoring.
+
+**It found a real one on the first run.** `cryptography==49.0.0` → **PYSEC-2026-3552**, a
+Bleichenbacher oracle in the PKCS#7 `pkcs7_decrypt_*` helpers (affects 44.0.0–49.x, fixed in 50.0.0).
+**Not reachable from this app** — `app/infra/crypto.py` uses only `AESGCM` + `Scrypt` and nothing here
+decrypts S/MIME `EnvelopedData` — so hygiene, not an incident. I bumped `constraints.txt` to
+`cryptography==50.0.0` rather than `--ignore-vuln`, so the gate stays honest.
+⚠️ **The bump is verified in CI only, not locally**: neither 49 nor 50 ships a `win_arm64` wheel (the
+ARM64 dev venv resolves **46.0.3** and always has — the lock has been CI-canonical here for a while),
+so my 288-passed run exercised 46.0.3. CI on ubuntu x64 is the real check on this pin. Our two call
+sites are the most stable hazmat APIs there are, so I rate the risk low, but **that is the one thing
+in this branch a reviewer should watch the CI run for.**
+
+**Bandit triage — 14 raw findings, 0 real.** Gated at medium/medium (rationale in `[tool.bandit]`):
+all 5 low-severity hits are false positives (the `CHANGE_PASSWORD` *audit-event name* read as a
+password, and three deliberate best-effort `except: pass` blocks), so gating on them buys noise, not
+safety. The 8 that clear the gate are each annotated with an inline `# nosec <ID>` and the reasoning
+on the line above — **nothing is skipped wholesale**, so a genuinely new B608/B102 still fails:
+- 7× **B608** (dynamic SQL) across `analysis/repo.py` + `matching/repo.py` — every one verified by
+  hand as literals-plus-`?`-placeholders. The only interpolated *identifiers* are `rank_by`
+  (whitelisted against `FREQUENCY_FIELDS` at the top of the function) and `_commonality`'s `column`
+  (private, two callers, both passing string literals — I checked). I also annotated the one
+  medium/**low**-confidence site (`records_for`) that the gate filters out, so the files stay clean if
+  anyone runs bandit at `--confidence-level low`.
+- **B310** `urlopen` in `main.py` — literal loopback URL built from the port we just bound.
+- **B102** `exec` in `main.py` — that IS the importlib Loader contract (what `SourceFileLoader` does);
+  `source` is pywebview's own installed module file. Split out a `code = compile(...)` local so the
+  line fits the 120-char ruff limit with the marker.
+
+**Two judgement calls worth a second opinion:**
+1. The `security` job installs `requirements-dev.txt` **without** `-c constraints.txt`, unlike every
+   other job. That lock freezes the *runtime* stack; forcing it on the scanners' own trees breaks them
+   (pip-audit wants `packaging` 26.3, the lock pins 26.2) and would make the security gate fail for a
+   reason that isn't security. The job never imports the app, and the lock is still audited — as a
+   *file*. I updated the now-stale "ALL three CI jobs" line in `constraints.txt` to match.
+2. gitleaks is a **pinned + sha256-checksummed binary download**, not `gitleaks/gitleaks-action@v2` —
+   that action requires a paid `GITLEAKS_LICENSE` for repos owned by an **organization**, and
+   `cook-with-claude` is one, so it would fail on every run. Version/checksum are in the job's `env:`.
+
+**Gates:** 288 passed + 1 skipped (unchanged), ruff clean, bandit clean at the gate (9 nosec
+suppressions), pip-audit clean after the bump, gitleaks clean, phase1 diff vs `main` empty. No JS
+touched, so `test_ui.py`'s served-asset needles are unaffected. **import-linter not run locally** (no
+grimp win_arm64 wheel) — CI is the gate; this branch adds no imports at all.
+
+**For Codex / open:** (a) confirm the cryptography 50.0.0 bump is green in CI — that's the one
+unverified-locally piece; (b) push back if you'd rather gate bandit at low severity and annotate the
+5 remaining false positives; (c) `requirements-dev.txt` is unpinned by existing convention, which for
+*scanners* I think is correct (a newer scanner knowing more advisories is the point) — say so if you
+disagree. Not in scope and deliberately untouched: the Phase-3 increments, the 2026-07-13 matcher
+sign-off items, and any DAST/pentest of the app itself (that belongs with the Phase-3 HTTP surface).
+
+---
+
 ## 2026-07-14 - Claude: right-click Rename for datasets + targets ✅ MERGED to main (`4df8230`)
 
 Nadim asked for a way to rename a dataset or a target (the label only), kept out of the

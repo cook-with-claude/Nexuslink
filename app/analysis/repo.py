@@ -87,13 +87,17 @@ def frequency(conn, dataset_id, phone_number, rank_by, *, call_type=None, area=N
         else:  # overnight window, e.g. 22-06
             where.append(f"({hour} >= ? OR {hour} <= ?)")
         binds.extend([lo, hi])
+    # Interpolated SQL below is built from literals only: every fragment in `where`
+    # is a string constant in this function and every caller value is bound as `?`,
+    # and `rank_by` is whitelisted against FREQUENCY_FIELDS above (a column name
+    # cannot be a bound parameter). Hence the `# nosec B608` markers.
     cond = " AND ".join(where)
     total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM cdr_records WHERE {cond}", binds
+        f"SELECT COUNT(*) AS n FROM cdr_records WHERE {cond}", binds  # nosec B608
     ).fetchone()["n"]
     # NULLs (e.g. other_party on location-only rows) are not a rankable value.
     rows = conn.execute(
-        f"SELECT {rank_by} AS value, COUNT(*) AS count FROM cdr_records "
+        f"SELECT {rank_by} AS value, COUNT(*) AS count FROM cdr_records "  # nosec B608
         f"WHERE {cond} AND {rank_by} IS NOT NULL "
         f"GROUP BY {rank_by} ORDER BY count DESC, value ASC LIMIT ?",
         (*binds, top_n),
@@ -132,10 +136,12 @@ def delete_tally(conn, tally_id) -> bool:
 
 def targets_with_latest_result(conn, target_id=None) -> list[dict]:
     """Every target (or one) with its latest stored result_json (NULL if never analyzed)."""
+    # `cond` is one of two string literals (never caller data), so the concatenation
+    # below is not an injection vector -- target_id is bound as `?`. Hence `# nosec`.
     cond = "" if target_id is None else "WHERE t.id = ? "
     binds = () if target_id is None else (target_id,)
     rows = conn.execute(
-        "SELECT t.id, t.name, t.phone_number, d.name AS dataset_name, r.result_json "
+        "SELECT t.id, t.name, t.phone_number, d.name AS dataset_name, r.result_json "  # nosec B608
         "FROM targets t JOIN datasets d ON d.id = t.dataset_id "
         "LEFT JOIN analysis_results r ON r.id = "
         "(SELECT id FROM analysis_results WHERE target_id = t.id ORDER BY id DESC LIMIT 1) "
