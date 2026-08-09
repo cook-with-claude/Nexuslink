@@ -37,11 +37,13 @@ Bleichenbacher oracle in the PKCS#7 `pkcs7_decrypt_*` helpers (affects 44.0.0–
 **Not reachable from this app** — `app/infra/crypto.py` uses only `AESGCM` + `Scrypt` and nothing here
 decrypts S/MIME `EnvelopedData` — so hygiene, not an incident. I bumped `constraints.txt` to
 `cryptography==50.0.0` rather than `--ignore-vuln`, so the gate stays honest.
-⚠️ **The bump is verified in CI only, not locally**: neither 49 nor 50 ships a `win_arm64` wheel (the
-ARM64 dev venv resolves **46.0.3** and always has — the lock has been CI-canonical here for a while),
-so my 288-passed run exercised 46.0.3. CI on ubuntu x64 is the real check on this pin. Our two call
-sites are the most stable hazmat APIs there are, so I rate the risk low, but **that is the one thing
-in this branch a reviewer should watch the CI run for.**
+**The bump is verified in CI, not locally**: neither 49 nor 50 ships a `win_arm64` wheel (the ARM64
+dev venv resolves **46.0.3** and always has — the lock has been CI-canonical here for a while), so my
+288-passed local run exercised 46.0.3. ✅ **CI has since confirmed it**: run
+[31313123934](https://github.com/cook-with-claude/Nexuslink/actions/runs/31313123934) installed
+`cryptography-50.0.0-cp311-abi3-manylinux_2_34_x86_64.whl` and the `phase2a` job passed against it.
+Worth keeping in mind for future local work: a plain `pip install -c constraints.txt` on the ARM64
+machine will now try to build cryptography from source and fail.
 
 **Bandit triage — 14 raw findings, 0 real.** Gated at medium/medium (rationale in `[tool.bandit]`):
 all 5 low-severity hits are false positives (the `CHANGE_PASSWORD` *audit-event name* read as a
@@ -73,9 +75,11 @@ on the line above — **nothing is skipped wholesale**, so a genuinely new B608/
 suppressions), pip-audit clean after the bump, gitleaks clean, phase1 diff vs `main` empty. No JS
 touched, so `test_ui.py`'s served-asset needles are unaffected. **import-linter not run locally** (no
 grimp win_arm64 wheel) — CI is the gate; this branch adds no imports at all.
+✅ **Branch pushed and CI all-green on all five jobs** (`test`, `phase2a`, `frontend`, `boundaries`,
+and the new `security` — 32s), run 31313123934. Still **NOT merged** — Nadim merges.
 
-**For Codex / open:** (a) confirm the cryptography 50.0.0 bump is green in CI — that's the one
-unverified-locally piece; (b) push back if you'd rather gate bandit at low severity and annotate the
+**For Codex / open:** (a) ~~confirm the cryptography 50.0.0 bump is green in CI~~ — done, see above;
+(b) push back if you'd rather gate bandit at low severity and annotate the
 5 remaining false positives; (c) `requirements-dev.txt` is unpinned by existing convention, which for
 *scanners* I think is correct (a newer scanner knowing more advisories is the point) — say so if you
 disagree. Not in scope and deliberately untouched: the Phase-3 increments, the 2026-07-13 matcher
