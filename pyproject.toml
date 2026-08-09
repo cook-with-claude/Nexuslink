@@ -19,13 +19,22 @@ force-exclude = true
 select = ["E", "F", "I", "W"]
 
 # bandit (Python SAST) -- the CI `security` job runs
-#   bandit -c pyproject.toml -r app main.py tools --severity-level medium --confidence-level medium
-# Gating at medium/medium is deliberate: every low-severity hit in this codebase is a
-# documented false positive (the CHANGE_PASSWORD *audit-event name*, the deliberate
-# best-effort `except: pass` around an optional CLR assembly and the migration
-# rollback), so gating on them would buy noise rather than safety. Reviewed medium+
-# findings carry an inline `# nosec <ID>` with the reasoning on the line above -- and
-# nothing is skipped wholesale, so a genuinely new B608/B102 still fails the build.
+#   bandit -c pyproject.toml -r app main.py tools
+# with NO --severity-level / --confidence-level filter, i.e. bandit's strictest setting:
+# every check at every confidence. All 14 findings in this codebase were reviewed by
+# hand, all 14 are false positives, and each carries an inline `# nosec <ID>` with the
+# reasoning on the line above. Nothing is skipped wholesale, so a genuinely new finding
+# still fails the build.
+#
+# The markers name a SPECIFIC test id on purpose. A bare `# nosec` would suppress every
+# check on that line forever -- including one nobody has seen yet -- whereas the id form
+# silences exactly one. The cost is cosmetic: bandit re-checks a specific-id marker
+# against every enclosing AST node, so a multi-line conn.execute() or a nested
+# try/except emits "nosec encountered (Bxxx), but no failed test" WARNING lines on
+# stderr. Exit status is unaffected (0) and the run is still clean. Those warnings are
+# EXPECTED -- do not "fix" them by dropping to a bare `# nosec`, which trades a precise
+# suppression for a blanket one.
+#
 # exclude_dirs keeps an ad-hoc `bandit -c pyproject.toml -r .` honest too: phase1_cdr/
 # is FROZEN and independently validated, vendor/ is third-party, and tests/ would
 # drown in B101 (assert_used) by design.

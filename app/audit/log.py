@@ -22,7 +22,8 @@ TARGET_DELETE = "TARGET_DELETE"
 TARGET_RENAME = "TARGET_RENAME"
 ANALYSIS = "ANALYSIS"
 EXPORT = "EXPORT"
-CHANGE_PASSWORD = "CHANGE_PASSWORD"
+# The audit *event name*, not a credential (bandit B105 reads the string as one).
+CHANGE_PASSWORD = "CHANGE_PASSWORD"  # nosec B105
 # Saved-export staging (contact matcher + frequency explorer). Running a match
 # or a tally is a read and is not audited; changing what the export will
 # contain is a mutation and is.

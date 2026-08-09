@@ -90,7 +90,7 @@ def frequency(conn, dataset_id, phone_number, rank_by, *, call_type=None, area=N
     # Interpolated SQL below is built from literals only: every fragment in `where`
     # is a string constant in this function and every caller value is bound as `?`,
     # and `rank_by` is whitelisted against FREQUENCY_FIELDS above (a column name
-    # cannot be a bound parameter). Hence the `# nosec B608` markers.
+    # cannot be a bound parameter). Hence the nosec markers below.
     cond = " AND ".join(where)
     total = conn.execute(
         f"SELECT COUNT(*) AS n FROM cdr_records WHERE {cond}", binds  # nosec B608
@@ -137,7 +137,7 @@ def delete_tally(conn, tally_id) -> bool:
 def targets_with_latest_result(conn, target_id=None) -> list[dict]:
     """Every target (or one) with its latest stored result_json (NULL if never analyzed)."""
     # `cond` is one of two string literals (never caller data), so the concatenation
-    # below is not an injection vector -- target_id is bound as `?`. Hence `# nosec`.
+    # below is not an injection vector -- target_id is bound as `?`. Hence the nosec.
     cond = "" if target_id is None else "WHERE t.id = ? "
     binds = () if target_id is None else (target_id,)
     rows = conn.execute(

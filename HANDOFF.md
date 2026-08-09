@@ -45,11 +45,12 @@ dev venv resolves **46.0.3** and always has — the lock has been CI-canonical h
 Worth keeping in mind for future local work: a plain `pip install -c constraints.txt` on the ARM64
 machine will now try to build cryptography from source and fail.
 
-**Bandit triage — 14 raw findings, 0 real.** Gated at medium/medium (rationale in `[tool.bandit]`):
-all 5 low-severity hits are false positives (the `CHANGE_PASSWORD` *audit-event name* read as a
-password, and three deliberate best-effort `except: pass` blocks), so gating on them buys noise, not
-safety. The 8 that clear the gate are each annotated with an inline `# nosec <ID>` and the reasoning
-on the line above — **nothing is skipped wholesale**, so a genuinely new B608/B102 still fails:
+**Bandit triage — 14 raw findings, 0 real.** Gated at bandit's **strictest** setting: no
+`--severity-level` / `--confidence-level` filter at all, every check at every confidence (tightened
+from the medium/medium I first shipped — see "Bandit gate tightened" at the end of this entry). All
+14 are annotated with an inline
+`# nosec <ID>` and the reasoning on the line above — **nothing is skipped wholesale**, so a genuinely
+new finding still fails:
 - 7× **B608** (dynamic SQL) across `analysis/repo.py` + `matching/repo.py` — every one verified by
   hand as literals-plus-`?`-placeholders. The only interpolated *identifiers* are `rank_by`
   (whitelisted against `FREQUENCY_FIELDS` at the top of the function) and `_commonality`'s `column`
@@ -78,11 +79,40 @@ grimp win_arm64 wheel) — CI is the gate; this branch adds no imports at all.
 ✅ **Branch pushed and CI all-green on all five jobs** (`test`, `phase2a`, `frontend`, `boundaries`,
 and the new `security` — 32s), run 31313123934. Still **NOT merged** — Nadim merges.
 
-**For Codex / open:** (a) ~~confirm the cryptography 50.0.0 bump is green in CI~~ — done, see above;
-(b) push back if you'd rather gate bandit at low severity and annotate the
-5 remaining false positives; (c) `requirements-dev.txt` is unpinned by existing convention, which for
-*scanners* I think is correct (a newer scanner knowing more advisories is the point) — say so if you
-disagree. Not in scope and deliberately untouched: the Phase-3 increments, the 2026-07-13 matcher
+**For Codex / open:** (a) ~~confirm the cryptography 50.0.0 bump is green in CI~~ — done, run
+31313123934; (b) ~~push back if you'd rather gate bandit at low severity~~ — closed by tightening all
+the way to no filter at all, see below; (c) `requirements-dev.txt` is unpinned by
+existing convention, which for *scanners* I think is correct (a newer scanner knowing more advisories
+is the point) — say so if you disagree.
+
+**Bandit gate tightened (Nadim asked me to close the open review items before anything else).**
+Rather than leave (b) for Codex to arbitrate, I went past the option on the table: the gate now runs
+with **no severity or confidence filter at all**, which is stricter than the "low severity" I offered.
+The 5 previously-ungated low findings are now annotated too, so the marker count went 9 → **14**:
+`main.py` `passphrase = ""` (B105 — the no-passphrase-given value, which `bootstrap.unlock` rejects so
+the server starts LOCKED), the `CHANGE_PASSWORD` *audit-event name* (B105), and three deliberate
+best-effort `except: pass` blocks (B110 — optional CLR assembly, readiness poll, migration rollback).
+
+Two things I got wrong on the first pass and fixed here, both worth knowing before touching a marker:
+1. **Prose that quotes the marker becomes a marker.** Five explanatory comments contained the literal
+   ``# nosec`` token inside backticks; bandit parses *any* comment containing it, so those were being
+   read as directives and printed `Test in comment: markers is not a test name`. All five reworded to
+   say "hence nosec" without the `#`.
+2. **B110 is reported on the `except` line, not the `pass`.** Markers moved accordingly (the
+   reasoning moved to a comment above the `except`), which also let `main.py`'s long
+   `# noqa: BLE001` line stay under the 120-char ruff limit. Note `BLE` is not in the selected ruff
+   rules (`E,F,I,W`), so that noqa is currently inert — kept anyway so intent survives if it is enabled.
+
+**Expected stderr noise, do NOT "fix" it:** bandit prints 13 `nosec encountered (Bxxx), but no failed
+test` WARNING lines. Root cause is structural, not misplaced markers — bandit re-checks a
+specific-id marker against every *enclosing* AST node, so a multi-line `conn.execute()` or a nested
+try/except warns once per enclosing node. I verified this is not fixable by moving markers (moving
+them changed nothing) and that a bare `# nosec` silences it — but a bare marker suppresses **every**
+check on that line forever, including ones nobody has seen yet, which is exactly the blanket
+suppression this setup is built to avoid. Exit status is 0 and the run is clean. Rationale is
+recorded at length in `[tool.bandit]` so this doesn't get re-litigated.
+
+Not in scope and deliberately untouched: the Phase-3 increments, the 2026-07-13 matcher
 sign-off items, and any DAST/pentest of the app itself (that belongs with the Phase-3 HTTP surface).
 
 ---

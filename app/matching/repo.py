@@ -65,7 +65,7 @@ def contact_tallies(conn, dataset_id, phone_number, exclude=()) -> dict[str, int
     binds: list = [dataset_id, phone_number]
     if exclude:
         # Only `?` placeholders are interpolated -- the excluded values themselves
-        # are bound, so the concatenation is not an injection vector (`# nosec`).
+        # are bound, so the concatenation is not an injection vector (hence nosec).
         not_in = f" AND other_party NOT IN ({','.join('?' * len(exclude))})"
         binds.extend(exclude)
     rows = conn.execute(
@@ -231,7 +231,7 @@ def records_for(conn, dataset_id, phones, parties=None, areas=None) -> list[dict
     if not phones or (parties is not None and not parties) or (areas is not None and not areas):
         return []
     # Every interpolation below expands to `?` placeholders only; the values are
-    # bound. Not an injection vector (`# nosec B608`).
+    # bound. Not an injection vector (hence nosec).
     sql = ("SELECT id AS record_id, phone_number, timestamp, call_type, "  # nosec B608
            "duration_seconds, other_party, area "
            "FROM cdr_records WHERE dataset_id = ? "
@@ -296,7 +296,7 @@ def dataset_interconnectedness(conn, dataset_id, mega_fraction,
         (dataset_id,),
     ).fetchone()["n"]
     spreads = [
-        # _SHARED_SPREAD is a module-level constant, not caller data (`# nosec B608`).
+        # _SHARED_SPREAD is a module-level constant, not caller data (hence nosec).
         row["k"] for row in conn.execute(
             f"SELECT k FROM ({_SHARED_SPREAD}) ORDER BY k",  # nosec B608
             (dataset_id,),

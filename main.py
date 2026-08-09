@@ -61,7 +61,9 @@ def resolve_and_unlock():
         try:
             passphrase = getpass.getpass("Bootstrap passphrase: ")
         except (EOFError, KeyboardInterrupt):
-            passphrase = ""
+            # Not a credential: "" is the no-passphrase-given value, which
+            # bootstrap.unlock rejects below so the server starts LOCKED.
+            passphrase = ""  # nosec B105
     try:
         return bootstrap.unlock(passphrase)
     except bootstrap.BootstrapError as exc:
@@ -151,7 +153,8 @@ def _ensure_arm64_dotnet_runtime() -> None:
     ):
         try:
             clr.AddReference(assembly)
-        except Exception:  # noqa: BLE001 - a missing optional assembly must not abort startup
+        # Swallowing is the intent: a missing optional assembly must not abort startup.
+        except Exception:  # noqa: BLE001  # nosec B110
             pass
 
     _redirect_webview2_interop_to_netcore()
@@ -217,7 +220,10 @@ def wait_until_ready(port: int, timeout: float = 10.0) -> None:
             with urllib.request.urlopen(url) as r:  # nosec B310
                 if r.status == 200:
                     return
-        except Exception:
+        # Swallowing IS the intent: every failure mode here (connection refused,
+        # half-started server) just means "not ready yet", and the deadline above
+        # is what turns a permanent failure into a raised error.
+        except Exception:  # nosec B110
             pass
         # Back off on every non-success path (including a non-200 response),
         # so a server that is up but not yet returning 200 can't hot-loop the CPU.

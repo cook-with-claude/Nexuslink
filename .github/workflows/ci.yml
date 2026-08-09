@@ -181,10 +181,13 @@ jobs:
       - name: Audit locked dependencies for known CVEs (pip-audit)
         run: pip-audit --strict --no-deps -r constraints.txt
 
-      # Config (incl. the medium/medium rationale) lives in [tool.bandit] in
-      # pyproject.toml, alongside ruff and import-linter.
+      # No --severity-level / --confidence-level filter: this is bandit's strictest
+      # setting, every check at every confidence. All 14 findings are reviewed false
+      # positives carrying an inline `# nosec <ID>`. Config and the full rationale
+      # (incl. why "nosec encountered ... but no failed test" WARNING lines on stderr
+      # are expected and must not be "fixed") live in [tool.bandit] in pyproject.toml.
       - name: Python SAST (bandit)
-        run: bandit -c pyproject.toml -r app main.py tools --severity-level medium --confidence-level medium
+        run: bandit -c pyproject.toml -r app main.py tools
 
       - name: Scan git history for secrets (gitleaks)
         env:
