@@ -89,9 +89,20 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   skipped wholesale, so a genuinely new finding still fails the build. Bandit prints
   `nosec encountered (Bxxx), but no failed test` WARNING lines on stderr; those are **expected** (the
   price of precise per-id markers over blanket ones) and do not affect exit status — see the long
-  comment in `[tool.bandit]`. Deliberately not a SaaS analyzer (DeepSource/CodeRabbit): ruff +
+  comment in `[tool.bandit]`. Deliberately not a SaaS *lint aggregator* (DeepSource): ruff +
   import-linter + `tests/architecture/` already cover style and structure, so these three add only
   what nothing else checks, in-repo, with no third-party token on the repository.
+- CodeQL: separate `.github/workflows/codeql.yml` (python + javascript-typescript, `build-mode: none`,
+  `security-extended`), config in `.github/codeql/codeql-config.yml`. It adds **interprocedural
+  dataflow / taint tracking**, which bandit structurally cannot do — bandit matches patterns within a
+  statement, CodeQL follows a value across function boundaries. Free because the repo is **public**
+  (2026-08-09); code scanning on a private repo needs a paid GitHub security SKU. Own workflow, not
+  folded into `ci.yml`, because it needs `security-events: write` and `ci.yml` runs `contents: read`.
+  Triggers on push/PR to `main` + weekly. `paths-ignore`s frozen `phase1_cdr/`, `vendor/`, `tests/`.
+- Also live on the public repo: **secret scanning + push protection** (a push containing a detected
+  credential is blocked outright) and **Dependabot alerts + automated security updates**.
+  `.coderabbit.yaml` is committed and carries this project's ADR-0001 invariants as
+  `path_instructions`, but the **GitHub App is not installed** — it does nothing until it is.
   On Windows, prefix `pip-audit --desc on` with `PYTHONIOENCODING=utf-8` — its output contains `→`,
   which crashes the cp1252 console.
 - Desktop app: `.venv\Scripts\python.exe main.py` (needs the .NET Desktop Runtime on Windows; see

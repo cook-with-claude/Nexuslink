@@ -112,6 +112,42 @@ check on that line forever, including ones nobody has seen yet, which is exactly
 suppression this setup is built to avoid. Exit status is 0 and the run is clean. Rationale is
 recorded at length in `[tool.bandit]` so this doesn't get re-litigated.
 
+**REPO IS NOW PUBLIC (2026-08-09), on Nadim's instruction.** Draft **PR #21** opened for the Codex
+review. What that unlocked, all free and now live:
+- **CodeQL** — `.github/workflows/codeql.yml` + `.github/codeql/codeql-config.yml`. Verified working
+  on PR #21: **50 Python rules + 103 JS rules under `security-extended`, 0 alerts.** This was the
+  actual reason to go public — code scanning on a private repo needs a paid GitHub security SKU.
+- **Secret scanning + push protection** (a push containing a detected credential is now blocked) and
+  **Dependabot alerts + automated security updates**. `secret_scanning_non_provider_patterns` and
+  `validity_checks` stayed off — those are paid GHAS, not available on the free public tier.
+- **Actions minutes** — public repos don't consume the quota on standard runners.
+- **MIT `LICENSE`** (Nadim's choice). Copyright reads "Nadim Abdulmalak and contributors"; Khaled has
+  38 commits, so name him explicitly if that's preferred. Carves out `vendor/webview2/` (Microsoft
+  WebView2 SDK terms, not MIT).
+- **`.coderabbit.yaml`** committed but the **GitHub App is NOT installed** — that needs a browser
+  OAuth grant only Nadim can give, so it does nothing until then. Configured advisory-only
+  (`request_changes_workflow: false`); it must never be a gate. Its `path_instructions` encode ADR
+  0001 (routes never write SQL / own the unit-of-work; repos take a conn, return dicts, never commit;
+  `gates.py` is pure with deliberately PROPOSAL-labelled thresholds; `app/web/js` is vanilla no-build
+  so no framework suggestions; renaming a JS export can break `test_ui.py`'s grep; tests get checked
+  for vacuous assertions). That was the fix for my own objection to CodeRabbit — a generic reviewer
+  wouldn't know these rules, so give them to it.
+
+⚠️ **Two things only take effect once this branch is on `main`:** GitHub reads the licence from the
+default branch (the repo still shows "no licence" publicly until merge), and CodeQL's push/scheduled
+analysis is `branches: [main]` — the PR-triggered run proves the workflow is correct, but the
+Security tab won't have a baseline until it lands.
+
+⚠️ **Publishing exposed two real addresses permanently in commit metadata**: Nadim's
+`nadim_abdulmalak@cpf.edu.lb` (201 commits) and **Khaled's personal `epicsmoky001@gmail.com` (38
+commits)**. I flagged this before flipping and Nadim confirmed Khaled is fine with it. Scrubbing
+would mean rewriting every SHA, which `HANDOFF.md` and the memory index reference throughout — so
+treat it as permanent. GitHub's email-privacy setting only masks *future* commits.
+
+**Not yet done, deliberately, because it changes how you both work:** branch protection on `main` is
+now free (it was blocked on the private free plan — the gap `COLLAB.md`'s honour system was covering).
+Nadim's call whether to require the CI + CodeQL checks before merge.
+
 Not in scope and deliberately untouched: the Phase-3 increments, the 2026-07-13 matcher
 sign-off items, and any DAST/pentest of the app itself (that belongs with the Phase-3 HTTP surface).
 
