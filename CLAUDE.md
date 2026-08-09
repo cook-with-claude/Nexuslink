@@ -117,7 +117,11 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   `local-testing-wsl` auto-memory.
 
 ## Key docs
-- `COLLAB.md` — two-agent protocol + the architecture rules (agent-neutral).
+- `HANDOFF.md` → **`▶ NEXT SESSION — START HERE`** block at the very top: outstanding actions,
+  recommended next work, and the gotchas that bite. Read it before anything else.
+- `COLLAB.md` — two-agent protocol + the architecture rules (agent-neutral). Includes the
+  **enforced branch protection** on `main` (7 required checks; renaming a CI job makes `main`
+  unmergeable until the protection contexts are updated too).
 - `AGENTS.md` — onboarding pointer auto-read by Codex (mirrors the rules; points here + COLLAB/HANDOFF).
 - `HANDOFF.md` — running intent log (newest on top); read the top entry first.
 - `docs/reference/` — `api.md` (endpoint reference) + `schema.md` (DB schema mirror).

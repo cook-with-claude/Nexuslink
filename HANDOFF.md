@@ -4,6 +4,84 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+---
+
+# ▶ NEXT SESSION — START HERE
+
+*Written 2026-08-09 at the end of the security-tooling session. Delete or rewrite this
+block once the actions below are done; everything under it is the normal dated log.*
+
+## State in one line
+Repo is **public**. Security tooling is built, verified, and sitting on
+**draft PR #21** (`claude/ci-security-scanning`, tip `82c989b`) with **all 8 checks green**.
+Nothing is merged. `main` is now **branch-protected**.
+
+## Do these first, in order
+
+1. **Codex fresh-eyes review of PR #21** — or waive it, as Nadim did for the rename feature.
+   The three things worth a second opinion are listed at the bottom of the 2026-08-09 entry
+   below ("For Codex / open"). Nothing is blocking; the branch is green.
+2. **Merge PR #21.** Two things stay dormant until it lands on `main`:
+   - the **MIT licence** does not display (GitHub reads it from the default branch — the
+     repo currently shows "no licence" to visitors), and
+   - **CodeQL** has no Security-tab baseline (its push/scheduled triggers are
+     `branches: [main]`; the PR run proved the workflow is correct, nothing more).
+3. **Install the CodeRabbit GitHub App** — <https://github.com/apps/coderabbitai/installations/new>
+   Free for public repos. `.coderabbit.yaml` is already committed and carries this project's
+   ADR-0001 invariants as `path_instructions`; it does nothing until the app is installed.
+   Configured advisory-only (`request_changes_workflow: false`) — it must never become a gate.
+
+## Then pick up the real work
+Recommended order (rationale in the 2026-08-09 entry and the conversation behind it):
+
+- **Phase 3 increment 3.2b-2** — users table, multi-account, `session["user_id"]`, retire
+  `auth.json`. **Build the authorization test matrix with it, not after.** Every endpoint ×
+  every role × own-resource vs other-user's-resource vs unapproved-grant. This is the single
+  highest-value security work left: broken access control is the #1 real-world web vuln class
+  and **no scanner can find it** — not bandit, not CodeQL, not CodeRabbit. A missing grant
+  check looks like perfectly clean code to all three. Put it next to `tests/architecture/`,
+  which already CI-enforces the structural invariants.
+- **Hash-pin `constraints.txt`** — small and contained. pip-audit recommends it in its own
+  output on every run; closes the registry-tampering path that version pins alone don't.
+- **Fuzz the `.xlsx` importer** — the one untrusted-input surface that exists *today*
+  (user-supplied spreadsheets through pandas/openpyxl). Hypothesis or a malformed-workbook corpus.
+- **Khaled's four open matcher items** (from 2026-07-13, still untouched): session gap, ledger
+  cap, small-pop cap, DIRECT/N recalibration. Needs his domain input, not just an agent's.
+- **DAST / pentest** — deliberately deferred until Phase 3 gives the app a real HTTP surface
+  with auth. Pointless against today's single-user desktop build.
+
+## Gotchas that will bite you if you forget them
+
+- ⚠️ **Renaming a CI job makes `main` unmergeable.** Branch protection matches these seven
+  names literally: `test`, `phase2a`, `frontend`, `boundaries`, `security`,
+  `Analyze (python)`, `Analyze (javascript-typescript)`. A renamed job never reports its old
+  name and the required check hangs pending forever. Update the protection contexts in the
+  same change — see `COLLAB.md` → "main is branch-protected".
+- ⚠️ **`cryptography` cannot install locally on this machine.** No `win_arm64` wheel exists for
+  49.x or 50.x, so `pip install -c constraints.txt` on the ARM64 dev box tries to build from
+  source and fails. The venv has quietly been on **46.0.3** for a long time while the lock says
+  **50.0.0**. CI on ubuntu x64 is canonical and has verified the pin. Don't "fix" the local venv.
+- ⚠️ **Bandit's 13 `nosec encountered … but no failed test` WARNING lines are expected.**
+  Structural, not misplaced markers (verified — moving them changes nothing). Exit status is 0.
+  A bare `# nosec` silences them but blanket-suppresses every check on that line forever. Do not.
+  Full reasoning is in `[tool.bandit]` in `pyproject.toml`.
+- ⚠️ **Prose that quotes the literal `#`+`nosec` token becomes a live directive.** Bandit parses
+  any comment containing it, including inside backticks in an explanation. Write "hence nosec".
+- ⚠️ **Two real email addresses are now permanently public** in commit metadata — Nadim's
+  `nadim_abdulmalak@cpf.edu.lb` (201 commits) and Khaled's personal `epicsmoky001@gmail.com`
+  (38 commits). Nadim confirmed this before the flip. Scrubbing would rewrite every SHA, which
+  this file and the memory index reference throughout, so treat it as permanent. GitHub's
+  email-privacy setting only masks *future* commits — worth Khaled enabling it.
+- A JS-only refactor can still break **pytest**: `tests/phase2a/test_ui.py` greps the served JS
+  for exported symbol names. Grep `tests/` before assuming "no Python touched".
+
+## Optional, deliberately left undone
+`required_conversation_resolution` and required review approvals are both **off** on `main`.
+Approvals are off on purpose (GitHub won't let Nadim approve his own PR, so requiring one would
+block the only person who merges). Turn either on if the workflow changes.
+
+---
+
 ## 2026-08-09 - Claude: CI `security` job (pip-audit + bandit + gitleaks) — on branch, NOT merged
 
 Nadim asked what I thought of wiring **DeepSource** and **CodeRabbit** into the repo for security bugs
