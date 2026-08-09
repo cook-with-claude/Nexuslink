@@ -99,6 +99,10 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   (2026-08-09); code scanning on a private repo needs a paid GitHub security SKU. Own workflow, not
   folded into `ci.yml`, because it needs `security-events: write` and `ci.yml` runs `contents: read`.
   Triggers on push/PR to `main` + weekly. `paths-ignore`s frozen `phase1_cdr/`, `vendor/`, `tests/`.
+  This is CodeQL **advanced setup** (a workflow file we control) — ⚠️ never switch on "Default setup"
+  in Settings → Code security, which conflicts with it and disables the workflow, silently dropping
+  the frozen-`phase1_cdr` exclusion and the `security-extended` suite. Nothing to install: CodeQL is
+  GitHub's own engine, the workflow *is* the setup.
 - Also live on the public repo: **secret scanning + push protection** (a push containing a detected
   credential is blocked outright) and **Dependabot alerts + automated security updates**.
   `.coderabbit.yaml` is committed and carries this project's ADR-0001 invariants as

@@ -57,6 +57,13 @@ Recommended order (rationale in the 2026-08-09 entry and the conversation behind
   `Analyze (python)`, `Analyze (javascript-typescript)`. A renamed job never reports its old
   name and the required check hangs pending forever. Update the protection contexts in the
   same change — see `COLLAB.md` → "main is branch-protected".
+- ⚠️ **Do NOT enable CodeQL "Default setup"** in Settings → Code security. This repo uses
+  **advanced setup** (the `.github/workflows/codeql.yml` file). GitHub treats the two as
+  conflicting and switching on default setup *disables the workflow* — silently losing both
+  things it exists for: the `paths-ignore` for frozen `phase1_cdr/` (otherwise permanently
+  unfixable alerts) and the `security-extended` query suite. There is nothing to "install" for
+  CodeQL; it is GitHub's own engine and the workflow file is the whole setup. The only
+  third-party thing in the stack — and so the only real install — is the CodeRabbit App.
 - ⚠️ **`cryptography` cannot install locally on this machine.** No `win_arm64` wheel exists for
   49.x or 50.x, so `pip install -c constraints.txt` on the ARM64 dev box tries to build from
   source and fails. The venv has quietly been on **46.0.3** for a long time while the lock says
