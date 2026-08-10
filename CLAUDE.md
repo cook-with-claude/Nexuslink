@@ -106,7 +106,9 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - Also live on the public repo: **secret scanning + push protection** (a push containing a detected
   credential is blocked outright) and **Dependabot alerts + automated security updates**.
   `.coderabbit.yaml` is committed and carries this project's ADR-0001 invariants as
-  `path_instructions`, but the **GitHub App is not installed** — it does nothing until it is.
+  `path_instructions`; the **GitHub App is installed** (2026-08-10, scoped to this repo only).
+  ⚠️ CodeRabbit reads its config from a PR's **base branch**, so until `.coderabbit.yaml` is on
+  `main` it reviews with stock defaults and none of the invariants apply.
   On Windows, prefix `pip-audit --desc on` with `PYTHONIOENCODING=utf-8` — its output contains `→`,
   which crashes the cp1252 console.
 - Desktop app: `.venv\Scripts\python.exe main.py` (needs the .NET Desktop Runtime on Windows; see

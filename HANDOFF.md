@@ -8,28 +8,28 @@ disagreement or open question. See `COLLAB.md` for the protocol.
 
 # ▶ NEXT SESSION — START HERE
 
-*Written 2026-08-09 at the end of the security-tooling session. Delete or rewrite this
-block once the actions below are done; everything under it is the normal dated log.*
+*Rewritten 2026-08-10. Delete or rewrite this block once the actions below are done;
+everything under it is the normal dated log.*
 
 ## State in one line
-Repo is **public**. Security tooling is built, verified, and sitting on
-**draft PR #21** (`claude/ci-security-scanning`, tip `82c989b`) with **all 8 checks green**.
-Nothing is merged. `main` is now **branch-protected**.
+Repo is **public**, `main` is **branch-protected**, **CodeRabbit is installed**. Security tooling
+is still sitting on **draft PR #21** (`claude/ci-security-scanning`), all checks green, **not merged**.
 
 ## Do these first, in order
 
-1. **Codex fresh-eyes review of PR #21** — or waive it, as Nadim did for the rename feature.
-   The three things worth a second opinion are listed at the bottom of the 2026-08-09 entry
-   below ("For Codex / open"). Nothing is blocking; the branch is green.
-2. **Merge PR #21.** Two things stay dormant until it lands on `main`:
-   - the **MIT licence** does not display (GitHub reads it from the default branch — the
-     repo currently shows "no licence" to visitors), and
-   - **CodeQL** has no Security-tab baseline (its push/scheduled triggers are
-     `branches: [main]`; the PR run proved the workflow is correct, nothing more).
-3. **Install the CodeRabbit GitHub App** — <https://github.com/apps/coderabbitai/installations/new>
-   Free for public repos. `.coderabbit.yaml` is already committed and carries this project's
-   ADR-0001 invariants as `path_instructions`; it does nothing until the app is installed.
-   Configured advisory-only (`request_changes_workflow: false`) — it must never become a gate.
+1. **Merge PR #21.** It is the only thing blocking everything else. Draft, `MERGEABLE`, all 8
+   checks green. Codex fresh-eyes review is still un-done — waive it or run it, Nadim's call; the
+   three open judgement calls are at the bottom of the 2026-08-09 entry ("For Codex / open").
+   From the CLI (bypasses the GitHub web 2FA checkpoint):
+   `gh pr ready 21 && gh pr merge 21 --squash --delete-branch`
+   **Three** things stay dormant until it lands on `main`:
+   - the **MIT licence** does not display (GitHub reads it from the default branch — the repo
+     currently shows "no licence" to visitors),
+   - **CodeQL** has no Security-tab baseline (its push/scheduled triggers are `branches: [main]`;
+     the PR run proved the workflow is correct, nothing more), and
+   - **`.coderabbit.yaml` has no effect** — see the gotcha below.
+2. **Then start Phase 3 increment 3.2b-2** on a fresh branch off the merged `main`, so CodeRabbit
+   reviews it with the invariants actually loaded. See "Then pick up the real work" below.
 
 ## Then pick up the real work
 Recommended order (rationale in the 2026-08-09 entry and the conversation behind it):
@@ -52,6 +52,20 @@ Recommended order (rationale in the 2026-08-09 entry and the conversation behind
 
 ## Gotchas that will bite you if you forget them
 
+- ⚠️ **CodeRabbit reads `.coderabbit.yaml` from a PR's BASE branch, not the head.** The config
+  currently exists only on `claude/ci-security-scanning`, and every PR's base is `main` — so until
+  #21 merges CodeRabbit reviews with stock defaults and **none** of the ADR-0001 `path_instructions`
+  apply (frozen `phase1_cdr/`, the layer rule, repos-never-commit). Having it review PR #21 itself is
+  therefore the least useful review it could give. Merge first, let it loose on the next PR.
+- ⚠️ **`cook-with-claude` is a personal USER account, not an organization** (`owner.type: "User"`;
+  `synforge` is the display name on it). An earlier entry asserted the opposite — see the correction
+  in judgement call 2 of the 2026-08-09 entry before reusing that reasoning anywhere.
+- ⚠️ **The GitHub *web UI* can hit a mandatory 2FA checkpoint** that refuses recovery codes and
+  demands a live TOTP code (`/settings/two_factor_checkup`). The escape hatch is **More options →
+  "Reconfigure 2FA on this account"**. The **`gh` CLI is unaffected** — it uses a stored token, so
+  merges/reviews still work while the web UI is blocked. GitHub also states plainly on
+  `/settings/security` that 2FA **cannot be disabled** on this account ("required because of your
+  contributions"). Resolved 2026-08-10 without reconfiguring; nothing was changed.
 - ⚠️ **Renaming a CI job makes `main` unmergeable.** Branch protection matches these seven
   names literally: `test`, `phase2a`, `frontend`, `boundaries`, `security`,
   `Analyze (python)`, `Analyze (javascript-typescript)`. A renamed job never reports its old
@@ -86,6 +100,39 @@ Recommended order (rationale in the 2026-08-09 entry and the conversation behind
 `required_conversation_resolution` and required review approvals are both **off** on `main`.
 Approvals are off on purpose (GitHub won't let Nadim approve his own PR, so requiring one would
 block the only person who merges). Turn either on if the workflow changes.
+
+---
+
+## 2026-08-10 - Claude: CodeRabbit App installed; two doc corrections. PR #21 still NOT merged.
+
+Short session. Nadim asked what was outstanding, then asked me to do item 1 (CodeRabbit) myself.
+
+**CodeRabbit GitHub App is installed** (2026-08-10), `installation_id=152645777`. Deliberately
+scoped to **`cook-with-claude/Nexuslink` only** ("Only select repositories"), not "All repositories" —
+`portfolio-tracker`, `ftblkits`, `mythos` and the rest are untouched. Granted permissions, verbatim
+from the consent screen: **read** on actions, discussions, metadata; **read and write** on checks,
+code, commit statuses, issues, pull requests. Nadim was shown the scope — in particular that
+**write-on-code** lets the app push commits (that's how "apply suggested fix" works) — and approved it
+explicitly before the grant. Confirmed afterwards on `/settings/installations`. Note the
+`gh` CLI **cannot** verify this: `user/installations` needs a GitHub-App-authorized token and 403s.
+
+⚠️ **It does nothing useful yet** — CodeRabbit reads `.coderabbit.yaml` from a PR's **base** branch,
+and the config is only on this branch. Recorded as a gotcha in the START HERE block.
+
+**Two corrections to previously-recorded claims** (both were mine, both were wrong):
+1. `cook-with-claude` is a **User** account, not an organization. The gitleaks judgement call below
+   justified avoiding `gitleaks-action@v2` on a paid-org-licence premise that never applied. Fixed
+   in place; the decision itself stands on supply-chain grounds.
+2. Recovery codes do **not** satisfy the `two_factor_checkup` gate (it wants a live TOTP only).
+
+**Incidental, not acted on:** GitHub blocked the web UI with a mandatory 2FA verification; Nadim
+recovered the TOTP from his phone's password manager, so **nothing was reconfigured** and no recovery
+code was burned. Two follow-ups for him, neither in-repo: `~/Downloads/github-recovery-codes.txt` is
+**16 live codes in plaintext on disk** (dated 6/23) and should be regenerated + moved into the
+password manager; and the **Cursor** GitHub App has a *"Permission updates requested"* notice pending
+on the account, worth reading rather than rubber-stamping on a now-public repo.
+
+**Gates:** docs-only change — no code, no tests, no JS touched; `phase1_cdr/` untouched.
 
 ---
 
@@ -153,9 +200,14 @@ new finding still fails:
    (pip-audit wants `packaging` 26.3, the lock pins 26.2) and would make the security gate fail for a
    reason that isn't security. The job never imports the app, and the lock is still audited — as a
    *file*. I updated the now-stale "ALL three CI jobs" line in `constraints.txt` to match.
-2. gitleaks is a **pinned + sha256-checksummed binary download**, not `gitleaks/gitleaks-action@v2` —
-   that action requires a paid `GITLEAKS_LICENSE` for repos owned by an **organization**, and
-   `cook-with-claude` is one, so it would fail on every run. Version/checksum are in the job's `env:`.
+2. gitleaks is a **pinned + sha256-checksummed binary download**, not `gitleaks/gitleaks-action@v2`.
+   ⚠️ **Correction (2026-08-10):** the reason originally recorded here was wrong — it claimed
+   `cook-with-claude` is an **organization** and so would need a paid `GITLEAKS_LICENSE`. It is not;
+   `gh api repos/cook-with-claude/Nexuslink` reports `owner.type: "User"` (`synforge` is the display
+   name on that same personal account). The licence requirement therefore never applied. The decision
+   still stands on its own merits — a pinned, checksummed binary is supply-chain-tighter than a
+   floating action tag — but do not repeat the organization premise. Version/checksum are in the
+   job's `env:`.
 
 **Gates:** 288 passed + 1 skipped (unchanged), ruff clean, bandit clean at the gate (9 nosec
 suppressions), pip-audit clean after the bump, gitleaks clean, phase1 diff vs `main` empty. No JS
