@@ -22,6 +22,29 @@ main                  ← trusted baseline; only merged into, never edited direc
 Neither agent commits straight to `main`. The *other* agent reviews the branch
 diff before it merges. The human (Nadim) is the only one who merges to `main`.
 
+### `main` is branch-protected (enforced, since 2026-08-09)
+This used to be honour-system only — the free **private** plan could not enable
+protection. Going public unlocked it, so the rule is now enforced by GitHub:
+
+- **Seven status checks must pass** before anything lands on `main`:
+  `test`, `phase2a`, `frontend`, `boundaries`, `security`,
+  `Analyze (python)`, `Analyze (javascript-typescript)`.
+- **No force-pushes, no deletion** of `main`.
+- **No required review approvals** — deliberate. Nadim is the merger and GitHub
+  will not let anyone approve their own PR, so requiring one would block him.
+  The two-agent review above is still the actual quality bar; it is a *protocol*
+  obligation, not something CI can check.
+- **`enforce_admins` is off**, so Nadim can override in an emergency. Overriding
+  is a decision to record in `HANDOFF.md`, not a routine step.
+- Linear history is **not** required, so PRs can still merge with a merge commit.
+
+⚠️ **Renaming or removing a CI job breaks merging.** The seven names above are
+matched literally. A renamed job never reports its old name, so the required
+check stays pending forever and `main` becomes unmergeable. If you rename, add,
+or remove a job in `ci.yml` / `codeql.yml`, update the protection contexts in the
+same change:
+`gh api -X PATCH repos/cook-with-claude/Nexuslink/branches/main/protection/required_status_checks -f 'contexts[]=…'`
+
 ### Where the work currently stands
 The per-branch commit history and current merge status are **not tracked here** —
 they change every session. They live in `HANDOFF.md` (top entry). Read that for

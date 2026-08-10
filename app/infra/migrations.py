@@ -248,7 +248,10 @@ def migrate(conn, migrations: list[tuple[int, str]] = MIGRATIONS) -> int:
         except Exception:
             try:
                 conn.execute("ROLLBACK")
-            except Exception:
+            # Best-effort: there may be no transaction to roll back (the failure
+            # could predate BEGIN). The original error is re-raised either way, so
+            # a failed rollback must not mask it.
+            except Exception:  # nosec B110
                 pass
             raise
         current = version

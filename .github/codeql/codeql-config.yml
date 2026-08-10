@@ -1,0 +1,18 @@
+name: "Nexuslink CodeQL config"
+
+# CodeQL adds interprocedural dataflow / taint tracking, which is the one thing the
+# `security` job's bandit pass structurally cannot do: bandit matches AST patterns on a
+# single statement, CodeQL follows a value across function boundaries into a sink. The
+# two are complementary, so both run.
+
+paths-ignore:
+  # Phase 1 is FROZEN and independently validated (see CLAUDE.md). A finding in here
+  # could not be acted on without breaking the freeze, so scanning it would only
+  # produce permanent unfixable alerts.
+  - phase1_cdr
+  # Third-party redistributable Microsoft WebView2 interop assemblies, not our code.
+  - vendor
+  # Test fixtures deliberately construct bad input; alerts here are noise, and the
+  # behaviour under test is asserted by pytest already.
+  - tests
+  - phase1_cdr/tests

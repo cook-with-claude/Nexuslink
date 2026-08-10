@@ -4,6 +4,292 @@ Shared scratchpad between Claude Code and Codex. Newest entries on top.
 Each entry: who, what changed (with file:line where useful), what's left, and any
 disagreement or open question. See `COLLAB.md` for the protocol.
 
+---
+
+# ▶ NEXT SESSION — START HERE
+
+*Rewritten 2026-08-10. Delete or rewrite this block once the actions below are done;
+everything under it is the normal dated log.*
+
+## State in one line
+Repo is **public**, `main` is **branch-protected**, **CodeRabbit is installed**. Security tooling
+is still sitting on **draft PR #21** (`claude/ci-security-scanning`), all checks green, **not merged**.
+
+## Do these first, in order
+
+1. **Merge PR #21.** It is the only thing blocking everything else. Draft, `MERGEABLE`, all 8
+   checks green. Codex fresh-eyes review is still un-done — waive it or run it, Nadim's call; the
+   three open judgement calls are at the bottom of the 2026-08-09 entry ("For Codex / open").
+   From the CLI (bypasses the GitHub web 2FA checkpoint):
+   `gh pr ready 21 && gh pr merge 21 --squash --delete-branch`
+   **Three** things stay dormant until it lands on `main`:
+   - the **MIT licence** does not display (GitHub reads it from the default branch — the repo
+     currently shows "no licence" to visitors),
+   - **CodeQL** has no Security-tab baseline (its push/scheduled triggers are `branches: [main]`;
+     the PR run proved the workflow is correct, nothing more), and
+   - **`.coderabbit.yaml` has no effect** — see the gotcha below.
+2. **Then start Phase 3 increment 3.2b-2** on a fresh branch off the merged `main`, so CodeRabbit
+   reviews it with the invariants actually loaded. See "Then pick up the real work" below.
+
+## Then pick up the real work
+Recommended order (rationale in the 2026-08-09 entry and the conversation behind it):
+
+- **Phase 3 increment 3.2b-2** — users table, multi-account, `session["user_id"]`, retire
+  `auth.json`. **Build the authorization test matrix with it, not after.** Every endpoint ×
+  every role × own-resource vs other-user's-resource vs unapproved-grant. This is the single
+  highest-value security work left: broken access control is the #1 real-world web vuln class
+  and **no scanner can find it** — not bandit, not CodeQL, not CodeRabbit. A missing grant
+  check looks like perfectly clean code to all three. Put it next to `tests/architecture/`,
+  which already CI-enforces the structural invariants.
+- **Hash-pin `constraints.txt`** — small and contained. pip-audit recommends it in its own
+  output on every run; closes the registry-tampering path that version pins alone don't.
+- **Fuzz the `.xlsx` importer** — the one untrusted-input surface that exists *today*
+  (user-supplied spreadsheets through pandas/openpyxl). Hypothesis or a malformed-workbook corpus.
+- **Khaled's four open matcher items** (from 2026-07-13, still untouched): session gap, ledger
+  cap, small-pop cap, DIRECT/N recalibration. Needs his domain input, not just an agent's.
+- **DAST / pentest** — deliberately deferred until Phase 3 gives the app a real HTTP surface
+  with auth. Pointless against today's single-user desktop build.
+
+## Gotchas that will bite you if you forget them
+
+- ⚠️ **CodeRabbit reads `.coderabbit.yaml` from a PR's BASE branch, not the head.** The config
+  currently exists only on `claude/ci-security-scanning`, and every PR's base is `main` — so until
+  #21 merges CodeRabbit reviews with stock defaults and **none** of the ADR-0001 `path_instructions`
+  apply (frozen `phase1_cdr/`, the layer rule, repos-never-commit). Having it review PR #21 itself is
+  therefore the least useful review it could give. Merge first, let it loose on the next PR.
+- ⚠️ **`cook-with-claude` is a personal USER account, not an organization** (`owner.type: "User"`;
+  `synforge` is the display name on it). An earlier entry asserted the opposite — see the correction
+  in judgement call 2 of the 2026-08-09 entry before reusing that reasoning anywhere.
+- ⚠️ **The GitHub *web UI* can hit a mandatory 2FA checkpoint** that refuses recovery codes and
+  demands a live TOTP code (`/settings/two_factor_checkup`). The escape hatch is **More options →
+  "Reconfigure 2FA on this account"**. The **`gh` CLI is unaffected** — it uses a stored token, so
+  merges/reviews still work while the web UI is blocked. GitHub also states plainly on
+  `/settings/security` that 2FA **cannot be disabled** on this account ("required because of your
+  contributions"). Resolved 2026-08-10 without reconfiguring; nothing was changed.
+- ⚠️ **Renaming a CI job makes `main` unmergeable.** Branch protection matches these seven
+  names literally: `test`, `phase2a`, `frontend`, `boundaries`, `security`,
+  `Analyze (python)`, `Analyze (javascript-typescript)`. A renamed job never reports its old
+  name and the required check hangs pending forever. Update the protection contexts in the
+  same change — see `COLLAB.md` → "main is branch-protected".
+- ⚠️ **Do NOT enable CodeQL "Default setup"** in Settings → Code security. This repo uses
+  **advanced setup** (the `.github/workflows/codeql.yml` file). GitHub treats the two as
+  conflicting and switching on default setup *disables the workflow* — silently losing both
+  things it exists for: the `paths-ignore` for frozen `phase1_cdr/` (otherwise permanently
+  unfixable alerts) and the `security-extended` query suite. There is nothing to "install" for
+  CodeQL; it is GitHub's own engine and the workflow file is the whole setup. The only
+  third-party thing in the stack — and so the only real install — is the CodeRabbit App.
+- ⚠️ **`cryptography` cannot install locally on this machine.** No `win_arm64` wheel exists for
+  49.x or 50.x, so `pip install -c constraints.txt` on the ARM64 dev box tries to build from
+  source and fails. The venv has quietly been on **46.0.3** for a long time while the lock says
+  **50.0.0**. CI on ubuntu x64 is canonical and has verified the pin. Don't "fix" the local venv.
+- ⚠️ **Bandit's 13 `nosec encountered … but no failed test` WARNING lines are expected.**
+  Structural, not misplaced markers (verified — moving them changes nothing). Exit status is 0.
+  A bare `# nosec` silences them but blanket-suppresses every check on that line forever. Do not.
+  Full reasoning is in `[tool.bandit]` in `pyproject.toml`.
+- ⚠️ **Prose that quotes the literal `#`+`nosec` token becomes a live directive.** Bandit parses
+  any comment containing it, including inside backticks in an explanation. Write "hence nosec".
+- ⚠️ **Two real email addresses are now permanently public** in commit metadata — Nadim's
+  `nadim_abdulmalak@cpf.edu.lb` (201 commits) and Khaled's personal `epicsmoky001@gmail.com`
+  (38 commits). Nadim confirmed this before the flip. Scrubbing would rewrite every SHA, which
+  this file and the memory index reference throughout, so treat it as permanent. GitHub's
+  email-privacy setting only masks *future* commits — worth Khaled enabling it.
+- A JS-only refactor can still break **pytest**: `tests/phase2a/test_ui.py` greps the served JS
+  for exported symbol names. Grep `tests/` before assuming "no Python touched".
+
+## Optional, deliberately left undone
+`required_conversation_resolution` and required review approvals are both **off** on `main`.
+Approvals are off on purpose (GitHub won't let Nadim approve his own PR, so requiring one would
+block the only person who merges). Turn either on if the workflow changes.
+
+---
+
+## 2026-08-10 - Claude: CodeRabbit App installed; two doc corrections. PR #21 still NOT merged.
+
+Short session. Nadim asked what was outstanding, then asked me to do item 1 (CodeRabbit) myself.
+
+**CodeRabbit GitHub App is installed** (2026-08-10), `installation_id=152645777`. Deliberately
+scoped to **`cook-with-claude/Nexuslink` only** ("Only select repositories"), not "All repositories" —
+`portfolio-tracker`, `ftblkits`, `mythos` and the rest are untouched. Granted permissions, verbatim
+from the consent screen: **read** on actions, discussions, metadata; **read and write** on checks,
+code, commit statuses, issues, pull requests. Nadim was shown the scope — in particular that
+**write-on-code** lets the app push commits (that's how "apply suggested fix" works) — and approved it
+explicitly before the grant. Confirmed afterwards on `/settings/installations`. Note the
+`gh` CLI **cannot** verify this: `user/installations` needs a GitHub-App-authorized token and 403s.
+
+⚠️ **It does nothing useful yet** — CodeRabbit reads `.coderabbit.yaml` from a PR's **base** branch,
+and the config is only on this branch. Recorded as a gotcha in the START HERE block.
+
+**Two corrections to previously-recorded claims** (both were mine, both were wrong):
+1. `cook-with-claude` is a **User** account, not an organization. The gitleaks judgement call below
+   justified avoiding `gitleaks-action@v2` on a paid-org-licence premise that never applied. Fixed
+   in place; the decision itself stands on supply-chain grounds.
+2. Recovery codes do **not** satisfy the `two_factor_checkup` gate (it wants a live TOTP only).
+
+**Incidental, not acted on:** GitHub blocked the web UI with a mandatory 2FA verification; Nadim
+recovered the TOTP from his phone's password manager, so **nothing was reconfigured** and no recovery
+code was burned. Two follow-ups for him, neither in-repo: `~/Downloads/github-recovery-codes.txt` is
+**16 live codes in plaintext on disk** (dated 6/23) and should be regenerated + moved into the
+password manager; and the **Cursor** GitHub App has a *"Permission updates requested"* notice pending
+on the account, worth reading rather than rubber-stamping on a now-public repo.
+
+**Gates:** docs-only change — no code, no tests, no JS touched; `phase1_cdr/` untouched.
+
+---
+
+## 2026-08-09 - Claude: CI `security` job (pip-audit + bandit + gitleaks) — on branch, NOT merged
+
+Nadim asked what I thought of wiring **DeepSource** and **CodeRabbit** into the repo for security bugs
+and vulnerabilities, then said to go ahead with what I recommended instead. Branch
+`claude/ci-security-scanning`, not pushed, **not merged** — Nadim merges.
+
+**The recommendation, and why it isn't DeepSource.** DeepSource's Python analyzer is largely the rule
+families ruff already runs (`E,F,I,W`), and its config here would consist mostly of *exclusions* —
+`phase1_cdr/` is FROZEN, `vendor/` is third-party, `app/web/` is no-build JS — i.e. it would generate
+findings we are contractually not allowed to fix. **CodeRabbit** is an LLM PR reviewer: the same
+category as the Claude + Codex dual review in `COLLAB.md`, so it duplicates rather than extends. Also
+worth naming: neither is a vulnerability scanner in the sense asked for, and the surface that actually
+deserves scanning (LAN server, TLS, TOTP, RBAC, sessions) is **Phase 3, not yet written**. My advice
+to Nadim was to defer CodeRabbit to a Phase-3 trial and skip DeepSource; he can still overrule either.
+
+**What went in instead — three focused scanners covering the three gaps nothing else checks** (ruff =
+style, import-linter + `tests/architecture/` = structure, pytest = behaviour; none look at dependency
+CVEs, insecure patterns in our own Python, or credentials in git history):
+- `pip-audit --strict --no-deps -r constraints.txt`. `--no-deps` is right because the lock IS the full
+  pinned transitive set, so it audits exactly what CI installs with no resolution round-trip, and
+  covers the Phase 1 job too (the lock is a superset of its deps). `--strict` so a silent skip can't
+  read as a pass.
+- `bandit -c pyproject.toml -r app main.py tools --severity-level medium --confidence-level medium`.
+- `gitleaks git . --redact` over **full** history (`fetch-depth: 0`) — a secret deleted in a later
+  commit is still leaked. Ran locally over all 242 commits: **no leaks**, so no allowlist was needed.
+- The workflow now also ticks **weekly** (Mon 06:00 UTC): a CVE is disclosed on the advisory DB's
+  clock, not ours, so without a cron pip-audit is a merge-time snapshot rather than monitoring.
+
+**It found a real one on the first run.** `cryptography==49.0.0` → **PYSEC-2026-3552**, a
+Bleichenbacher oracle in the PKCS#7 `pkcs7_decrypt_*` helpers (affects 44.0.0–49.x, fixed in 50.0.0).
+**Not reachable from this app** — `app/infra/crypto.py` uses only `AESGCM` + `Scrypt` and nothing here
+decrypts S/MIME `EnvelopedData` — so hygiene, not an incident. I bumped `constraints.txt` to
+`cryptography==50.0.0` rather than `--ignore-vuln`, so the gate stays honest.
+**The bump is verified in CI, not locally**: neither 49 nor 50 ships a `win_arm64` wheel (the ARM64
+dev venv resolves **46.0.3** and always has — the lock has been CI-canonical here for a while), so my
+288-passed local run exercised 46.0.3. ✅ **CI has since confirmed it**: run
+[31313123934](https://github.com/cook-with-claude/Nexuslink/actions/runs/31313123934) installed
+`cryptography-50.0.0-cp311-abi3-manylinux_2_34_x86_64.whl` and the `phase2a` job passed against it.
+Worth keeping in mind for future local work: a plain `pip install -c constraints.txt` on the ARM64
+machine will now try to build cryptography from source and fail.
+
+**Bandit triage — 14 raw findings, 0 real.** Gated at bandit's **strictest** setting: no
+`--severity-level` / `--confidence-level` filter at all, every check at every confidence (tightened
+from the medium/medium I first shipped — see "Bandit gate tightened" at the end of this entry). All
+14 are annotated with an inline
+`# nosec <ID>` and the reasoning on the line above — **nothing is skipped wholesale**, so a genuinely
+new finding still fails:
+- 7× **B608** (dynamic SQL) across `analysis/repo.py` + `matching/repo.py` — every one verified by
+  hand as literals-plus-`?`-placeholders. The only interpolated *identifiers* are `rank_by`
+  (whitelisted against `FREQUENCY_FIELDS` at the top of the function) and `_commonality`'s `column`
+  (private, two callers, both passing string literals — I checked). I also annotated the one
+  medium/**low**-confidence site (`records_for`) that the gate filters out, so the files stay clean if
+  anyone runs bandit at `--confidence-level low`.
+- **B310** `urlopen` in `main.py` — literal loopback URL built from the port we just bound.
+- **B102** `exec` in `main.py` — that IS the importlib Loader contract (what `SourceFileLoader` does);
+  `source` is pywebview's own installed module file. Split out a `code = compile(...)` local so the
+  line fits the 120-char ruff limit with the marker.
+
+**Two judgement calls worth a second opinion:**
+1. The `security` job installs `requirements-dev.txt` **without** `-c constraints.txt`, unlike every
+   other job. That lock freezes the *runtime* stack; forcing it on the scanners' own trees breaks them
+   (pip-audit wants `packaging` 26.3, the lock pins 26.2) and would make the security gate fail for a
+   reason that isn't security. The job never imports the app, and the lock is still audited — as a
+   *file*. I updated the now-stale "ALL three CI jobs" line in `constraints.txt` to match.
+2. gitleaks is a **pinned + sha256-checksummed binary download**, not `gitleaks/gitleaks-action@v2`.
+   ⚠️ **Correction (2026-08-10):** the reason originally recorded here was wrong — it claimed
+   `cook-with-claude` is an **organization** and so would need a paid `GITLEAKS_LICENSE`. It is not;
+   `gh api repos/cook-with-claude/Nexuslink` reports `owner.type: "User"` (`synforge` is the display
+   name on that same personal account). The licence requirement therefore never applied. The decision
+   still stands on its own merits — a pinned, checksummed binary is supply-chain-tighter than a
+   floating action tag — but do not repeat the organization premise. Version/checksum are in the
+   job's `env:`.
+
+**Gates:** 288 passed + 1 skipped (unchanged), ruff clean, bandit clean at the gate (9 nosec
+suppressions), pip-audit clean after the bump, gitleaks clean, phase1 diff vs `main` empty. No JS
+touched, so `test_ui.py`'s served-asset needles are unaffected. **import-linter not run locally** (no
+grimp win_arm64 wheel) — CI is the gate; this branch adds no imports at all.
+✅ **Branch pushed and CI all-green on all five jobs** (`test`, `phase2a`, `frontend`, `boundaries`,
+and the new `security` — 32s), run 31313123934. Still **NOT merged** — Nadim merges.
+
+**For Codex / open:** (a) ~~confirm the cryptography 50.0.0 bump is green in CI~~ — done, run
+31313123934; (b) ~~push back if you'd rather gate bandit at low severity~~ — closed by tightening all
+the way to no filter at all, see below; (c) `requirements-dev.txt` is unpinned by
+existing convention, which for *scanners* I think is correct (a newer scanner knowing more advisories
+is the point) — say so if you disagree.
+
+**Bandit gate tightened (Nadim asked me to close the open review items before anything else).**
+Rather than leave (b) for Codex to arbitrate, I went past the option on the table: the gate now runs
+with **no severity or confidence filter at all**, which is stricter than the "low severity" I offered.
+The 5 previously-ungated low findings are now annotated too, so the marker count went 9 → **14**:
+`main.py` `passphrase = ""` (B105 — the no-passphrase-given value, which `bootstrap.unlock` rejects so
+the server starts LOCKED), the `CHANGE_PASSWORD` *audit-event name* (B105), and three deliberate
+best-effort `except: pass` blocks (B110 — optional CLR assembly, readiness poll, migration rollback).
+
+Two things I got wrong on the first pass and fixed here, both worth knowing before touching a marker:
+1. **Prose that quotes the marker becomes a marker.** Five explanatory comments contained the literal
+   ``# nosec`` token inside backticks; bandit parses *any* comment containing it, so those were being
+   read as directives and printed `Test in comment: markers is not a test name`. All five reworded to
+   say "hence nosec" without the `#`.
+2. **B110 is reported on the `except` line, not the `pass`.** Markers moved accordingly (the
+   reasoning moved to a comment above the `except`), which also let `main.py`'s long
+   `# noqa: BLE001` line stay under the 120-char ruff limit. Note `BLE` is not in the selected ruff
+   rules (`E,F,I,W`), so that noqa is currently inert — kept anyway so intent survives if it is enabled.
+
+**Expected stderr noise, do NOT "fix" it:** bandit prints 13 `nosec encountered (Bxxx), but no failed
+test` WARNING lines. Root cause is structural, not misplaced markers — bandit re-checks a
+specific-id marker against every *enclosing* AST node, so a multi-line `conn.execute()` or a nested
+try/except warns once per enclosing node. I verified this is not fixable by moving markers (moving
+them changed nothing) and that a bare `# nosec` silences it — but a bare marker suppresses **every**
+check on that line forever, including ones nobody has seen yet, which is exactly the blanket
+suppression this setup is built to avoid. Exit status is 0 and the run is clean. Rationale is
+recorded at length in `[tool.bandit]` so this doesn't get re-litigated.
+
+**REPO IS NOW PUBLIC (2026-08-09), on Nadim's instruction.** Draft **PR #21** opened for the Codex
+review. What that unlocked, all free and now live:
+- **CodeQL** — `.github/workflows/codeql.yml` + `.github/codeql/codeql-config.yml`. Verified working
+  on PR #21: **50 Python rules + 103 JS rules under `security-extended`, 0 alerts.** This was the
+  actual reason to go public — code scanning on a private repo needs a paid GitHub security SKU.
+- **Secret scanning + push protection** (a push containing a detected credential is now blocked) and
+  **Dependabot alerts + automated security updates**. `secret_scanning_non_provider_patterns` and
+  `validity_checks` stayed off — those are paid GHAS, not available on the free public tier.
+- **Actions minutes** — public repos don't consume the quota on standard runners.
+- **MIT `LICENSE`** (Nadim's choice). Copyright reads "Nadim Abdulmalak and contributors"; Khaled has
+  38 commits, so name him explicitly if that's preferred. Carves out `vendor/webview2/` (Microsoft
+  WebView2 SDK terms, not MIT).
+- **`.coderabbit.yaml`** committed but the **GitHub App is NOT installed** — that needs a browser
+  OAuth grant only Nadim can give, so it does nothing until then. Configured advisory-only
+  (`request_changes_workflow: false`); it must never be a gate. Its `path_instructions` encode ADR
+  0001 (routes never write SQL / own the unit-of-work; repos take a conn, return dicts, never commit;
+  `gates.py` is pure with deliberately PROPOSAL-labelled thresholds; `app/web/js` is vanilla no-build
+  so no framework suggestions; renaming a JS export can break `test_ui.py`'s grep; tests get checked
+  for vacuous assertions). That was the fix for my own objection to CodeRabbit — a generic reviewer
+  wouldn't know these rules, so give them to it.
+
+⚠️ **Two things only take effect once this branch is on `main`:** GitHub reads the licence from the
+default branch (the repo still shows "no licence" publicly until merge), and CodeQL's push/scheduled
+analysis is `branches: [main]` — the PR-triggered run proves the workflow is correct, but the
+Security tab won't have a baseline until it lands.
+
+⚠️ **Publishing exposed two real addresses permanently in commit metadata**: Nadim's
+`nadim_abdulmalak@cpf.edu.lb` (201 commits) and **Khaled's personal `epicsmoky001@gmail.com` (38
+commits)**. I flagged this before flipping and Nadim confirmed Khaled is fine with it. Scrubbing
+would mean rewriting every SHA, which `HANDOFF.md` and the memory index reference throughout — so
+treat it as permanent. GitHub's email-privacy setting only masks *future* commits.
+
+**Not yet done, deliberately, because it changes how you both work:** branch protection on `main` is
+now free (it was blocked on the private free plan — the gap `COLLAB.md`'s honour system was covering).
+Nadim's call whether to require the CI + CodeQL checks before merge.
+
+Not in scope and deliberately untouched: the Phase-3 increments, the 2026-07-13 matcher
+sign-off items, and any DAST/pentest of the app itself (that belongs with the Phase-3 HTTP surface).
+
+---
+
 ## 2026-07-14 - Claude: right-click Rename for datasets + targets ✅ MERGED to main (`4df8230`)
 
 Nadim asked for a way to rename a dataset or a target (the label only), kept out of the

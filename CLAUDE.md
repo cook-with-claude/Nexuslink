@@ -79,6 +79,38 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
 - Lint: `ruff check app tests main.py` (config in `pyproject.toml`; excludes `phase1_cdr/`, `vendor/`).
 - Boundaries: `lint-imports` (import-linter) — **enforcing** (CI `boundaries` job). grimp has no
   win_arm64 wheel, so it can't run on native Windows; it runs in CI on ubuntu x64 (and locally in WSL).
+- Security: the CI `security` job runs three scanners, all **enforcing**, all installable via
+  `requirements-dev.txt` — `pip-audit --strict --no-deps -r constraints.txt` (known CVEs in the pinned
+  runtime lock), `bandit -c pyproject.toml -r app main.py tools` (Python SAST, run at bandit's
+  **strictest** setting — no severity/confidence filter), and `gitleaks git . --redact` (secrets
+  across **all** git history, not just the tip). The workflow also ticks **weekly** (Mon 06:00 UTC) so
+  a newly-disclosed CVE surfaces without anyone pushing. All 14 bandit findings are reviewed false
+  positives carrying an inline `# nosec <ID>` with the reasoning directly above it — no check is
+  skipped wholesale, so a genuinely new finding still fails the build. Bandit prints
+  `nosec encountered (Bxxx), but no failed test` WARNING lines on stderr; those are **expected** (the
+  price of precise per-id markers over blanket ones) and do not affect exit status — see the long
+  comment in `[tool.bandit]`. Deliberately not a SaaS *lint aggregator* (DeepSource): ruff +
+  import-linter + `tests/architecture/` already cover style and structure, so these three add only
+  what nothing else checks, in-repo, with no third-party token on the repository.
+- CodeQL: separate `.github/workflows/codeql.yml` (python + javascript-typescript, `build-mode: none`,
+  `security-extended`), config in `.github/codeql/codeql-config.yml`. It adds **interprocedural
+  dataflow / taint tracking**, which bandit structurally cannot do — bandit matches patterns within a
+  statement, CodeQL follows a value across function boundaries. Free because the repo is **public**
+  (2026-08-09); code scanning on a private repo needs a paid GitHub security SKU. Own workflow, not
+  folded into `ci.yml`, because it needs `security-events: write` and `ci.yml` runs `contents: read`.
+  Triggers on push/PR to `main` + weekly. `paths-ignore`s frozen `phase1_cdr/`, `vendor/`, `tests/`.
+  This is CodeQL **advanced setup** (a workflow file we control) — ⚠️ never switch on "Default setup"
+  in Settings → Code security, which conflicts with it and disables the workflow, silently dropping
+  the frozen-`phase1_cdr` exclusion and the `security-extended` suite. Nothing to install: CodeQL is
+  GitHub's own engine, the workflow *is* the setup.
+- Also live on the public repo: **secret scanning + push protection** (a push containing a detected
+  credential is blocked outright) and **Dependabot alerts + automated security updates**.
+  `.coderabbit.yaml` is committed and carries this project's ADR-0001 invariants as
+  `path_instructions`; the **GitHub App is installed** (2026-08-10, scoped to this repo only).
+  ⚠️ CodeRabbit reads its config from a PR's **base branch**, so until `.coderabbit.yaml` is on
+  `main` it reviews with stock defaults and none of the invariants apply.
+  On Windows, prefix `pip-audit --desc on` with `PYTHONIOENCODING=utf-8` — its output contains `→`,
+  which crashes the cp1252 console.
 - Desktop app: `.venv\Scripts\python.exe main.py` (needs the .NET Desktop Runtime on Windows; see
   `README.md`). Import `sample_cdr_data.xlsx` (repo root) to seed data for manual testing. For the
   contact matcher, `sample_matcher_scenarios.xlsx` (strangers mode) + `sample_matcher_closeknit.xlsx`
@@ -91,7 +123,11 @@ route is APPLICATION; its `responses/guards/errors` helpers are SUPPORT.)
   `local-testing-wsl` auto-memory.
 
 ## Key docs
-- `COLLAB.md` — two-agent protocol + the architecture rules (agent-neutral).
+- `HANDOFF.md` → **`▶ NEXT SESSION — START HERE`** block at the very top: outstanding actions,
+  recommended next work, and the gotchas that bite. Read it before anything else.
+- `COLLAB.md` — two-agent protocol + the architecture rules (agent-neutral). Includes the
+  **enforced branch protection** on `main` (7 required checks; renaming a CI job makes `main`
+  unmergeable until the protection contexts are updated too).
 - `AGENTS.md` — onboarding pointer auto-read by Codex (mirrors the rules; points here + COLLAB/HANDOFF).
 - `HANDOFF.md` — running intent log (newest on top); read the top entry first.
 - `docs/reference/` — `api.md` (endpoint reference) + `schema.md` (DB schema mirror).

@@ -5,6 +5,20 @@
 This project is pre-release. Security fixes currently target the `main` branch
 until versioned release channels are defined.
 
+## Automated Checks
+
+Every push and pull request runs a `security` job in CI, which also ticks weekly
+so newly-disclosed advisories surface without a push:
+
+- **pip-audit** — known CVEs in the pinned runtime lock (`constraints.txt`).
+- **bandit** — Python static analysis over `app/`, `main.py`, `tools/`, at its
+  strictest setting (no severity or confidence filter). Reviewed false positives
+  carry an inline `# nosec <ID>`; no check is disabled wholesale.
+- **gitleaks** — secret scanning across the full commit history, not just the tip.
+
+These are gates, not reports: a finding fails the build. They do not replace the
+human review protocol in `COLLAB.md`.
+
 ## Reporting a Vulnerability
 
 Do not open public issues for suspected vulnerabilities. Use GitHub private

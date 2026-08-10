@@ -4,5 +4,12 @@
 # ruff          — linter + formatter (config in pyproject.toml; excludes phase1_cdr/)
 # import-linter — enforces the modular-monolith layer boundaries (ADR 0001); the CI
 #                 gate and the contract are wired in the final reorg step (Step 9).
+# bandit        — Python SAST (config in pyproject.toml). The [toml] extra is what
+#                 lets `-c pyproject.toml` be read; plain `bandit` ignores it silently.
+# pip-audit     — known-CVE audit of the pinned runtime lock (constraints.txt).
+# Both feed the CI `security` job. Left unpinned like the other dev tools: they are
+# not shipped, and a *newer* scanner knowing about *more* advisories is the point.
 ruff
 import-linter
+bandit[toml]
+pip-audit

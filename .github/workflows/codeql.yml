@@ -1,0 +1,66 @@
+name: CodeQL
+
+# Interprocedural dataflow / taint analysis. Free for public repositories; this is the
+# main reason the repo is public rather than private (code scanning on a private repo
+# needs a paid GitHub security SKU). Kept in its own workflow rather than folded into
+# ci.yml because it needs `security-events: write`, and the CI workflow deliberately
+# runs with `contents: read` only.
+#
+# Deliberately NOT a replacement for the `security` job in ci.yml: bandit matches
+# patterns within a statement, CodeQL follows values across function boundaries. The
+# gap that matters for Phase 3 (a request parameter reaching a repo query without an
+# authorization check in between) is only visible to the latter.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Code scanning results go stale as the query packs improve, not just as the code
+  # changes, so re-analyse weekly. Offset an hour from ci.yml's Monday tick.
+  schedule:
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Required to upload the SARIF results to the Security tab.
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `build-mode: none` is correct for both: Python is interpreted, and the SPA
+          # is vanilla no-build JS by design (see CLAUDE.md), so there is nothing to
+          # compile for either language.
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+          # security-extended over the default suite: more security queries, without
+          # pulling in the code-quality/style rules that ruff already owns.
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
